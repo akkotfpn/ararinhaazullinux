@@ -71,7 +71,7 @@ impl Ambiente {
         vec![
             ("HOME".into(), "/root".into()),
             ("TERM".into(), "dumb".into()),
-            ("PATH".into(), "/usr/bin:/usr/sbin".into()),
+            ("PATH".into(), "/ninhada-substitutos:/usr/bin:/usr/sbin".into()),
             ("LC_ALL".into(), "POSIX".into()),
             ("ARQ".into(), self.arq.clone()),
             ("ARQ_KERNEL".into(), self.arq_kernel().into()),

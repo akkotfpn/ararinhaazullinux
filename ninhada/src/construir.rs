@@ -106,6 +106,36 @@ mount -t tmpfs tmpfs "$R/run"
 exec chroot "$R" /usr/bin/env -i "$@" /bin/bash -e -u -o pipefail -c 'cd "$1"; eval "$2"' _ "$D" "$P"
 "#;
 
+/// No ambiente isolado só existe o uid/gid 0, então `chown`/`chgrp` para
+/// outros donos (ex.: grupo tty no util-linux) falham com "Invalid argument".
+/// Estes substitutos tentam o comando real; se a falha for só essa, anotam a
+/// mudança em /ninhada-donos/<pacote>.lista, aplicada ao gerar a imagem.
+const SUBSTITUTO_DONO: &str = r#"#!/bin/bash
+real=/usr/bin/$(basename "$0")
+erro=$("$real" "$@" 2>&1) && exit 0
+if [[ "$erro" == *"Invalid argument"* ]]; then
+  mkdir -p /ninhada-donos
+  printf '%s' "$(basename "$0")" >> "/ninhada-donos/${NINHADA_PACOTE:-desconhecido}.lista"
+  printf ' %q' "$@" >> "/ninhada-donos/${NINHADA_PACOTE:-desconhecido}.lista"
+  echo >> "/ninhada-donos/${NINHADA_PACOTE:-desconhecido}.lista"
+  exit 0
+fi
+echo "$erro" >&2
+exit 1
+"#;
+
+fn instalar_substitutos(raiz: &Path) -> Result<(), String> {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = raiz.join("ninhada-substitutos");
+    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    for nome in ["chown", "chgrp"] {
+        let p = dir.join(nome);
+        fs::write(&p, SUBSTITUTO_DONO).map_err(|e| e.to_string())?;
+        fs::set_permissions(&p, fs::Permissions::from_mode(0o755)).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 /// Caminho visto de dentro da raiz: /x/raiz/usr/src -> /usr/src
 fn dentro(raiz: &Path, p: &Path) -> Result<String, String> {
     let rel = p
@@ -315,6 +345,8 @@ pub fn construir(
 
     if r.isolado {
         pode_entrar(&amb.arq)?;
+        instalar_substitutos(&amb.raiz())?;
+        let _ = fs::remove_file(amb.raiz().join("ninhada-donos").join(format!("{}.lista", r.nome)));
     }
     // No modo isolado o código precisa estar DENTRO da raiz para ser visto.
     let obra = if r.isolado {
@@ -377,7 +409,9 @@ pub fn construir(
     let _ = fs::remove_file(&log);
     let raiz = amb.raiz();
     let (vars, modo) = if r.isolado {
-        (amb.variaveis_isoladas(&dentro(&raiz, &destino)?, op.nucleos), Modo::Isolado { raiz: &raiz })
+        let mut v = amb.variaveis_isoladas(&dentro(&raiz, &destino)?, op.nucleos);
+        v.push(("NINHADA_PACOTE".into(), r.nome.clone()));
+        (v, Modo::Isolado { raiz: &raiz })
     } else {
         (amb.variaveis(&destino, op.nucleos), Modo::Hospedeiro { isolar: op.isolar })
     };
