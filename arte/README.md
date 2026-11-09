@@ -13,6 +13,12 @@ escuro e cauda longa.
 Usos: ícone do botão do menu, tela de boot, instalador, site. Versões
 monocromáticas e só-silhueta serão criadas para tamanhos pequenos (16–24 px).
 
+## Mascote: Mingau
+<img src="mascote/mingau.svg" width="140" alt="Mingau, a ararinha mascote">
+
+A ararinha mascote do sistema. Aparece no primeiro boot, na documentação e nas
+mensagens amigáveis de erro.
+
 ## Paleta
 
 | Token | Cor | Origem |
@@ -46,6 +52,15 @@ de ícones do freedesktop.org para apps de terceiros encontrarem os nomes padrã
 
 Primeiros ícones em [`icones/`](icones/): Este Computador, unidade do sistema (C:),
 unidade de disco, unidade de rede, pasta e lixeira.
+
+## Sons (Grito)
+Sintetizados, inspirados no chamado da ave, em [`sons/grito-padrao/`](sons/grito-padrao/):
+`sessao-iniciada`, `notificacao`, `erro`, `dispositivo-conectado`,
+`dispositivo-removido`, `desligar`. Gerados por
+[`ferramentas/arte/sintetizar-sons.py`](../ferramentas/arte/sintetizar-sons.py).
+
+## Tipografia
+Interface em **Inter** e terminal em **JetBrains Mono** (ambas OFL). Ver ADR 0013.
 
 ## Mockups
 - [Este Computador (Ninho)](mockups/este-computador.svg): primeira proposta do

@@ -1,0 +1,26 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# LFS 5.4 (livro r13.1-39-systemd): cabeçalhos da API do kernel para a glibc.
+# Diferença do LFS: ARCH explícito, para compilação cruzada.
+
+[pacote]
+nome      = "cabecalhos-linux"
+versao    = "7.1.8"
+resumo    = "Cabeçalhos da API do kernel Linux"
+licenca   = "GPL-2.0-only"
+site      = "https://kernel.org"
+categoria = "toolchain"
+tipo      = "toolchain"
+
+[fonte]
+url = "https://cdn.kernel.org/pub/linux/kernel/v7.x/linux-7.1.8.tar.xz"
+
+[dependencias]
+construcao = ["gcc-passo1"]
+
+[construcao]
+passos = [
+  "make mrproper",
+  "make ARCH=$ARQ_KERNEL headers",
+  "find usr/include -type f ! -name '*.h' -delete",
+]
+instalar = ["mkdir -p $RAIZ/usr && cp -r usr/include $RAIZ/usr"]

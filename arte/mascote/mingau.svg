@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->
+<!-- Mingau, a ararinha mascote do Ararinha Azul Linux. Arte original do projeto. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 300" width="256" height="300">
+  <title>Mingau</title>
+  <defs>
+    <linearGradient id="m_corpo" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#6AB4F0"/><stop offset="1" stop-color="#2B7BC4"/>
+    </linearGradient>
+    <linearGradient id="m_asa" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2B7BC4"/><stop offset="1" stop-color="#0E3F73"/>
+    </linearGradient>
+  </defs>
+  <!-- sombra -->
+  <ellipse cx="128" cy="286" rx="70" ry="9" fill="#0B1A2E" opacity="0.15"/>
+  <!-- cauda -->
+  <path d="M110 230 C 100 256, 104 278, 116 290 L 132 290 C 128 270, 130 250, 140 232 Z" fill="url(#m_asa)"/>
+  <!-- corpo -->
+  <ellipse cx="128" cy="196" rx="62" ry="66" fill="url(#m_corpo)"/>
+  <!-- barriga -->
+  <ellipse cx="128" cy="212" rx="38" ry="42" fill="#8DBDE6"/>
+  <!-- asa esquerda (acenando) -->
+  <path d="M70 170 C 40 150, 30 112, 44 96 C 60 104, 78 132, 86 160 Z" fill="url(#m_asa)"/>
+  <path d="M50 108 l 10 18 M44 120 l 14 14 M44 134 l 18 10" stroke="#6AB4F0" stroke-width="3" stroke-linecap="round"/>
+  <!-- asa direita -->
+  <path d="M184 168 C 204 190, 204 226, 188 246 C 178 228, 174 200, 176 176 Z" fill="url(#m_asa)"/>
+  <!-- cabeça -->
+  <circle cx="128" cy="104" r="62" fill="#A9C6DC"/>
+  <!-- topete -->
+  <path d="M112 46 C 108 30, 118 22, 126 24 C 124 34, 128 42, 132 46 Z" fill="#8DBDE6"/>
+  <!-- face escura ao redor dos olhos -->
+  <ellipse cx="102" cy="104" rx="22" ry="20" fill="#3A4652"/>
+  <ellipse cx="154" cy="104" rx="22" ry="20" fill="#3A4652"/>
+  <!-- olhos -->
+  <circle cx="104" cy="102" r="13" fill="#F4F7FA"/>
+  <circle cx="152" cy="102" r="13" fill="#F4F7FA"/>
+  <circle cx="107" cy="103" r="7" fill="#0B1A2E"/>
+  <circle cx="149" cy="103" r="7" fill="#0B1A2E"/>
+  <circle cx="110" cy="99" r="2.5" fill="#FFFFFF"/>
+  <circle cx="152" cy="99" r="2.5" fill="#FFFFFF"/>
+  <!-- bochechas -->
+  <ellipse cx="86" cy="134" rx="9" ry="5" fill="#E8B23A" opacity="0.5"/>
+  <ellipse cx="170" cy="134" rx="9" ry="5" fill="#E8B23A" opacity="0.5"/>
+  <!-- bico -->
+  <path d="M112 124 C 116 112, 140 112, 144 124 C 144 142, 134 152, 128 156 C 122 152, 112 142, 112 124 Z" fill="#1E2630"/>
+  <path d="M118 130 C 124 126, 132 126, 138 130" stroke="#4A5A6A" stroke-width="2" fill="none" stroke-linecap="round"/>
+  <!-- pés -->
+  <path d="M110 258 l -8 16 M110 258 l 0 18 M146 258 l 8 16 M146 258 l 0 18" stroke="#3A4652" stroke-width="6" stroke-linecap="round"/>
+</svg>

@@ -17,6 +17,8 @@ o que escolhemos e por quê. Assim, daqui a dois anos, ninguém precisa adivinha
 | [0010](0010-rasante-jogos.md) | Rasante: jogos e desempenho | Aceita |
 | [0011](0011-bando-compatibilidade.md) | Bando: camada universal de apps | Aceita |
 | [0012](0012-extras-opcionais.md) | Extras opcionais (backup, Vaultwarden, acesso remoto, controle parental, IA local) | Aceita |
+| [0013](0013-identidade-mingau-fonte-sons.md) | Identidade: mascote Mingau, tipografia e sons | Aceita |
+| [0014](0014-ninhada-v0.md) | Ninhada v0: sem dependências externas, trava de fontes | Aceita |
 
 ## Modelo
 Copie [`modelo.md`](modelo.md) para criar um novo ADR.

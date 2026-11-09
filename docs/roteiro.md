@@ -3,7 +3,7 @@
 | Fase | Nome | Entregas principais |
 |---|---|---|
 | **0** | Fundamentos | Estudo da biblioteca, ADRs, identidade visual inicial, plano da Fase 1 ✅ |
-| **1** | Primeiro Pio | Ninhada v0, toolchain própria, sistema base, Spix Kernel, imagem que boota em x86_64 e ARM64 |
+| **1** | Primeiro Pio (em andamento) | Ninhada v0 ✅, toolchain própria, sistema base, Spix Kernel, imagem que boota em x86_64 e ARM64 |
 | **2** | Utilizável | Canto (NetworkManager, Wi-Fi, Bluetooth), Asa Guardiã, Pena + extensões, Plumagem v1 (compositor, barra, menu, central de ações), Ninho v0 (Este Computador, C:/D:, mapear unidade de rede), Caatinga v0, Primeiro Voo v1, ISO live |
 | **3** | Identidade e inteligência | Olho de Spix (drivers automáticos por fabricante), ninhod (índice, tags, pastas inteligentes, busca, linha do tempo), todos os temas, ícones e sons, testes em hardware real x86 e ARM |
 | **4** | Abre de tudo | Bando (EXE, APK, AppImage, .deb/.rpm; Mac experimental), multilib 32 bits, Steam e Rasante (boost, overlay, monitoramento), loja Viveiro, Rota Migratória (VPN) |

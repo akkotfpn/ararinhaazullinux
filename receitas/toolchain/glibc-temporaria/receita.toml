@@ -1,0 +1,61 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# LFS 5.5 (livro r13.1-39-systemd): Glibc compilada com a toolchain cruzada.
+# Os nomes dos patches foram conferidos no livro de desenvolvimento em
+# 2026-11-09. Se `ninhada fontes --travar` der 404, confira os nomes atuais em
+# https://www.linuxfromscratch.org/patches/lfs/development/
+
+[pacote]
+nome      = "glibc-temporaria"
+versao    = "2.44"
+resumo    = "Biblioteca C GNU (para a toolchain temporária)"
+licenca   = "LGPL-2.1-or-later"
+site      = "https://www.gnu.org/software/libc/"
+categoria = "toolchain"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://ftp.gnu.org/gnu/glibc/glibc-2.44.tar.xz"
+[[fonte]]
+url = "https://www.linuxfromscratch.org/patches/lfs/development/glibc-fhs-1.patch"
+extrair = false
+[[fonte]]
+url = "https://www.linuxfromscratch.org/patches/lfs/development/glibc-2.44-upstream_fixes-4.patch"
+extrair = false
+
+[dependencias]
+construcao = ["gcc-passo1", "cabecalhos-linux"]
+
+[construcao]
+construir_em = "build"
+passos = [
+  """
+  case $ARQ in
+    x86_64) ln -sfv ../lib/ld-linux-x86-64.so.2 $RAIZ/lib64
+            ln -sfv ../lib/ld-linux-x86-64.so.2 $RAIZ/lib64/ld-lsb-x86-64.so.3 ;;
+  esac
+  """,
+  "cd .. && patch -Np1 -i ../glibc-fhs-1.patch",
+  "cd .. && patch -Np1 -i ../glibc-2.44-upstream_fixes-4.patch",
+  "echo 'rootsbindir=/usr/sbin' > configparms",
+  """
+  ../configure                             \
+        --prefix=/usr                      \
+        --host=$ALVO                       \
+        --build=$(../scripts/config.guess) \
+        --disable-nscd                     \
+        libc_cv_slibdir=/usr/lib           \
+        --enable-kernel=5.10
+  """,
+  "make",
+  # o ldd não deve procurar o carregador em /usr/lib, e sim em /lib
+  "sed '/RTLDLIST=/s@/usr@@g' -i elf/ldd",
+]
+instalar = [
+  "make DESTDIR=$RAIZ install",
+  # teste de sanidade do LFS: compilar e checar o carregador usado
+  """
+  echo 'int main(){}' | $ALVO-gcc -x c - -v -Wl,--verbose &> teste-sanidade.log
+  $ALVO-readelf -l a.out | grep -q "/lib.*/$CARREGADOR"
+  rm -f a.out
+  """,
+]

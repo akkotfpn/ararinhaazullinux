@@ -1,0 +1,39 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# LFS 5.6 (livro r13.1-39-systemd): Libstdc++ do GCC, agora que existe glibc.
+# Nossa toolchain fica em /ferramentas (no LFS, /tools).
+
+[pacote]
+nome      = "libstdcxx-temporaria"
+versao    = "16.2.0"
+resumo    = "Biblioteca padrão C++ (para a toolchain temporária)"
+licenca   = "GPL-3.0-or-later WITH GCC-exception-3.1"
+site      = "https://gcc.gnu.org"
+categoria = "toolchain"
+tipo      = "toolchain"
+
+[fonte]
+url = "https://ftp.gnu.org/gnu/gcc/gcc-16.2.0/gcc-16.2.0.tar.xz"
+
+[dependencias]
+construcao = ["glibc-temporaria"]
+
+[construcao]
+construir_em = "build"
+passos = [
+  """
+  ../libstdc++-v3/configure      \
+      --host=$ALVO               \
+      --build=$(../config.guess) \
+      CXX=$ALVO-gcc              \
+      --prefix=/usr              \
+      --disable-multilib         \
+      --disable-nls              \
+      --disable-libstdcxx-pch    \
+      --with-gxx-include-dir=/ferramentas/$ALVO/include/c++/16.2.0
+  """,
+  "make",
+]
+instalar = [
+  "make DESTDIR=$RAIZ install",
+  "rm -v $RAIZ/usr/lib/lib{stdc++{,exp,fs},supc++}.la",
+]

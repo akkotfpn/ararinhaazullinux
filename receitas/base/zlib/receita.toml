@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Receita de exemplo da Ninhada (formato v0, sujeito a ajustes na Fase 1).
-# A Ninhada baixa a fonte, confere o SHA-256 e falha se não bater.
+# Primeiro pacote .pena de verdade: compilado em modo cruzado com a toolchain
+# temporária, prova que a cadeia toolchain → pacote → raiz funciona.
+# O hash da fonte fica em receitas/fontes.trava.
 
 [pacote]
 nome      = "zlib"
@@ -12,18 +13,18 @@ site      = "https://zlib.net"
 categoria = "base"
 
 [fonte]
-url    = "https://zlib.net/fossils/zlib-1.3.1.tar.gz"
-sha256 = "9a93b2b7dfdac77ceba5a558a580e74667dd6fede4585b91eefb60f03b72df23"
+url = "https://zlib.net/fossils/zlib-1.3.1.tar.gz"
 
 [dependencias]
 construcao = ["toolchain"]
-execucao   = ["glibc"]
+execucao   = []
 
 [construcao]
-# Variáveis disponíveis: $ALVO (triplet), $PREFIXO (/usr), $DESTINO (raiz do pacote)
+# Variáveis: $ALVO (triplet), $PREFIXO (/usr), $DESTINO (raiz do pacote),
+# $RAIZ (sistema em construção), $FERRAMENTAS, $ARQ, $NUCLEOS.
 passos = [
-  "./configure --prefix=$PREFIXO",
-  "make -j$NUCLEOS",
+  "CHOST=$ALVO ./configure --prefix=$PREFIXO",
+  "make",
 ]
 testar  = ["make check"]
 instalar = [

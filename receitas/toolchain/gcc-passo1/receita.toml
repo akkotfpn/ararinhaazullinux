@@ -1,0 +1,64 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# LFS 5.3 (livro r13.1-39-systemd): GCC, passo 1 da toolchain cruzada.
+# Diferença do LFS: o ajuste lib64→lib depende da arquitetura ALVO ($ARQ),
+# não da máquina hospedeira, porque também compilamos para aarch64.
+# Multilib (32 bits, para Steam/Wine) entra na toolchain final da Fase 4.
+
+[pacote]
+nome      = "gcc-passo1"
+versao    = "16.2.0"
+resumo    = "Compilador C/C++ cruzado (passo 1, sem glibc)"
+licenca   = "GPL-3.0-or-later"
+site      = "https://gcc.gnu.org"
+categoria = "toolchain"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://ftp.gnu.org/gnu/gcc/gcc-16.2.0/gcc-16.2.0.tar.xz"
+[[fonte]]
+url = "https://ftp.gnu.org/gnu/mpfr/mpfr-4.2.2.tar.xz"
+destino = "mpfr"
+[[fonte]]
+url = "https://ftp.gnu.org/gnu/gmp/gmp-6.3.0.tar.xz"
+destino = "gmp"
+[[fonte]]
+url = "https://ftp.gnu.org/gnu/mpc/mpc-1.4.1.tar.xz"
+destino = "mpc"
+
+[dependencias]
+construcao = ["binutils-passo1"]
+
+[construcao]
+construir_em = "build"
+passos = [
+  "if [ \"$ARQ\" = x86_64 ]; then sed -e '/m64=/s/lib64/lib/' -i.orig ../gcc/config/i386/t-linux64; fi",
+  """
+  ../configure                  \
+      --target=$ALVO            \
+      --prefix=$FERRAMENTAS     \
+      --with-glibc-version=2.44 \
+      --with-sysroot=$RAIZ      \
+      --with-newlib             \
+      --without-headers         \
+      --enable-default-pie      \
+      --enable-default-ssp      \
+      --disable-fixincludes     \
+      --disable-nls             \
+      --disable-shared          \
+      --disable-multilib        \
+      --disable-threads         \
+      --disable-libatomic       \
+      --disable-libgomp         \
+      --disable-libquadmath     \
+      --disable-libssp          \
+      --disable-libvtv          \
+      --disable-libstdcxx       \
+      --enable-languages=c,c++
+  """,
+  "make",
+]
+instalar = [
+  "make install",
+  # limits.h completo, necessário porque este GCC foi feito antes da glibc.
+  "cat ../gcc/{limitx,glimits,limity}.h > $($ALVO-gcc -print-file-name=include)/limits.h",
+]

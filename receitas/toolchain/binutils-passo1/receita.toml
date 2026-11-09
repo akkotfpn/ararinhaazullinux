@@ -1,0 +1,34 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# LFS 5.2 (livro r13.1-39-systemd): Binutils, passo 1 da toolchain cruzada.
+
+[pacote]
+nome      = "binutils-passo1"
+versao    = "2.47"
+resumo    = "Montador e linkeditor cruzados (passo 1)"
+licenca   = "GPL-3.0-or-later"
+site      = "https://www.gnu.org/software/binutils/"
+categoria = "toolchain"
+tipo      = "toolchain"
+
+[fonte]
+url = "https://sourceware.org/pub/binutils/releases/binutils-2.47.tar.xz"
+
+[dependencias]
+construcao = ["estrutura-raiz"]
+
+[construcao]
+construir_em = "build"
+passos = [
+  """
+  ../configure --prefix=$FERRAMENTAS \
+               --with-sysroot=$RAIZ  \
+               --target=$ALVO        \
+               --disable-nls         \
+               --enable-gprofng=no   \
+               --disable-werror      \
+               --enable-new-dtags    \
+               --enable-default-hash-style=gnu
+  """,
+  "make",
+]
+instalar = ["make install"]

@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  Codinome <code>Spix</code> · Fase atual: <b>0 — Fundamentos</b> · x86_64 e ARM64
+  Codinome <code>Spix</code> · Fase atual: <b>1 — Primeiro Pio</b> · x86_64 e ARM64
 </p>
 
 ---
@@ -69,7 +69,9 @@ O sistema carrega essa ideia: **renascer, voar livre e ser genuinamente brasilei
 
 - [Fundamentos: o que aprendemos com os grandes livros](docs/fundamentos.md)
 - [Decisões de arquitetura (ADRs)](docs/adr/)
-- [Plano da Fase 1](docs/fases/fase-1.md)
+- [Plano e progresso da Fase 1](docs/fases/fase-1.md)
+- [Ninhada, o sistema de build](ninhada/README.md)
+- [Guia da máquina de build no Proxmox](docs/guias/proxmox.md)
 - [Roteiro geral](docs/roteiro.md)
 - [Identidade visual](arte/README.md)
 - [Limites técnicos, sem promessa falsa](docs/limites.md)

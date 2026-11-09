@@ -1,0 +1,24 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# CI leve: testa a Ninhada e valida as receitas a cada mudança.
+# O build pesado (toolchain, sistema, imagem) roda no runner próprio "ninhada".
+name: Ninhada
+
+on:
+  push:
+    paths: ["ninhada/**", "receitas/**", ".github/workflows/ninhada.yml"]
+  pull_request:
+    paths: ["ninhada/**", "receitas/**", ".github/workflows/ninhada.yml"]
+
+jobs:
+  testar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Testes da Ninhada
+        run: cargo test --manifest-path ninhada/Cargo.toml
+      - name: Validar receitas
+        run: |
+          cargo build --release --manifest-path ninhada/Cargo.toml
+          ninhada/target/release/ninhada verificar
+          ninhada/target/release/ninhada plano --arq x86_64
+          ninhada/target/release/ninhada plano --arq aarch64

@@ -1,0 +1,17 @@
+[package]
+name = "ninhada"
+version = "0.1.0"
+edition = "2021"
+description = "Sistema de build do Ararinha Azul Linux"
+license = "GPL-3.0-or-later"
+repository = "https://github.com/akkotfpn/ararinhaazullinux"
+authors = ["Davi Souza"]
+
+# Sem dependências externas de propósito (ver docs/adr/0014-ninhada-v0.md):
+# a ferramenta que constrói o sistema não pode depender de baixar nada para
+# ser compilada.
+[dependencies]
+
+[profile.release]
+opt-level = 2
+lto = true

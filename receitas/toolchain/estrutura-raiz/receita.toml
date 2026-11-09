@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# LFS 4.2: estrutura mínima de pastas do sistema em construção.
+# /bin, /lib e /sbin são links para /usr (usr unificado), o que combina com
+# o /usr imutável do ADR 0006.
+
+[pacote]
+nome      = "estrutura-raiz"
+versao    = "1"
+resumo    = "Estrutura de pastas inicial da raiz em construção"
+licenca   = "GPL-3.0-or-later"
+categoria = "toolchain"
+tipo      = "toolchain"
+
+[construcao]
+passos = [
+  "mkdir -pv $RAIZ/{etc,var} $RAIZ/usr/{bin,lib,sbin} $FERRAMENTAS",
+  "for i in bin lib sbin; do ln -sfvn usr/$i $RAIZ/$i; done",
+  "if [ \"$ARQ\" = x86_64 ]; then mkdir -pv $RAIZ/lib64; fi",
+]
