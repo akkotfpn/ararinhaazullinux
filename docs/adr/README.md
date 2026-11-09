@@ -19,6 +19,7 @@ o que escolhemos e por quê. Assim, daqui a dois anos, ninguém precisa adivinha
 | [0012](0012-extras-opcionais.md) | Extras opcionais (backup, Vaultwarden, acesso remoto, controle parental, IA local) | Aceita |
 | [0013](0013-identidade-mingau-fonte-sons.md) | Identidade: mascote Mingau, tipografia e sons | Aceita |
 | [0014](0014-ninhada-v0.md) | Ninhada v0: sem dependências externas, trava de fontes | Aceita |
+| [0015](0015-apps-padrao.md) | Apps padrão feitos do zero (bloco de notas, calculadora, reprodutor…) | Aceita |
 
 ## Modelo
 Copie [`modelo.md`](modelo.md) para criar um novo ADR.
