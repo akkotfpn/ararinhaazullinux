@@ -1,0 +1,16 @@
+# Saídas da Ninhada
+/saida/
+/cache/
+/fontes/
+*.raw
+*.qcow2
+*.iso
+*.pena
+
+# Rust
+/target/
+**/target/
+
+# Sistema
+.DS_Store
+Thumbs.db

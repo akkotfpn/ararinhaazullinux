@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <title>Lixeira</title>
+  <rect x="12" y="14" width="40" height="6" rx="3" fill="#5B6B7A"/>
+  <rect x="26" y="9" width="12" height="6" rx="2" fill="#5B6B7A"/>
+  <path d="M15 22 h34 l -3 32 a4 4 0 0 1 -4 4 h-20 a4 4 0 0 1 -4 -4 Z" fill="#AFC0CF" stroke="#7C8FA1" stroke-width="1.5"/>
+  <path d="M25 28 v22 M32 28 v22 M39 28 v22" stroke="#7C8FA1" stroke-width="2" stroke-linecap="round"/>
+  <!-- folha de caraibeira reciclada -->
+  <path d="M40 22 c 6 -10 14 -10 16 -8 c -2 6 -8 10 -16 8 Z" fill="#3E8E6A"/>
+</svg>

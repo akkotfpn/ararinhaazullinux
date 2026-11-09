@@ -1,0 +1,37 @@
+# SPDX-License-Identifier: CC-BY-SA-4.0
+# Tema Noite no Sertão (escuro)
+
+[tema]
+id = "noite-no-sertao"
+nome.pt-BR = "Noite no Sertão"
+nome.en = "Sertão Night"
+modo = "escuro"
+papel_de_parede = "papeis-de-parede/noite-no-sertao.svg"
+sons = "grito-padrao"
+
+[cores]
+destaque          = "#5AA8EC"
+destaque_forte    = "#2B7BC4"
+destaque_suave    = "#163A5E"
+fundo             = "#0B1A2E"
+superficie        = "#12243B"
+superficie_alta   = "#1A3150"
+texto             = "#EAF2F9"
+texto_secundario  = "#9FB3C6"
+borda             = "#24405F"
+sucesso           = "#5DB38D"
+aviso             = "#F0C35E"
+erro              = "#E06A63"
+barra_tarefas     = "#0B1A2ECC"
+
+[forma]
+raio_pequeno = 6
+raio_medio   = 10
+raio_grande  = 16
+espaco_base  = 4
+sombra_janela = "0 8 28 #00000066"
+
+[tipografia]
+familia_interface = "Inter"
+familia_mono      = "JetBrains Mono"
+tamanho_base      = 10.5

@@ -1,0 +1,35 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Receita de exemplo da Ninhada (formato v0, sujeito a ajustes na Fase 1).
+# A Ninhada baixa a fonte, confere o SHA-256 e falha se não bater.
+
+[pacote]
+nome      = "zlib"
+versao    = "1.3.1"
+revisao   = 1
+resumo    = "Biblioteca de compressão deflate"
+licenca   = "Zlib"
+site      = "https://zlib.net"
+categoria = "base"
+
+[fonte]
+url    = "https://zlib.net/fossils/zlib-1.3.1.tar.gz"
+sha256 = "9a93b2b7dfdac77ceba5a558a580e74667dd6fede4585b91eefb60f03b72df23"
+
+[dependencias]
+construcao = ["toolchain"]
+execucao   = ["glibc"]
+
+[construcao]
+# Variáveis disponíveis: $ALVO (triplet), $PREFIXO (/usr), $DESTINO (raiz do pacote)
+passos = [
+  "./configure --prefix=$PREFIXO",
+  "make -j$NUCLEOS",
+]
+testar  = ["make check"]
+instalar = [
+  "make DESTDIR=$DESTINO install",
+  "rm -f $DESTINO/usr/lib/libz.a",
+]
+
+[arquiteturas]
+suportadas = ["x86_64", "aarch64"]
