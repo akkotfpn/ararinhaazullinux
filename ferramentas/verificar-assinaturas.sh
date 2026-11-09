@@ -54,19 +54,19 @@ while read -r hash url; do
   resultado="SEM ASSINATURA"
   case "$url" in
     https://ftp.gnu.org/*|https://sourceware.org/pub/binutils/*)
-      if curl -fsSL "$url.sig" -o "$TMP/$nome.sig"; then
+      if curl -fsL "$url.sig" -o "$TMP/$nome.sig"; then
         assinatura_ok "$TMP/$nome.sig" "$arq" && resultado="ASSINADO" || resultado="FALHOU"
       fi ;;
     https://cdn.kernel.org/*)
       # O kernel assina o .tar descompactado.
       sig="${url%.xz}.sign"
-      if curl -fsSL "$sig" -o "$TMP/$nome.sign"; then
+      if curl -fsL "$sig" -o "$TMP/$nome.sign"; then
         xz -dc "$arq" > "$TMP/kernel.tar"
         assinatura_ok "$TMP/$nome.sign" "$TMP/kernel.tar" && resultado="ASSINADO" || resultado="FALHOU"
         rm -f "$TMP/kernel.tar"
       fi ;;
     https://zlib.net/*)
-      if curl -fsSL "$url.asc" -o "$TMP/$nome.asc"; then
+      if curl -fsL "$url.asc" -o "$TMP/$nome.asc"; then
         assinatura_ok "$TMP/$nome.asc" "$arq" && resultado="ASSINADO" || resultado="SEM ASSINATURA (chave não encontrada)"
       fi ;;
     https://www.linuxfromscratch.org/*)
