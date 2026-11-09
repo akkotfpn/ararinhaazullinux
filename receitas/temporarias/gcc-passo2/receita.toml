@@ -1,0 +1,67 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# LFS 6 (livro r13.1-39-systemd): ferramentas temporárias, compiladas em modo
+# cruzado com a toolchain do capítulo 5 e instaladas direto na raiz.
+# GCC compilado PARA o sistema novo. Mesmo ajuste lib64→lib do passo 1,
+# também para aarch64 (o LFS só cobre x86_64).
+
+[pacote]
+nome      = "gcc-passo2"
+versao    = "16.2.0"
+resumo    = "Compilador C/C++ (temporário, passo 2)"
+licenca   = "GPL-3.0-or-later"
+categoria = "temporarias"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://ftp.gnu.org/gnu/gcc/gcc-16.2.0/gcc-16.2.0.tar.xz"
+[[fonte]]
+url = "https://ftp.gnu.org/gnu/mpfr/mpfr-4.2.2.tar.xz"
+destino = "mpfr"
+[[fonte]]
+url = "https://ftp.gnu.org/gnu/gmp/gmp-6.3.0.tar.xz"
+destino = "gmp"
+[[fonte]]
+url = "https://ftp.gnu.org/gnu/mpc/mpc-1.4.1.tar.xz"
+destino = "mpc"
+
+[dependencias]
+construcao = ["binutils-passo2"]
+
+[construcao]
+construir_em = "build"
+passos = [
+  """
+  case $ARQ in
+    x86_64)  sed -e '/m64=/s/lib64/lib/'  -i.orig ../gcc/config/i386/t-linux64 ;;
+    aarch64) sed -e '/lp64=/s/lib64/lib/' -i.orig ../gcc/config/aarch64/t-aarch64-linux ;;
+  esac
+  """,
+  """
+  ../configure                   \
+      --build=$(../config.guess) \
+      --host=$ALVO               \
+      --target=$ALVO             \
+      --prefix=/usr              \
+      --with-build-sysroot=$RAIZ \
+      --enable-default-pie       \
+      --enable-default-ssp       \
+      --disable-fixincludes      \
+      --disable-nls              \
+      --disable-multilib         \
+      --disable-libatomic        \
+      --disable-libgomp          \
+      --disable-libquadmath      \
+      --disable-libsanitizer     \
+      --disable-libssp           \
+      --disable-libvtv           \
+      --enable-languages=c,c++   \
+      CXX_FOR_TARGET="$ALVO-gcc -nostdinc++" \
+      LDFLAGS_FOR_TARGET=-L$PWD/$ALVO/libgcc \
+      target_configargs=gcc_cv_target_thread_file=posix
+  """,
+  "make",
+]
+instalar = [
+  "make DESTDIR=$RAIZ install",
+  "ln -sfv gcc $RAIZ/usr/bin/cc",
+]

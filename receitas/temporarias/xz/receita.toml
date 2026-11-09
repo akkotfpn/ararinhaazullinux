@@ -1,0 +1,33 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# LFS 6 (livro r13.1-39-systemd): ferramentas temporárias, compiladas em modo
+# cruzado com a toolchain do capítulo 5 e instaladas direto na raiz.
+
+[pacote]
+nome      = "xz"
+versao    = "5.8.4"
+resumo    = "Compressão xz/lzma (temporário)"
+licenca   = "0BSD"
+categoria = "temporarias"
+tipo      = "toolchain"
+
+[fonte]
+url = "https://github.com/tukaani-project/xz/releases/download/v5.8.4/xz-5.8.4.tar.xz"
+
+[dependencias]
+construcao = ["toolchain"]
+
+[construcao]
+passos = [
+  """
+  ./configure --prefix=/usr \
+              --host=$ALVO \
+              --build=$(build-aux/config.guess) \
+              --disable-static \
+              --docdir=/usr/share/doc/xz-5.8.4
+  """,
+"make",
+]
+instalar = [
+  "make DESTDIR=$RAIZ install",
+  "rm -v $RAIZ/usr/lib/liblzma.la",
+]

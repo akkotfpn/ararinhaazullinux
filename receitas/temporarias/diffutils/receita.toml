@@ -1,0 +1,31 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# LFS 6 (livro r13.1-39-systemd): ferramentas temporárias, compiladas em modo
+# cruzado com a toolchain do capítulo 5 e instaladas direto na raiz.
+
+[pacote]
+nome      = "diffutils"
+versao    = "3.12"
+resumo    = "Comparação de arquivos (temporário)"
+licenca   = "GPL-3.0-or-later"
+categoria = "temporarias"
+tipo      = "toolchain"
+
+[fonte]
+url = "https://ftp.gnu.org/gnu/diffutils/diffutils-3.12.tar.xz"
+
+[dependencias]
+construcao = ["toolchain"]
+
+[construcao]
+passos = [
+  """
+  ./configure --prefix=/usr \
+              --host=$ALVO \
+              --build=$(./build-aux/config.guess) \
+              gl_cv_func_strcasecmp_works=yes
+  """,
+"make",
+]
+instalar = [
+  "make DESTDIR=$RAIZ install",
+]

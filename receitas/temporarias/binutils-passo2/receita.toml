@@ -1,0 +1,44 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# LFS 6 (livro r13.1-39-systemd): ferramentas temporárias, compiladas em modo
+# cruzado com a toolchain do capítulo 5 e instaladas direto na raiz.
+# Agora o binutils é compilado PARA o sistema novo (roda dentro dele).
+
+[pacote]
+nome      = "binutils-passo2"
+versao    = "2.47"
+resumo    = "Montador e linkeditor (temporários, passo 2)"
+licenca   = "GPL-3.0-or-later"
+categoria = "temporarias"
+tipo      = "toolchain"
+
+[fonte]
+url = "https://sourceware.org/pub/binutils/releases/binutils-2.47.tar.xz"
+
+[dependencias]
+construcao = ["toolchain", "m4", "ncurses", "bash", "coreutils", "diffutils", "file",
+              "findutils", "gawk", "grep", "gzip", "make", "patch", "sed", "tar", "xz"]
+
+[construcao]
+construir_em = "build"
+passos = [
+  # impede o libtool de linkar com bibliotecas do hospedeiro
+  "cd .. && sed '6031s/$add_dir//' -i ltmain.sh",
+  """
+  ../configure                   \
+      --prefix=/usr              \
+      --build=$(../config.guess) \
+      --host=$ALVO               \
+      --disable-nls              \
+      --enable-shared            \
+      --enable-gprofng=no        \
+      --disable-werror           \
+      --enable-64-bit-bfd        \
+      --enable-new-dtags         \
+      --enable-default-hash-style=gnu
+  """,
+  "make",
+]
+instalar = [
+  "make DESTDIR=$RAIZ install",
+  "rm -v $RAIZ/usr/lib/lib{bfd,ctf,ctf-nobfd,opcodes,sframe}.{a,la}",
+]

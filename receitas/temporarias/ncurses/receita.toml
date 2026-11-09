@@ -1,0 +1,50 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# LFS 6 (livro r13.1-39-systemd): ferramentas temporárias, compiladas em modo
+# cruzado com a toolchain do capítulo 5 e instaladas direto na raiz.
+# Primeiro compila o `tic` para o hospedeiro (usado durante a instalação).
+
+[pacote]
+nome      = "ncurses"
+versao    = "6.6"
+resumo    = "Biblioteca de interface de texto (temporário)"
+licenca   = "MIT"
+categoria = "temporarias"
+tipo      = "toolchain"
+
+[fonte]
+url = "https://ftp.gnu.org/gnu/ncurses/ncurses-6.6.tar.gz"
+
+[dependencias]
+construcao = ["toolchain"]
+
+[construcao]
+passos = [
+  """
+  mkdir -p build-tic
+  cd build-tic
+  ../configure --prefix=$FERRAMENTAS AWK=gawk
+  make -C include
+  make -C progs tic
+  install progs/tic $FERRAMENTAS/bin
+  """,
+  """
+  ./configure --prefix=/usr                \
+              --host=$ALVO                 \
+              --build=$(./config.guess)    \
+              --mandir=/usr/share/man      \
+              --with-manpage-format=normal \
+              --with-shared                \
+              --without-normal             \
+              --with-cxx-shared            \
+              --without-debug              \
+              --without-ada                \
+              --disable-stripping          \
+              AWK=gawk
+  """,
+"make",
+]
+instalar = [
+  "make DESTDIR=$RAIZ install",
+  "ln -sfv libncursesw.so $RAIZ/usr/lib/libncurses.so",
+  "sed -e 's/^#if.*XOPEN.*$/#if 1/' -i $RAIZ/usr/include/curses.h",
+]
