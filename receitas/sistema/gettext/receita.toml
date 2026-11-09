@@ -1,0 +1,36 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# LFS 8 (livro LFS, edição systemd): sistema final do Ararinha, compilado
+# dentro do ambiente isolado.
+
+[pacote]
+nome      = "gettext"
+versao    = "1.0"
+resumo    = "Internacionalização (gettext)"
+licenca   = "GPL-3.0-or-later"
+categoria = "sistema"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://ftp.gnu.org/gnu/gettext/gettext-1.0.tar.xz"
+
+[dependencias]
+construcao = ["sed"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+./configure --prefix=/usr --disable-static --docdir=/usr/share/doc/gettext-1.0
+''',
+  '''
+make
+''',
+]
+instalar = [
+  '''
+make install
+''',
+  '''
+chmod -v 0755 /usr/lib/preloadable_libintl.so
+''',
+]

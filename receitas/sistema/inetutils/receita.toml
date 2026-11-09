@@ -1,0 +1,48 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# LFS 8 (livro LFS, edição systemd): sistema final do Ararinha, compilado
+# dentro do ambiente isolado.
+
+[pacote]
+nome      = "inetutils"
+versao    = "2.8"
+resumo    = "Ferramentas de rede básicas (ping, hostname…)"
+licenca   = "GPL-3.0-or-later"
+categoria = "sistema"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://ftp.gnu.org/gnu/inetutils/inetutils-2.8.tar.gz"
+
+[dependencias]
+construcao = ["expat"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+sed -i 's/def HAVE_TERMCAP_TGETENT/ 1/' telnet/telnet.c
+''',
+  '''
+./configure --prefix=/usr        \
+            --bindir=/usr/bin    \
+            --localstatedir=/var \
+            --disable-logger     \
+            --disable-whois      \
+            --disable-rcp        \
+            --disable-rexec      \
+            --disable-rlogin     \
+            --disable-rsh        \
+            --disable-servers
+''',
+  '''
+make
+''',
+]
+instalar = [
+  '''
+make install
+''',
+  '''
+mv -v /usr/{,s}bin/ifconfig
+''',
+]

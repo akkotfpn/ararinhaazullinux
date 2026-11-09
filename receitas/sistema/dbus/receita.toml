@@ -1,0 +1,36 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# LFS 8 (livro LFS, edição systemd): sistema final do Ararinha, compilado
+# dentro do ambiente isolado.
+
+[pacote]
+nome      = "dbus"
+versao    = "1.16.2"
+resumo    = "Barramento de mensagens do sistema"
+licenca   = "AFL-2.1 OR GPL-2.0-or-later"
+categoria = "sistema"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://dbus.freedesktop.org/releases/dbus/dbus-1.16.2.tar.xz"
+
+[dependencias]
+construcao = ["systemd"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+mkdir -p build && cd build && meson setup --prefix=/usr --buildtype=release --wrap-mode=nofallback ..
+''',
+  '''
+cd build && ninja
+''',
+]
+instalar = [
+  '''
+cd build && ninja install
+''',
+  '''
+mkdir -p /var/lib/dbus && ln -sfv /etc/machine-id /var/lib/dbus
+''',
+]

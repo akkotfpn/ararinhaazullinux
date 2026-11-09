@@ -1,0 +1,48 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# LFS 8 (livro LFS, edição systemd): sistema final do Ararinha, compilado
+# dentro do ambiente isolado.
+
+[pacote]
+nome      = "perl"
+versao    = "5.44.0"
+resumo    = "Linguagem Perl"
+licenca   = "GPL-1.0-or-later OR Artistic-1.0-Perl"
+categoria = "sistema"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://www.cpan.org/src/5.0/perl-5.44.0.tar.xz"
+
+[dependencias]
+construcao = ["inetutils"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+export BUILD_ZLIB=False
+export BUILD_BZIP2=0
+sh Configure -des                                          \
+             -D prefix=/usr                                \
+             -D vendorprefix=/usr                          \
+             -D privlib=/usr/lib/perl5/5.44/core_perl      \
+             -D archlib=/usr/lib/perl5/5.44/core_perl      \
+             -D sitelib=/usr/lib/perl5/5.44/site_perl      \
+             -D sitearch=/usr/lib/perl5/5.44/site_perl     \
+             -D vendorlib=/usr/lib/perl5/5.44/vendor_perl  \
+             -D vendorarch=/usr/lib/perl5/5.44/vendor_perl \
+             -D man1dir=/usr/share/man/man1                \
+             -D man3dir=/usr/share/man/man3                \
+             -D pager="/usr/bin/less -isR"                 \
+             -D useshrplib                                 \
+             -D usethreads
+''',
+  '''
+make
+''',
+]
+instalar = [
+  '''
+make install
+''',
+]

@@ -1,0 +1,33 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# LFS 8 (livro LFS, edição systemd): sistema final do Ararinha, compilado
+# dentro do ambiente isolado.
+
+[pacote]
+nome      = "automake"
+versao    = "1.19"
+resumo    = "Gerador de Makefiles"
+licenca   = "GPL-2.0-or-later"
+categoria = "sistema"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://ftp.gnu.org/gnu/automake/automake-1.19.tar.xz"
+
+[dependencias]
+construcao = ["autoconf"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+./configure --prefix=/usr --docdir=/usr/share/doc/automake-1.19
+''',
+  '''
+make
+''',
+]
+instalar = [
+  '''
+make install
+''',
+]

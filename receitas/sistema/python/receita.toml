@@ -1,0 +1,42 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# LFS 8 (livro LFS, edição systemd): sistema final do Ararinha, compilado
+# dentro do ambiente isolado.
+# Diferenças do LFS: mesma versão do Python temporário (3.15.2), sem
+# --enable-optimizations por enquanto (PGO leva muito tempo) e sem a documentação.
+
+[pacote]
+nome      = "python"
+versao    = "3.15.2"
+resumo    = "Linguagem Python"
+licenca   = "Python-2.0"
+categoria = "sistema"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://www.python.org/ftp/python/3.15.2/Python-3.15.2.tar.xz"
+
+[dependencias]
+construcao = ["libffi"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+./configure --prefix=/usr --enable-shared --with-system-expat --without-static-libpython
+''',
+  '''
+make
+''',
+]
+instalar = [
+  '''
+make install
+''',
+  '''
+cat > /etc/pip.conf << EOF
+[global]
+root-user-action = ignore
+disable-pip-version-check = true
+EOF
+''',
+]

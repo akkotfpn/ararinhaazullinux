@@ -1,0 +1,33 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# LFS 8 (livro LFS, edição systemd): sistema final do Ararinha, compilado
+# dentro do ambiente isolado.
+
+[pacote]
+nome      = "gperf"
+versao    = "3.3"
+resumo    = "Gerador de funções hash perfeitas"
+licenca   = "GPL-3.0-or-later"
+categoria = "sistema"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://ftp.gnu.org/gnu/gperf/gperf-3.3.tar.gz"
+
+[dependencias]
+construcao = ["libtool"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+./configure --prefix=/usr --docdir=/usr/share/doc/gperf-3.3
+''',
+  '''
+make
+''',
+]
+instalar = [
+  '''
+make install
+''',
+]

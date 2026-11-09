@@ -1,0 +1,42 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# LFS 8 (livro LFS, edição systemd): sistema final do Ararinha, compilado
+# dentro do ambiente isolado.
+
+[pacote]
+nome      = "e2fsprogs"
+versao    = "1.47.4"
+resumo    = "Ferramentas dos sistemas de arquivos ext2/3/4"
+licenca   = "GPL-2.0-or-later"
+categoria = "sistema"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://downloads.sourceforge.net/project/e2fsprogs/e2fsprogs/v1.47.4/e2fsprogs-1.47.4.tar.gz"
+
+[dependencias]
+construcao = ["procps-ng"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+mkdir -p build && cd build && ../configure --prefix=/usr \
+             --sysconfdir=/etc   \
+             --enable-elf-shlibs \
+             --disable-libblkid  \
+             --disable-libuuid   \
+             --disable-uuidd     \
+             --disable-fsck
+''',
+  '''
+cd build && make
+''',
+]
+instalar = [
+  '''
+cd build && make install
+''',
+  '''
+rm -fv /usr/lib/{libcom_err,libe2p,libext2fs,libss}.a
+''',
+]

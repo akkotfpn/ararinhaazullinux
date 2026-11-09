@@ -1,0 +1,33 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# LFS 8 (livro LFS, edição systemd): sistema final do Ararinha, compilado
+# dentro do ambiente isolado.
+
+[pacote]
+nome      = "sed"
+versao    = "4.10"
+resumo    = "Editor de fluxo de texto"
+licenca   = "GPL-3.0-or-later"
+categoria = "sistema"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://ftp.gnu.org/gnu/sed/sed-4.10.tar.xz"
+
+[dependencias]
+construcao = ["ncurses"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+./configure --prefix=/usr
+''',
+  '''
+make
+''',
+]
+instalar = [
+  '''
+make install
+''',
+]

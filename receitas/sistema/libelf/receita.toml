@@ -1,0 +1,42 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# LFS 8 (livro LFS, edição systemd): sistema final do Ararinha, compilado
+# dentro do ambiente isolado.
+
+[pacote]
+nome      = "libelf"
+versao    = "0.196"
+resumo    = "Biblioteca ELF (do elfutils)"
+licenca   = "LGPL-3.0-or-later OR GPL-2.0-or-later"
+categoria = "sistema"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://sourceware.org/ftp/elfutils/0.196/elfutils-0.196.tar.bz2"
+
+[dependencias]
+construcao = ["openssl"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+./configure --prefix=/usr --disable-debuginfod --enable-libdebuginfod=dummy
+''',
+  '''
+make -C lib
+''',
+  '''
+make -C libelf
+''',
+]
+instalar = [
+  '''
+make -C libelf install
+''',
+  '''
+install -vm644 config/libelf.pc /usr/lib/pkgconfig
+''',
+  '''
+rm -f /usr/lib/libelf.a
+''',
+]

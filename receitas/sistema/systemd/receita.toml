@@ -1,0 +1,71 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# LFS 8 (livro LFS, edição systemd): sistema final do Ararinha, compilado
+# dentro do ambiente isolado.
+# Diferenças do LFS (ADR 0002): systemd-firstboot ATIVO (idioma, teclado, fuso e
+# usuário no primeiro boot); sem systemd-machine-id-setup aqui, porque cada
+# instalação precisa do seu próprio machine-id. systemd-boot e ukify entram no
+# bloco 3, junto com o kernel e a imagem.
+
+[pacote]
+nome      = "systemd"
+versao    = "261.3"
+resumo    = "Inicialização, serviços e sessão (base da Revoada)"
+licenca   = "LGPL-2.1-or-later"
+categoria = "sistema"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://github.com/systemd/systemd/archive/v261.3/systemd-261.3.tar.gz"
+
+[[fonte]]
+url = "https://www.linuxfromscratch.org/patches/downloads/systemd/systemd-261.3-buildfix-1.patch"
+extrair = false
+
+[dependencias]
+construcao = ["util-linux"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+patch -Np1 -i ../systemd-261.3-buildfix-1.patch
+''',
+  '''
+sed -e 's/GROUP="render"/GROUP="video"/' \
+    -e 's/GROUP="sgx", //'               \
+    -i rules.d/50-udev-default.rules.in
+''',
+  '''
+mkdir -p build && cd build && meson setup .. \
+      --prefix=/usr           \
+      --buildtype=release     \
+      -D default-dnssec=no    \
+      -D install-tests=false  \
+      -D ldconfig=false       \
+      -D sysusers=false       \
+      -D rpmmacrosdir=no      \
+      -D homed=disabled       \
+      -D man=disabled         \
+      -D mode=release         \
+      -D pamconfdir=no        \
+      -D dev-kvm-mode=0660    \
+      -D nobody-group=nogroup \
+      -D sysupdate=disabled   \
+      -D ukify=disabled       \
+      -D docdir=/usr/share/doc/systemd-261.3
+''',
+  '''
+cd build && ninja
+''',
+]
+instalar = [
+  '''
+cd build && ninja install
+''',
+  '''
+systemctl preset-all
+''',
+  '''
+rm -f /usr/lib/sysctl.d/50-pid-max.conf
+''',
+]

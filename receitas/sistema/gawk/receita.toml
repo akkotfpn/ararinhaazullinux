@@ -1,0 +1,42 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# LFS 8 (livro LFS, edição systemd): sistema final do Ararinha, compilado
+# dentro do ambiente isolado.
+
+[pacote]
+nome      = "gawk"
+versao    = "5.4.1"
+resumo    = "Linguagem AWK do GNU"
+licenca   = "GPL-3.0-or-later"
+categoria = "sistema"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://ftp.gnu.org/gnu/gawk/gawk-5.4.1.tar.xz"
+
+[dependencias]
+construcao = ["diffutils"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+sed -i 's/extras//' Makefile.in
+''',
+  '''
+./configure --prefix=/usr
+''',
+  '''
+make
+''',
+]
+instalar = [
+  '''
+rm -f /usr/bin/gawk-5.4.1
+''',
+  '''
+make install
+''',
+  '''
+ln -sfv gawk.1 /usr/share/man/man1/awk.1
+''',
+]

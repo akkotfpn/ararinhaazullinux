@@ -1,0 +1,37 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# LFS 8 (livro LFS, edição systemd): sistema final do Ararinha, compilado
+# dentro do ambiente isolado.
+
+[pacote]
+nome      = "openssl"
+versao    = "4.0.2"
+resumo    = "Criptografia e TLS"
+licenca   = "Apache-2.0"
+categoria = "sistema"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://github.com/openssl/openssl/releases/download/openssl-4.0.2/openssl-4.0.2.tar.gz"
+
+[dependencias]
+construcao = ["automake"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+sed -e '/bn_reduce.*m1/i\    factor_size /= sizeof(BN_ULONG) * 8;' \
+    -i crypto/bn/rsaz_exp_x2.c
+''',
+  '''
+./config --prefix=/usr --openssldir=/etc/ssl --libdir=lib shared zlib-dynamic
+''',
+  '''
+make
+''',
+]
+instalar = [
+  '''
+make INSTALL_LIBS= MANSUFFIX=ssl install
+''',
+]

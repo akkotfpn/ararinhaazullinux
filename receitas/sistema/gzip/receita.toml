@@ -1,0 +1,39 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# LFS 8 (livro LFS, edição systemd): sistema final do Ararinha, compilado
+# dentro do ambiente isolado.
+# Diferença do LFS: mesma correção do gzip temporário no aarch64.
+
+[pacote]
+nome      = "gzip"
+versao    = "1.15"
+resumo    = "Compressão gzip"
+licenca   = "GPL-3.0-or-later"
+categoria = "sistema"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://ftp.gnu.org/gnu/gzip/gzip-1.15.tar.xz"
+
+[dependencias]
+construcao = ["findutils"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+if [ "$(uname -m)" = aarch64 ]; then
+  sed -i '/#include <config.h>/a #include <signal.h>' gzip.c
+fi
+''',
+  '''
+./configure --prefix=/usr
+''',
+  '''
+make
+''',
+]
+instalar = [
+  '''
+make install
+''',
+]

@@ -1,0 +1,38 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# LFS 8 (livro LFS, edição systemd): sistema final do Ararinha, compilado
+# dentro do ambiente isolado.
+
+[pacote]
+nome      = "procps-ng"
+versao    = "4.0.7"
+resumo    = "Monitoramento de processos (ps, top, free)"
+licenca   = "GPL-2.0-or-later"
+categoria = "sistema"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://sourceforge.net/projects/procps-ng/files/Production/procps-ng-4.0.7.tar.xz"
+
+[dependencias]
+construcao = ["dbus"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+./configure --prefix=/usr                           \
+            --docdir=/usr/share/doc/procps-ng-4.0.7 \
+            --disable-static                        \
+            --disable-kill                          \
+            --enable-watch8bit                      \
+            --with-systemd
+''',
+  '''
+make
+''',
+]
+instalar = [
+  '''
+make install
+''',
+]

@@ -1,0 +1,53 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# LFS 8 (livro LFS, edição systemd): sistema final do Ararinha, compilado
+# dentro do ambiente isolado.
+
+[pacote]
+nome      = "coreutils"
+versao    = "9.11"
+resumo    = "Utilitários básicos (ls, cp, mv…)"
+licenca   = "GPL-3.0-or-later"
+categoria = "sistema"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://ftp.gnu.org/gnu/coreutils/coreutils-9.11.tar.xz"
+
+[[fonte]]
+url = "https://www.linuxfromscratch.org/patches/downloads/coreutils/coreutils-9.11-i18n-1.patch"
+extrair = false
+
+[dependencias]
+construcao = ["kmod"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+patch -Np1 -i ../coreutils-9.11-i18n-1.patch
+''',
+  '''
+sed '/off_t ext_end =/s/ipos/src_pos/' -i src/copy-file-data.c
+''',
+  '''
+autoreconf -fv
+automake -af
+''',
+  '''
+FORCE_UNSAFE_CONFIGURE=1 ./configure --prefix=/usr
+''',
+  '''
+make
+''',
+]
+instalar = [
+  '''
+make install
+''',
+  '''
+mv -v /usr/bin/chroot /usr/sbin
+''',
+  '''
+mkdir -pv /usr/share/man/man8 && mv -v /usr/share/man/man1/chroot.1 /usr/share/man/man8/chroot.8 && sed -i 's/"1"/"8"/' /usr/share/man/man8/chroot.8
+''',
+]

@@ -1,0 +1,37 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# LFS 8 (livro LFS, edição systemd): sistema final do Ararinha, compilado
+# dentro do ambiente isolado.
+
+[pacote]
+nome      = "iproute2"
+versao    = "7.2.0"
+resumo    = "Ferramentas de rede (ip, ss)"
+licenca   = "GPL-2.0-or-later"
+categoria = "sistema"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://www.kernel.org/pub/linux/utils/net/iproute2/iproute2-7.2.0.tar.xz"
+
+[dependencias]
+construcao = ["gzip"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+sed -i /ARPD/d Makefile
+rm -fv man/man8/arpd.8
+''',
+  '''
+sed -i 's/.m_ipt.o//' tc/Makefile
+''',
+  '''
+make NETNS_RUN_DIR=/run/netns
+''',
+]
+instalar = [
+  '''
+make SBINDIR=/usr/sbin install
+''',
+]

@@ -1,0 +1,33 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# LFS 8 (livro LFS, edição systemd): sistema final do Ararinha, compilado
+# dentro do ambiente isolado.
+
+[pacote]
+nome      = "expat"
+versao    = "2.8.4"
+resumo    = "Analisador XML"
+licenca   = "MIT"
+categoria = "sistema"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://github.com/libexpat/libexpat/releases/download/R_2_8_4/expat-2.8.4.tar.xz"
+
+[dependencias]
+construcao = ["gperf"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+./configure --prefix=/usr --disable-static --docdir=/usr/share/doc/expat-2.8.4
+''',
+  '''
+make
+''',
+]
+instalar = [
+  '''
+make install
+''',
+]

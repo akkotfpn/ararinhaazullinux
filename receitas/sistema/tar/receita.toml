@@ -1,0 +1,40 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# LFS 8 (livro LFS, edição systemd): sistema final do Ararinha, compilado
+# dentro do ambiente isolado.
+
+[pacote]
+nome      = "tar"
+versao    = "1.35"
+resumo    = "Arquivador tar"
+licenca   = "GPL-3.0-or-later"
+categoria = "sistema"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://ftp.gnu.org/gnu/tar/tar-1.35.tar.xz"
+
+[[fonte]]
+url = "https://www.linuxfromscratch.org/patches/downloads/tar/tar-1.35-acl_fix-1.patch"
+extrair = false
+
+[dependencias]
+construcao = ["patch"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+patch -Np1 -i ../tar-1.35-acl_fix-1.patch
+''',
+  '''
+FORCE_UNSAFE_CONFIGURE=1 ./configure --prefix=/usr
+''',
+  '''
+make
+''',
+]
+instalar = [
+  '''
+make install
+''',
+]

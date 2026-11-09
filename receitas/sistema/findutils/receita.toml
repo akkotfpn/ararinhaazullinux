@@ -1,0 +1,33 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# LFS 8 (livro LFS, edição systemd): sistema final do Ararinha, compilado
+# dentro do ambiente isolado.
+
+[pacote]
+nome      = "findutils"
+versao    = "4.11.0"
+resumo    = "Busca de arquivos"
+licenca   = "GPL-3.0-or-later"
+categoria = "sistema"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://ftp.gnu.org/gnu/findutils/findutils-4.11.0.tar.xz"
+
+[dependencias]
+construcao = ["gawk"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+./configure --prefix=/usr --localstatedir=/var/lib/locate
+''',
+  '''
+make
+''',
+]
+instalar = [
+  '''
+make install
+''',
+]

@@ -1,0 +1,44 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# LFS 8 (livro LFS, edição systemd): sistema final do Ararinha, compilado
+# dentro do ambiente isolado.
+
+[pacote]
+nome      = "kbd"
+versao    = "2.10.0"
+resumo    = "Teclado e fontes do console (ABNT2)"
+licenca   = "GPL-2.0-or-later"
+categoria = "sistema"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://www.kernel.org/pub/linux/utils/kbd/kbd-2.10.0.tar.xz"
+
+[[fonte]]
+url = "https://www.linuxfromscratch.org/patches/downloads/kbd/kbd-2.10.0-backspace-1.patch"
+extrair = false
+
+[dependencias]
+construcao = ["iproute2"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+patch -Np1 -i ../kbd-2.10.0-backspace-1.patch
+''',
+  '''
+sed -i '/RESIZECONS_PROGS=/s/yes/no/' configure
+sed -i 's/resizecons.8 //' docs/man/man8/Makefile.in
+''',
+  '''
+./configure --prefix=/usr --disable-vlock
+''',
+  '''
+make
+''',
+]
+instalar = [
+  '''
+make install
+''',
+]
