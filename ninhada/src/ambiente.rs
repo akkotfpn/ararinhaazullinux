@@ -81,6 +81,9 @@ impl Ambiente {
             ("NUCLEOS".into(), nucleos.to_string()),
             ("MAKEFLAGS".into(), format!("-j{nucleos}")),
             ("TESTSUITEFLAGS".into(), format!("-j{nucleos}")),
+            // Só existe o uid 0 aqui dentro: o tar não deve tentar restaurar
+            // donos originais dos arquivos (ex.: uid 1000 no tarball do meson).
+            ("TAR_OPTIONS".into(), "--no-same-owner".into()),
         ]
     }
 
