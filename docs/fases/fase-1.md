@@ -12,9 +12,9 @@ Sem interface gráfica nesta fase. A Plumagem começa na Fase 2.
 
 | Etapa | Situação |
 |---|---|
-| 1.1 Máquina de build | Scripts prontos: [`criar-vm-build.sh`](../../ferramentas/proxmox/criar-vm-build.sh) e [`preparar-hospedeiro.sh`](../../ferramentas/preparar-hospedeiro.sh). Guia em [guias/proxmox.md](../guias/proxmox.md) |
+| 1.1 Máquina de build | ✅ VM `ninhada-build` rodando no Proxmox. Scripts: [`criar-vm-build.sh`](../../ferramentas/proxmox/criar-vm-build.sh) e [`preparar-hospedeiro.sh`](../../ferramentas/preparar-hospedeiro.sh). Guia em [guias/proxmox.md](../guias/proxmox.md) |
 | 1.2 Ninhada v0 | ✅ Pronta e testada ([ADR 0014](../adr/0014-ninhada-v0.md)) |
-| 1.3 Toolchain cruzada | ✅ Receitas do capítulo 5 do LFS (binutils 2.47, GCC 16.2.0, Linux 7.1.8, glibc 2.44, libstdc++). Falta rodar na VM e travar os hashes |
+| 1.3 Toolchain cruzada | ✅ x86_64 compilada na VM (capítulo 5 do LFS: binutils 2.47, GCC 16.2.0, Linux 7.1.8, glibc 2.44, libstdc++) e primeiro `.pena` (zlib). Hashes travados; conferência por GPG com [`verificar-assinaturas.sh`](../../ferramentas/verificar-assinaturas.sh). aarch64 em compilação |
 | 1.3 Ferramentas temporárias | A fazer: capítulos 6 e 7 do LFS (compilação cruzada + ambiente isolado) |
 | 1.4 Sistema base | A fazer (zlib já tem receita, como primeiro `.pena`) |
 | 1.5 Spix Kernel | Fragmentos `base` e `vm` prontos; receita a fazer |

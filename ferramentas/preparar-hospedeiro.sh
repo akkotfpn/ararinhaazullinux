@@ -26,7 +26,7 @@ apt-get update
 DEBIAN_FRONTEND=noninteractive apt-get install -y \
   build-essential bison gawk texinfo m4 perl python3 patch \
   tar xz-utils gzip bzip2 zstd curl ca-certificates git file \
-  util-linux rsync cargo rustc \
+  util-linux rsync cargo rustc gnupg \
   qemu-guest-agent \
   qemu-system-x86 qemu-system-arm qemu-utils ovmf qemu-efi-aarch64 \
   systemd-repart systemd-boot-efi erofs-utils dosfstools mtools \
