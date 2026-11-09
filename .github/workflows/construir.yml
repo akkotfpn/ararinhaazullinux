@@ -1,0 +1,99 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Construção pesada na VM ninhada-build (runner próprio, rótulo "ninhada").
+#
+# Segurança: o repositório é público, então este workflow NUNCA dispara por
+# pull_request. Só por push no main (quem tem acesso de escrita) ou manualmente.
+name: Construir
+
+on:
+  workflow_dispatch:
+    inputs:
+      alvos:
+        description: "Pacotes ou categorias, separados por espaço (vazio = todos)"
+        required: false
+        default: ""
+      arq:
+        description: "Arquitetura"
+        type: choice
+        options: [ambas, x86_64, aarch64]
+        default: ambas
+      travar:
+        description: "Travar hashes de fontes novas (e conferir assinaturas)"
+        type: boolean
+        default: false
+      forcar:
+        description: "Reconstruir mesmo o que já está pronto"
+        type: boolean
+        default: false
+  push:
+    branches: [main]
+    paths: ["receitas/**", "kernel/**", "imagem/**", "ninhada/**"]
+
+# Uma construção por vez: todas usam a mesma pasta de saída.
+concurrency:
+  group: ninhada-build
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  construir:
+    runs-on: [self-hosted, ninhada]
+    timeout-minutes: 720
+    env:
+      SAIDA: /home/ninhada/saida
+      ALVOS: ${{ inputs.alvos }}
+      ARQ: ${{ inputs.arq || 'ambas' }}
+      TRAVAR: ${{ inputs.travar && '1' || '' }}
+      FORCAR: ${{ inputs.forcar && '1' || '' }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Compilar a Ninhada
+        run: cargo build --release --manifest-path ninhada/Cargo.toml
+
+      - name: Conferir hospedeiro e receitas
+        run: |
+          ninhada/target/release/ninhada hospedeiro
+          ninhada/target/release/ninhada verificar
+
+      - name: Fontes
+        run: |
+          N=ninhada/target/release/ninhada
+          read -ra alvos <<< "$ALVOS"
+          [[ "$ARQ" == ambas ]] && arqs=(x86_64 aarch64) || arqs=("$ARQ")
+          for a in "${arqs[@]}"; do
+            $N fontes "${alvos[@]}" --arq "$a" --saida "$SAIDA" ${TRAVAR:+--travar}
+          done
+          if [[ -n "$TRAVAR" ]]; then
+            echo "::group::fontes.trava (para commit)"
+            cat receitas/fontes.trava
+            echo "::endgroup::"
+            FONTES="$SAIDA/fontes" ferramentas/verificar-assinaturas.sh
+          fi
+
+      - name: Construir
+        run: |
+          N=ninhada/target/release/ninhada
+          read -ra alvos <<< "$ALVOS"
+          [[ "$ARQ" == ambas ]] && arqs=(x86_64 aarch64) || arqs=("$ARQ")
+          for a in "${arqs[@]}"; do
+            $N construir "${alvos[@]}" --arq "$a" --saida "$SAIDA" ${FORCAR:+--forcar}
+          done
+
+      - name: Log da construção que falhou
+        if: failure()
+        run: |
+          ultimo=$(ls -t "$SAIDA"/*/registros/*.log 2>/dev/null | head -n1 || true)
+          [[ -n "$ultimo" ]] && { echo "== $ultimo"; tail -n 150 "$ultimo"; } || echo "sem registros"
+
+      - name: Resumo
+        if: always()
+        run: |
+          {
+            echo "### Pacotes .pena"
+            ls -1 "$SAIDA"/*/pacotes/ 2>/dev/null | sed 's/^/    /' || echo "nenhum"
+            echo "### Espaço em disco"
+            df -h "$SAIDA" | tail -n1
+          } >> "$GITHUB_STEP_SUMMARY"

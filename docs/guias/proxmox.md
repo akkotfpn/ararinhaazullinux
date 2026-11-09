@@ -58,8 +58,20 @@ Antes do commit, compare cada linha com o checksum oficial:
 `ferramentas/proxmox/importar-imagem.sh` (a escrever junto com a geração de
 imagem) cria uma VM UEFI de teste a partir do `.qcow2` gerado.
 
-## 5. CI (opcional)
-Para o GitHub rodar os builds pesados nesta VM, registre um runner próprio:
-GitHub → repositório → Settings → Actions → Runners → *New self-hosted runner*,
-com o rótulo `ninhada`. O CI leve (testes da Ninhada e validação das receitas)
-já roda nos servidores do GitHub.
+## 5. Runner do GitHub Actions
+Com a VM registrada como runner, as construções são disparadas pelo GitHub
+(workflow **Construir**) e os logs ficam no próprio GitHub.
+
+1. Pegue o token em **Settings → Actions → Runners → New self-hosted runner**
+   (na linha `./config.sh --url … --token XXXXX`). Vale por 1 hora.
+2. No shell do Proxmox:
+   ```sh
+   ssh davi@<ip-da-vm> "cd ararinhaazullinux && git pull -q && sudo ferramentas/proxmox/instalar-runner.sh XXXXX"
+   ```
+3. Em **Settings → Actions → General → Approval for running fork pull request
+   workflows from contributors**, marque **Require approval for all external
+   contributors**.
+
+Segurança: o runner roda como o usuário `ninhada`, sem sudo, e o workflow
+**Construir** nunca dispara por pull request, só por push no `main` ou
+manualmente (Actions → Construir → Run workflow).
