@@ -21,7 +21,7 @@ NUCLEOS="${NUCLEOS:-$(nproc)}"
 RAM_TOTAL_MB=$(awk '/MemTotal/ {print int($2/1024)}' /proc/meminfo)
 RAM_PADRAO_GB=$(( RAM_TOTAL_MB / 2048 )); (( RAM_PADRAO_GB > 32 )) && RAM_PADRAO_GB=32
 RAM_GB="${RAM_GB:-$RAM_PADRAO_GB}"
-DISCO_GB="${DISCO_GB:-}"   # vazio = calcula pelo espaço livre (máx. 150 GB)
+DISCO_GB="${DISCO_GB:-}"   # vazio = 70% do espaço livre (mín. 50, máx. 150 GB)
 ARMAZENAMENTO="${ARMAZENAMENTO:-local-lvm}"   # LVM-thin ou ZFS (não "local", que é diretório)
 PONTE="${PONTE:-vmbr0}"
 USUARIO="${USUARIO:-davi}"
@@ -48,8 +48,14 @@ LIMITE_GB=$(( LIVRE_GB * 70 / 100 ))
 if [[ -z "$DISCO_GB" ]]; then
   DISCO_GB=$(( LIMITE_GB < 150 ? LIMITE_GB : 150 ))
 fi
-if (( DISCO_GB < 80 )); then
-  echo "Pouco espaço livre em $ARMAZENAMENTO (${LIVRE_GB} GB). O build precisa de pelo menos 80 GB." >&2
+# Fase 1 (toolchain das duas arquiteturas + sistema base + kernel + imagens)
+# cabe em ~40 GB, porque a Ninhada apaga a pasta de compilação de cada pacote
+# ao terminar. 50 GB dá folga.
+if (( DISCO_GB < 50 )); then
+  echo "Pouco espaço livre em $ARMAZENAMENTO (${LIVRE_GB} GB; dá para usar ${LIMITE_GB} GB)." >&2
+  echo "O build precisa de pelo menos 50 GB. Outros armazenamentos:" >&2
+  pvesm status | awk 'NR>1 {printf "  %-15s %-8s livre: %d GB\n", $1, $2, $6/1024/1024}' >&2
+  echo "Use um deles com: ARMAZENAMENTO=<nome> bash $0" >&2
   exit 1
 fi
 if (( DISCO_GB > LIMITE_GB )); then

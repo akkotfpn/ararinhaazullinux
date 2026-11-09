@@ -9,7 +9,7 @@ então usamos uma VM dedicada no Proxmox do Davi.
   Vaultwarden etc.) sempre ganham a disputa; o build usa só o que sobra.
 - **RAM:** metade da memória do servidor, no máximo 32 GB, sem balloon. A Ninhada
   limita as tarefas paralelas a 1 por GB de RAM para não faltar memória.
-- **Disco:** até 150 GB, nunca mais que 70% do espaço **realmente livre** no
+- **Disco:** de 50 a 150 GB (a Fase 1 usa ~40 GB), nunca mais que 70% do espaço **realmente livre** no
   armazenamento. Em LVM-thin os discos são reservas "prometidas"; se o pool
   encher de verdade, todas as VMs podem travar.
 - O agente do QEMU é instalado no primeiro boot (cloud-init), e o script espera
