@@ -25,6 +25,10 @@ on:
         description: "Reconstruir mesmo o que já está pronto"
         type: boolean
         default: false
+      limpar:
+        description: "Apagar a raiz e os pacotes da(s) arquitetura(s) antes (mantém as fontes)"
+        type: boolean
+        default: false
   push:
     branches: [main]
     paths: ["receitas/**", "kernel/**", "imagem/**", "ninhada/**"]
@@ -47,6 +51,7 @@ jobs:
       ARQ: ${{ inputs.arq || 'ambas' }}
       TRAVAR: ${{ inputs.travar && '1' || '' }}
       FORCAR: ${{ inputs.forcar && '1' || '' }}
+      LIMPAR: ${{ inputs.limpar && '1' || '' }}
     steps:
       - uses: actions/checkout@v5
 
@@ -79,6 +84,10 @@ jobs:
           read -ra alvos <<< "$ALVOS"
           [[ "$ARQ" == ambas ]] && arqs=(x86_64 aarch64) || arqs=("$ARQ")
           for a in "${arqs[@]}"; do
+            if [[ -n "$LIMPAR" ]]; then
+              echo "Limpando $SAIDA/$a"
+              rm -rf "${SAIDA:?}/$a"
+            fi
             $N construir "${alvos[@]}" --arq "$a" --saida "$SAIDA" ${FORCAR:+--forcar}
           done
 

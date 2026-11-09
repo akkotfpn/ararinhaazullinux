@@ -227,12 +227,26 @@ fn rodar(a: Args) -> Result<(), String> {
             }
             let op = construir::Opcoes { forcar: a.forcar, testar: a.testar, isolar, nucleos: a.nucleos };
             println!("Construindo {} pacotes para {} em {}", p.len(), a.arq, amb.base.display());
+            let mut impressoes: BTreeMap<String, String> = BTreeMap::new();
             for (i, n) in p.iter().enumerate() {
                 let r = &todas[n];
+                // O plano já vem em ordem: as dependências têm impressão calculada.
+                let mut deps: Vec<String> = Vec::new();
+                for d in r.dep_construcao.iter().chain(&r.dep_execucao) {
+                    for x in receita::resolver_dep(d, &todas) {
+                        if let Some(imp) = impressoes.get(&x) {
+                            deps.push(format!("{x}={imp}"));
+                        }
+                    }
+                }
+                deps.sort();
+                deps.dedup();
+                let imp = construir::impressao(r, &trava, &a.arq, &deps.join(","))?;
+                impressoes.insert(n.clone(), imp.clone());
                 print!("[{}/{}] {} ... ", i + 1, p.len(), r.id());
                 use std::io::Write;
                 std::io::stdout().flush().ok();
-                match construir::construir(r, &amb, &mut trava, &op)? {
+                match construir::construir(r, &amb, &mut trava, &op, &imp)? {
                     construir::Resultado::JaEstavaPronto => println!("já pronto"),
                     construir::Resultado::Construido(Some(pena)) => {
                         println!("ok → {}", pena.file_name().unwrap_or_default().to_string_lossy())

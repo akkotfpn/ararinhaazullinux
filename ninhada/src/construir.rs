@@ -68,9 +68,11 @@ fn extrair(arquivo: &Path, dentro: &Path) -> Result<PathBuf, String> {
     }
 }
 
-/// Impressão digital: muda se a receita ou qualquer fonte mudar.
-fn impressao(r: &Receita, trava: &Trava, arq: &str) -> Result<String, String> {
-    let mut s = format!("arq={arq}\n{}\n", r.texto);
+/// Impressão digital: muda se a receita, qualquer fonte ou qualquer
+/// dependência mudar (as impressões das dependências entram em `deps`).
+/// Assim, corrigir o GCC reconstrói a glibc e tudo que veio depois.
+pub fn impressao(r: &Receita, trava: &Trava, arq: &str, deps: &str) -> Result<String, String> {
+    let mut s = format!("arq={arq}\ndeps={deps}\n{}\n", r.texto);
     for f in &r.fontes {
         s.push_str(&format!("{} {}\n", f.url, trava.hash_esperado(f).unwrap_or_default()));
     }
@@ -236,10 +238,10 @@ pub fn construir(
     amb: &Ambiente,
     trava: &mut Trava,
     op: &Opcoes,
+    impressao_atual: &str,
 ) -> Result<Resultado, String> {
-    let impressao_atual = impressao(r, trava, &amb.arq)?;
     let carimbo = amb.estado().join(format!("{}.ok", r.nome));
-    if !op.forcar && fs::read_to_string(&carimbo).ok().as_deref() == Some(impressao_atual.as_str()) {
+    if !op.forcar && fs::read_to_string(&carimbo).ok().as_deref() == Some(impressao_atual) {
         return Ok(Resultado::JaEstavaPronto);
     }
 
