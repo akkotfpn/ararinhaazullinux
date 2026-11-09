@@ -38,7 +38,7 @@ OPÇÕES
   --arq <x86_64|aarch64>  arquitetura alvo (padrão: a da máquina)
   --repo <pasta>          raiz do repositório (padrão: procura a partir daqui)
   --saida <pasta>         onde gravar tudo (padrão: <repo>/saida)
-  --nucleos <n>           núcleos para compilar (padrão: todos)
+  --nucleos <n>           tarefas paralelas (padrão: núcleos, limitado a 1 por GB de RAM)
   --travar                (fontes) grava o hash das fontes sem hash na trava
   --forcar                (construir) reconstrói mesmo se nada mudou
   --testar                (construir) roda os testes de cada pacote
@@ -74,7 +74,7 @@ fn ler_args() -> Result<Args, String> {
         },
         repo: None,
         saida: None,
-        nucleos: std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1),
+        nucleos: hospedeiro::nucleos_seguros(),
         travar: false,
         forcar: false,
         testar: false,

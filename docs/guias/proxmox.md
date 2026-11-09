@@ -7,8 +7,13 @@ então usamos uma VM dedicada no Proxmox do Davi.
 - **CPU:** todos os núcleos do servidor, mas com **prioridade baixa**
   (`cpuunits 50`, o padrão é 100). As outras VMs e containers (câmeras,
   Vaultwarden etc.) sempre ganham a disputa; o build usa só o que sobra.
-- **RAM:** metade da memória do servidor, no máximo 32 GB, sem balloon.
-- **Disco:** 250 GB (fontes, toolchains das duas arquiteturas, pacotes, imagens).
+- **RAM:** metade da memória do servidor, no máximo 32 GB, sem balloon. A Ninhada
+  limita as tarefas paralelas a 1 por GB de RAM para não faltar memória.
+- **Disco:** até 150 GB, nunca mais que 70% do espaço **realmente livre** no
+  armazenamento. Em LVM-thin os discos são reservas "prometidas"; se o pool
+  encher de verdade, todas as VMs podem travar.
+- O agente do QEMU é instalado no primeiro boot (cloud-init), e o script espera
+  a VM ganhar IP e já mostra o comando `ssh`.
 - Não inicia sozinha com o servidor (`onboot 0`).
 
 ## 1. Criar a VM (no shell do Proxmox)
@@ -19,8 +24,9 @@ bash criar-vm-build.sh
 ```
 
 ## 2. Preparar a VM
+Atenção: estes comandos rodam **dentro da VM**, não no shell do Proxmox.
 ```sh
-ssh davi@<ip-da-vm>
+ssh davi@<ip-da-vm>        # do shell do Proxmox
 git clone https://github.com/akkotfpn/ararinhaazullinux
 sudo ararinhaazullinux/ferramentas/preparar-hospedeiro.sh
 ```

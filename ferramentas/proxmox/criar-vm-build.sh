@@ -21,7 +21,7 @@ NUCLEOS="${NUCLEOS:-$(nproc)}"
 RAM_TOTAL_MB=$(awk '/MemTotal/ {print int($2/1024)}' /proc/meminfo)
 RAM_PADRAO_GB=$(( RAM_TOTAL_MB / 2048 )); (( RAM_PADRAO_GB > 32 )) && RAM_PADRAO_GB=32
 RAM_GB="${RAM_GB:-$RAM_PADRAO_GB}"
-DISCO_GB="${DISCO_GB:-250}"
+DISCO_GB="${DISCO_GB:-}"   # vazio = calcula pelo espaço livre (máx. 150 GB)
 ARMAZENAMENTO="${ARMAZENAMENTO:-local-lvm}"   # LVM-thin ou ZFS (não "local", que é diretório)
 PONTE="${PONTE:-vmbr0}"
 USUARIO="${USUARIO:-davi}"
@@ -36,6 +36,24 @@ fi
 if ! pvesm status | awk 'NR>1 {print $1}' | grep -qx "$ARMAZENAMENTO"; then
   echo "Armazenamento '$ARMAZENAMENTO' não existe. Disponíveis:" >&2
   pvesm status | awk 'NR>1 {print "  " $1}' >&2
+  exit 1
+fi
+
+# Espaço realmente livre no armazenamento (KiB, coluna "Available").
+# Em LVM-thin os discos são "promessas": se a soma passar do tamanho real e o
+# pool encher, TODAS as VMs podem travar. Por isso o disco nunca passa de 70%
+# do que está livre de verdade.
+LIVRE_GB=$(pvesm status --storage "$ARMAZENAMENTO" | awk 'NR==2 {print int($6/1024/1024)}')
+LIMITE_GB=$(( LIVRE_GB * 70 / 100 ))
+if [[ -z "$DISCO_GB" ]]; then
+  DISCO_GB=$(( LIMITE_GB < 150 ? LIMITE_GB : 150 ))
+fi
+if (( DISCO_GB < 80 )); then
+  echo "Pouco espaço livre em $ARMAZENAMENTO (${LIVRE_GB} GB). O build precisa de pelo menos 80 GB." >&2
+  exit 1
+fi
+if (( DISCO_GB > LIMITE_GB )); then
+  echo "DISCO_GB=$DISCO_GB passa de 70% do livre em $ARMAZENAMENTO (${LIVRE_GB} GB livres)." >&2
   exit 1
 fi
 
@@ -76,12 +94,48 @@ if [[ -f "$CHAVES_SSH" ]]; then
 else
   echo "Aviso: $CHAVES_SSH não existe; defina uma senha com: qm set $VMID --cipassword" >&2
 fi
+# A imagem cloud do Debian não traz o qemu-guest-agent. Um "vendor-data" do
+# cloud-init instala o agente no primeiro boot, para o Proxmox mostrar o IP.
+# Snippets precisam estar habilitados no armazenamento "local".
+CONTEUDO_LOCAL=$(pvesh get /storage/local --output-format json | grep -oP '"content"\s*:\s*"\K[^"]+')
+if [[ ",$CONTEUDO_LOCAL," != *",snippets,"* ]]; then
+  echo "== Habilitando 'snippets' no armazenamento local (mantendo: $CONTEUDO_LOCAL)"
+  pvesm set local --content "$CONTEUDO_LOCAL,snippets"
+fi
+mkdir -p /var/lib/vz/snippets
+cat > /var/lib/vz/snippets/ninhada-build.yaml <<'YAML'
+#cloud-config
+packages:
+  - qemu-guest-agent
+runcmd:
+  - systemctl enable --now qemu-guest-agent
+YAML
+qm set "$VMID" --cicustom "vendor=local:snippets/ninhada-build.yaml"
+
 qm resize "$VMID" scsi0 "${DISCO_GB}G"
 qm start "$VMID"
 
 echo
-echo "== Pronto. Em ~1 minuto a VM terá IP. Para descobrir:"
-echo "   qm guest cmd $VMID network-get-interfaces   (depois que o agente subir)"
-echo "Depois, dentro da VM:"
+echo "== Aguardando a VM instalar o agente e ganhar IP (até 5 minutos)..."
+IP=""
+for _ in $(seq 60); do
+  IP=$(qm guest cmd "$VMID" network-get-interfaces 2>/dev/null \
+       | grep -oP '"ip-address"\s*:\s*"\K[0-9.]+' | grep -v '^127\.' | head -n1 || true)
+  [[ -n "$IP" ]] && break
+  sleep 5
+done
+
+echo
+if [[ -n "$IP" ]]; then
+  echo "== Pronto! IP da VM: $IP"
+  echo "Entre na VM (a partir deste shell do Proxmox):"
+  echo "   ssh $USUARIO@$IP"
+else
+  echo "== VM criada, mas o IP ainda não apareceu. Tente daqui a pouco:"
+  echo "   qm guest cmd $VMID network-get-interfaces"
+  echo "Depois: ssh $USUARIO@<ip-da-vm>"
+fi
+echo
+echo "E então, DENTRO DA VM:"
 echo "   git clone https://github.com/akkotfpn/ararinhaazullinux"
 echo "   sudo ararinhaazullinux/ferramentas/preparar-hospedeiro.sh"

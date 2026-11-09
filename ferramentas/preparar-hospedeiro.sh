@@ -9,6 +9,11 @@
 
 set -euo pipefail
 
+if [[ -d /etc/pve ]]; then
+  echo "Isto é o Proxmox (host). Este script roda DENTRO da VM ninhada-build:" >&2
+  echo "  ssh davi@<ip-da-vm>" >&2
+  exit 1
+fi
 if [[ $EUID -ne 0 ]]; then
   echo "Rode com sudo: sudo $0" >&2
   exit 1
