@@ -28,7 +28,7 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y \
   tar xz-utils gzip bzip2 zstd curl ca-certificates git file \
   util-linux rsync cargo rustc gnupg \
   qemu-guest-agent \
-  qemu-system-x86 qemu-system-arm qemu-utils ovmf qemu-efi-aarch64 \
+  qemu-system-x86 qemu-system-arm qemu-utils ovmf qemu-efi-aarch64 qemu-user-binfmt \
   systemd-repart systemd-boot-efi erofs-utils dosfstools mtools \
   cryptsetup-bin btrfs-progs
 
