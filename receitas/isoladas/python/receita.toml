@@ -1,0 +1,28 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# LFS 7 (livro r13.1-39-systemd): roda DENTRO da raiz em construção.
+# No LFS isso é um chroot como root; aqui é o ambiente isolado da Ninhada
+# (namespaces de usuário, sem nenhum privilégio real na máquina de build).
+
+[pacote]
+nome      = "python"
+versao    = "3.15.2"
+resumo    = "Linguagem Python (temporário)"
+licenca   = "Python-2.0"
+categoria = "isoladas"
+tipo      = "toolchain"
+
+[fonte]
+url = "https://www.python.org/ftp/python/3.15.2/Python-3.15.2.tar.xz"
+
+[dependencias]
+construcao = ["preparar-isolado", "mpdecimal", "zlib"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  "./configure --prefix=/usr --enable-shared --without-ensurepip --without-static-libpython",
+  "make",
+]
+instalar = [
+  "make install",
+]

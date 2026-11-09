@@ -83,12 +83,43 @@ pub fn impressao(r: &Receita, trava: &Trava, arq: &str, deps: &str) -> Result<St
     h
 }
 
+/// Onde os passos rodam.
+enum Modo<'a> {
+    /// No hospedeiro, com a toolchain cruzada; `isolar` = sem rede.
+    Hospedeiro { isolar: bool },
+    /// Dentro da raiz em construção (o "chroot" do LFS).
+    Isolado { raiz: &'a Path },
+}
+
+/// Script que entra no ambiente isolado. Roda como "root" de um namespace de
+/// usuário (sem privilégio nenhum na máquina real), monta /dev, /proc, /sys e
+/// /run como no LFS 7.3 e faz o chroot. Tudo é desmontado sozinho quando o
+/// namespace termina.
+const ENTRAR_ISOLADO: &str = r#"
+set -e
+R="$1"; D="$2"; P="$3"; shift 3
+mkdir -p "$R/dev" "$R/proc" "$R/sys" "$R/run" "$R/tmp"
+mount --rbind /dev "$R/dev"
+mount -t proc proc "$R/proc"
+mount -t sysfs sysfs "$R/sys" 2>/dev/null || mount --rbind /sys "$R/sys"
+mount -t tmpfs tmpfs "$R/run"
+exec chroot "$R" /usr/bin/env -i "$@" /bin/bash -e -u -o pipefail -c 'cd "$1"; eval "$2"' _ "$D" "$P"
+"#;
+
+/// Caminho visto de dentro da raiz: /x/raiz/usr/src -> /usr/src
+fn dentro(raiz: &Path, p: &Path) -> Result<String, String> {
+    let rel = p
+        .strip_prefix(raiz)
+        .map_err(|_| format!("{} não está dentro da raiz", p.display()))?;
+    Ok(format!("/{}", rel.display()))
+}
+
 fn rodar_passos(
     passos: &[String],
     etapa: &str,
     dir: &Path,
     vars: &[(String, String)],
-    isolar: bool,
+    modo: &Modo,
     log: &Path,
 ) -> Result<(), String> {
     for (i, passo) in passos.iter().enumerate() {
@@ -101,28 +132,63 @@ fn rodar_passos(
         writeln!(registro, "\n### {etapa} {}/{}: {passo}", i + 1, passos.len()).ok();
         let saida = registro.try_clone().map_err(|e| e.to_string())?;
 
-        let mut cmd = if isolar {
-            let mut c = Command::new("unshare");
-            c.args(["--user", "--map-current-user", "--net", "--", "bash"]);
-            c
-        } else {
-            Command::new("bash")
+        let mut cmd = match modo {
+            Modo::Hospedeiro { isolar: true } => {
+                let mut c = Command::new("unshare");
+                c.args(["--user", "--map-current-user", "--net", "--", "bash"]);
+                c.args(["-e", "-u", "-o", "pipefail", "-c", passo]);
+                c.current_dir(dir).env_clear().env("HOME", dir).env("TERM", "dumb");
+                c.envs(vars.iter().map(|(k, v)| (k.as_str(), v.as_str())));
+                c
+            }
+            Modo::Hospedeiro { isolar: false } => {
+                let mut c = Command::new("bash");
+                c.args(["-e", "-u", "-o", "pipefail", "-c", passo]);
+                c.current_dir(dir).env_clear().env("HOME", dir).env("TERM", "dumb");
+                c.envs(vars.iter().map(|(k, v)| (k.as_str(), v.as_str())));
+                c
+            }
+            Modo::Isolado { raiz } => {
+                let mut c = Command::new("unshare");
+                c.args([
+                    "--user", "--map-root-user", "--mount", "--pid", "--net", "--fork",
+                    "--kill-child", "--", "bash", "-c", ENTRAR_ISOLADO, "_",
+                ]);
+                c.arg(raiz).arg(dentro(raiz, dir)?).arg(passo);
+                c.args(vars.iter().map(|(k, v)| format!("{k}={v}")));
+                // O próprio unshare/bash rodam no hospedeiro com PATH mínimo.
+                c.env_clear().env("PATH", "/usr/sbin:/usr/bin:/sbin:/bin");
+                c
+            }
         };
-        cmd.args(["-e", "-u", "-o", "pipefail", "-c", passo])
-            .current_dir(dir)
-            .env_clear()
-            .env("HOME", dir)
-            .env("TERM", "dumb")
-            .envs(vars.iter().map(|(k, v)| (k.as_str(), v.as_str())))
-            .stdin(Stdio::null())
-            .stdout(saida)
-            .stderr(registro);
+        cmd.stdin(Stdio::null()).stdout(saida).stderr(registro);
         let status = cmd.status().map_err(|e| e.to_string())?;
         if !status.success() {
             return Err(format!("{etapa} {}/{} falhou: {passo}", i + 1, passos.len()));
         }
     }
     Ok(())
+}
+
+/// Para entrar numa raiz de outra arquitetura (ex.: aarch64 numa máquina
+/// x86_64), o kernel precisa de um emulador registrado com a flag F.
+pub fn pode_entrar(arq: &str) -> Result<(), String> {
+    let nativa = match std::env::consts::ARCH {
+        "aarch64" => "aarch64",
+        _ => "x86_64",
+    };
+    if arq == nativa {
+        return Ok(());
+    }
+    let reg = format!("/proc/sys/fs/binfmt_misc/qemu-{arq}");
+    match fs::read_to_string(&reg) {
+        Ok(t) if t.contains("enabled") && t.lines().any(|l| l.starts_with("flags:") && l.contains('F')) => Ok(()),
+        Ok(_) => Err(format!("{reg} existe mas não está ativo com a flag F")),
+        Err(_) => Err(format!(
+            "para construir {arq} no ambiente isolado, esta máquina precisa do emulador: \
+             sudo apt-get install -y qemu-user-binfmt"
+        )),
+    }
 }
 
 fn ultimas_linhas(log: &Path, n: usize) -> String {
@@ -247,7 +313,15 @@ pub fn construir(
 
     let fontes = fontes::obter_todas(r, &amb.fontes, trava, false)?;
 
-    let obra = amb.obra(&r.nome);
+    if r.isolado {
+        pode_entrar(&amb.arq)?;
+    }
+    // No modo isolado o código precisa estar DENTRO da raiz para ser visto.
+    let obra = if r.isolado {
+        amb.raiz().join("ninhada-obra").join(&r.nome)
+    } else {
+        amb.obra(&r.nome)
+    };
     limpar_e_criar(&obra)?;
     let mut codigo = obra.clone();
     let mut extras = Vec::new();
@@ -288,7 +362,11 @@ pub fn construir(
     let destino = match r.tipo {
         Tipo::Toolchain => amb.raiz(),
         Tipo::Pacote => {
-            let d = amb.destino(&r.nome);
+            let d = if r.isolado {
+                amb.raiz().join("ninhada-destino").join(&r.nome)
+            } else {
+                amb.destino(&r.nome)
+            };
             limpar_e_criar(&d)?;
             d
         }
@@ -297,7 +375,12 @@ pub fn construir(
     fs::create_dir_all(amb.registros()).map_err(|e| e.to_string())?;
     let log = amb.registros().join(format!("{}.log", r.nome));
     let _ = fs::remove_file(&log);
-    let vars = amb.variaveis(&destino, op.nucleos);
+    let raiz = amb.raiz();
+    let (vars, modo) = if r.isolado {
+        (amb.variaveis_isoladas(&dentro(&raiz, &destino)?, op.nucleos), Modo::Isolado { raiz: &raiz })
+    } else {
+        (amb.variaveis(&destino, op.nucleos), Modo::Hospedeiro { isolar: op.isolar })
+    };
 
     let mut etapas: Vec<(&str, &[String])> = vec![("construção", &r.passos)];
     if op.testar {
@@ -305,7 +388,7 @@ pub fn construir(
     }
     etapas.push(("instalação", &r.instalar));
     for (nome, passos) in etapas {
-        if let Err(e) = rodar_passos(passos, nome, &dir, &vars, op.isolar, &log) {
+        if let Err(e) = rodar_passos(passos, nome, &dir, &vars, &modo, &log) {
             return Err(format!(
                 "{e}\n--- últimas linhas de {} ---\n{}",
                 log.display(),
@@ -335,6 +418,9 @@ pub fn construir(
 
     // Libera espaço: o código compilado não é mais necessário.
     let _ = fs::remove_dir_all(&obra);
+    if r.isolado && r.tipo == Tipo::Pacote {
+        let _ = fs::remove_dir_all(&destino);
+    }
     fs::create_dir_all(amb.estado()).map_err(|e| e.to_string())?;
     fs::write(&carimbo, impressao_atual).map_err(|e| e.to_string())?;
     Ok(Resultado::Construido(pacote))

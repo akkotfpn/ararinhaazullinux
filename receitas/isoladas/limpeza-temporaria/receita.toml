@@ -1,0 +1,26 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# LFS 7 (livro r13.1-39-systemd): roda DENTRO da raiz em construção.
+# No LFS isso é um chroot como root; aqui é o ambiente isolado da Ninhada
+# (namespaces de usuário, sem nenhum privilégio real na máquina de build).
+# A toolchain cruzada (/ferramentas) só é removida ao gerar a imagem, para
+# que mudanças nas receitas dos capítulos 5 e 6 continuem reconstruindo certo.
+
+[pacote]
+nome      = "limpeza-temporaria"
+versao    = "1"
+resumo    = "Limpeza do sistema temporário (LFS 7.13)"
+licenca   = "GPL-3.0-or-later"
+categoria = "isoladas"
+tipo      = "toolchain"
+
+[dependencias]
+construcao = ["gettext-temporario", "bison", "perl", "mpdecimal", "python", "texinfo", "util-linux"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  "rm -rf /usr/share/{info,man,doc}/*",
+  "find /usr/{lib,libexec} -name \\*.la -delete",
+]
+instalar = [
+]

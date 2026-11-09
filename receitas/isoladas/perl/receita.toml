@@ -1,0 +1,39 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# LFS 7 (livro r13.1-39-systemd): roda DENTRO da raiz em construção.
+# No LFS isso é um chroot como root; aqui é o ambiente isolado da Ninhada
+# (namespaces de usuário, sem nenhum privilégio real na máquina de build).
+
+[pacote]
+nome      = "perl"
+versao    = "5.44.0"
+resumo    = "Linguagem Perl (temporário)"
+licenca   = "GPL-1.0-or-later OR Artistic-1.0-Perl"
+categoria = "isoladas"
+tipo      = "toolchain"
+
+[fonte]
+url = "https://www.cpan.org/src/5.0/perl-5.44.0.tar.xz"
+
+[dependencias]
+construcao = ["preparar-isolado"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  """
+  sh Configure -des                                         \
+               -D prefix=/usr                               \
+               -D vendorprefix=/usr                         \
+               -D useshrplib                                \
+               -D privlib=/usr/lib/perl5/5.44/core_perl     \
+               -D archlib=/usr/lib/perl5/5.44/core_perl     \
+               -D sitelib=/usr/lib/perl5/5.44/site_perl     \
+               -D sitearch=/usr/lib/perl5/5.44/site_perl    \
+               -D vendorlib=/usr/lib/perl5/5.44/vendor_perl \
+               -D vendorarch=/usr/lib/perl5/5.44/vendor_perl
+  """,
+  "make",
+]
+instalar = [
+  "make install",
+]

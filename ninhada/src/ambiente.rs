@@ -65,6 +65,25 @@ impl Ambiente {
         }
     }
 
+    /// Variáveis para passos que rodam dentro da raiz (ambiente isolado).
+    /// Lá dentro a raiz é "/", e não há toolchain cruzada nem hospedeiro.
+    pub fn variaveis_isoladas(&self, destino_dentro: &str, nucleos: usize) -> Vec<(String, String)> {
+        vec![
+            ("HOME".into(), "/root".into()),
+            ("TERM".into(), "dumb".into()),
+            ("PATH".into(), "/usr/bin:/usr/sbin".into()),
+            ("LC_ALL".into(), "POSIX".into()),
+            ("ARQ".into(), self.arq.clone()),
+            ("ARQ_KERNEL".into(), self.arq_kernel().into()),
+            ("PREFIXO".into(), "/usr".into()),
+            ("RAIZ".into(), "/".into()),
+            ("DESTINO".into(), destino_dentro.into()),
+            ("NUCLEOS".into(), nucleos.to_string()),
+            ("MAKEFLAGS".into(), format!("-j{nucleos}")),
+            ("TESTSUITEFLAGS".into(), format!("-j{nucleos}")),
+        ]
+    }
+
     pub fn variaveis(&self, destino: &Path, nucleos: usize) -> Vec<(String, String)> {
         let caminho_hospedeiro = std::env::var("PATH").unwrap_or_else(|_| "/usr/bin:/bin".into());
         let v = |s: &str, p: &Path| (s.to_string(), p.display().to_string());

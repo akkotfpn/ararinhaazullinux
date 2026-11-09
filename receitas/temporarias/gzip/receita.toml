@@ -20,12 +20,17 @@ construcao = ["toolchain"]
 passos = [
   # Diferença do LFS (só no aarch64): gzip.h define a macro `head`, e os
   # cabeçalhos de sinal do kernel arm64 têm campos chamados `head`. Incluir
-  # <signal.h> antes de tudo evita que a macro estrague esses cabeçalhos.
+  # <signal.h> no gzip.c antes do gzip.h (logo depois do config.h) evita que
+  # a macro estrague esses cabeçalhos. Não usar CFLAGS="-include": quebra o
+  # configure.
   """
-  if [ "$ARQ" = aarch64 ]; then export CFLAGS="-O2 -include signal.h"; fi
-  ./configure --prefix=/usr --host=$ALVO
+  if [ "$ARQ" = aarch64 ]; then
+    sed -i '/#include <config.h>/a #include <signal.h>' gzip.c
+    grep -q '^#include <signal.h>' gzip.c
+  fi
   """,
-"make",
+  "./configure --prefix=/usr --host=$ALVO",
+  "make",
 ]
 instalar = [
   "make DESTDIR=$RAIZ install",

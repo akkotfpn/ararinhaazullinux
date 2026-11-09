@@ -54,6 +54,7 @@ execucao   = []
 
 [construcao]
 construir_em = "build"        # opcional: subpasta onde os passos rodam
+ambiente = "isolado"          # opcional: roda DENTRO da raiz (o chroot do LFS)
 passos   = ["CHOST=$ALVO ./configure --prefix=$PREFIXO", "make"]
 testar   = ["make check"]     # só com --testar
 instalar = ["make DESTDIR=$DESTINO install"]
@@ -66,5 +67,13 @@ Variáveis disponíveis nos passos: `ARQ`, `ARQ_KERNEL`, `ALVO`, `CARREGADOR`,
 `PREFIXO`, `RAIZ`, `FERRAMENTAS`, `DESTINO`, `FONTES`, `NUCLEOS`, `MAKEFLAGS`.
 Cada passo roda num `bash -euo pipefail` próprio, a partir da pasta do código
 (ou de `construir_em`). Strings `"""multilinha"""` aceitam `\` no fim da linha.
+
+### Ambiente isolado
+Com `ambiente = "isolado"`, cada passo roda dentro da raiz em construção, como o
+`chroot` do LFS (capítulo 7 em diante), mas sem root: um namespace de usuário
+faz o processo ser "root" só lá dentro, com `/dev`, `/proc`, `/sys` e `/run`
+montados e sem rede. Lá dentro `RAIZ=/` e o código fica em `/ninhada-obra/`.
+Para outra arquitetura (aarch64 numa máquina x86_64) o hospedeiro precisa do
+emulador registrado: `sudo apt-get install -y qemu-user-binfmt`.
 
 Decisões de projeto: [ADR 0014](../docs/adr/0014-ninhada-v0.md).
