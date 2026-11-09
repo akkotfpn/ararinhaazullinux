@@ -10,7 +10,7 @@ mensagem clara e uma alternativa.
 | `.deb` / `.rpm` | Convertidos ou isolados pelo Bando | Bom | Pacotes que mexem no sistema base são isolados em container |
 | Windows `.exe` / `.msi` | Wine + Proton/DXVK/VKD3D | Muito bom | Anti-cheat de kernel (ex.: Vanguard, alguns modos do EA Javelin) não roda; alguns DRMs e drivers de periféricos com app próprio podem falhar |
 | Android `.apk` | Waydroid (container Android) | Bom | Apps que exigem certificação do Google (Play Integrity, alguns bancos) podem recusar abrir |
-| macOS `.app` / `.dmg` | Darling | **Experimental** | Ferramentas de linha de comando funcionam; apps gráficos, quase nunca. Não distribuímos nenhum componente da Apple |
+| macOS `.app` / `.dmg` | Darling | **Experimental** | Ferramentas de linha de comando funcionam; apps gráficos, quase nunca. Não distribuímos nenhum componente da Apple. Depois da 1.0, uma camada própria (Fase 6) |
 | Windows em ARM64 | FEX-Emu/Box64 + Wine | Experimental | Tradução de CPU custa desempenho |
 
 ## Drivers
