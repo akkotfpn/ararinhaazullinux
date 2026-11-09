@@ -16,7 +16,7 @@ tipo      = "toolchain"
 url = "https://ftp.gnu.org/gnu/gcc/gcc-16.2.0/gcc-16.2.0.tar.xz"
 
 [dependencias]
-construcao = ["shadow"]
+construcao = ["gawk"]
 
 [construcao]
 ambiente = "isolado"

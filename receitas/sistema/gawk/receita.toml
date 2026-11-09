@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # LFS 8 (livro LFS, edição systemd): sistema final do Ararinha, compilado
 # dentro do ambiente isolado.
+# Ordem: compilado logo antes do GCC final (como na edição atual do LFS); o
+# GCC gera options.cc com scripts awk, e o gawk temporário gera código errado.
 
 [pacote]
 nome      = "gawk"
@@ -14,7 +16,7 @@ tipo      = "toolchain"
 url = "https://ftp.gnu.org/gnu/gawk/gawk-5.4.1.tar.xz"
 
 [dependencias]
-construcao = ["diffutils"]
+construcao = ["shadow"]
 
 [construcao]
 ambiente = "isolado"

@@ -14,7 +14,7 @@ tipo      = "toolchain"
 url = "https://ftp.gnu.org/gnu/findutils/findutils-4.11.0.tar.xz"
 
 [dependencias]
-construcao = ["gawk"]
+construcao = ["diffutils"]
 
 [construcao]
 ambiente = "isolado"
