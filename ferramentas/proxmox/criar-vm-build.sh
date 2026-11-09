@@ -107,6 +107,8 @@ cat > /var/lib/vz/snippets/ninhada-build.yaml <<'YAML'
 #cloud-config
 packages:
   - qemu-guest-agent
+  - git
+  - tmux
 runcmd:
   - systemctl enable --now qemu-guest-agent
 YAML
@@ -126,16 +128,42 @@ for _ in $(seq 60); do
 done
 
 echo
-if [[ -n "$IP" ]]; then
-  echo "== Pronto! IP da VM: $IP"
-  echo "Entre na VM (a partir deste shell do Proxmox):"
-  echo "   ssh $USUARIO@$IP"
-else
+if [[ -z "$IP" ]]; then
   echo "== VM criada, mas o IP ainda não apareceu. Tente daqui a pouco:"
   echo "   qm guest cmd $VMID network-get-interfaces"
-  echo "Depois: ssh $USUARIO@<ip-da-vm>"
+  exit 1
 fi
-echo
-echo "E então, DENTRO DA VM:"
-echo "   git clone https://github.com/akkotfpn/ararinhaazullinux"
-echo "   sudo ararinhaazullinux/ferramentas/preparar-hospedeiro.sh"
+echo "== IP da VM: $IP"
+
+if [[ "${PREPARAR:-1}" != 1 ]]; then
+  echo "Entre com: ssh $USUARIO@$IP"
+  exit 0
+fi
+
+# Daqui em diante tudo roda DENTRO da VM, via ssh a partir do Proxmox.
+SSH=(ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 "$USUARIO@$IP")
+echo "== Esperando o primeiro boot (cloud-init) terminar"
+for _ in $(seq 30); do "${SSH[@]}" true 2>/dev/null && break; sleep 5; done
+"${SSH[@]}" "cloud-init status --wait >/dev/null; echo ok"
+
+echo "== Preparando a VM (pacotes + Ninhada). Leva alguns minutos."
+"${SSH[@]}" "git clone -q https://github.com/akkotfpn/ararinhaazullinux 2>/dev/null || git -C ararinhaazullinux pull -q; \
+             sudo ararinhaazullinux/ferramentas/preparar-hospedeiro.sh"
+
+echo "== Iniciando a compilação da toolchain dentro de um tmux (continua se a conexão cair)"
+"${SSH[@]}" "tmux new-session -d -s ninhada 'cd ~/ararinhaazullinux && \
+  { ninhada fontes --travar && ninhada construir toolchain && ninhada construir zlib; } 2>&1 | tee ~/toolchain.log; \
+  echo; echo FIM: \$(date); exec bash'"
+
+cat <<FIM
+
+================================================================
+ Tudo rodando na VM $NOME ($IP).
+
+ Acompanhar ao vivo (Ctrl+B depois D para sair sem parar nada):
+   ssh $USUARIO@$IP -t tmux attach -t ninhada
+
+ Ver só o final do log:
+   ssh $USUARIO@$IP tail -n 40 toolchain.log
+================================================================
+FIM

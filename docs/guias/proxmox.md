@@ -16,28 +16,34 @@ então usamos uma VM dedicada no Proxmox do Davi.
   a VM ganhar IP e já mostra o comando `ssh`.
 - Não inicia sozinha com o servidor (`onboot 0`).
 
-## 1. Criar a VM (no shell do Proxmox)
+## 1. Criar a VM e começar a compilar (tudo no shell do Proxmox)
 ```sh
-curl -fsSLO https://raw.githubusercontent.com/akkotfpn/ararinhaazullinux/main/ferramentas/proxmox/criar-vm-build.sh
-bash criar-vm-build.sh
-# ou ajustando: VMID=9100 RAM_GB=24 ARMAZENAMENTO=local-zfs bash criar-vm-build.sh
+git clone https://github.com/akkotfpn/ararinhaazullinux   # ou: git -C ararinhaazullinux pull
+bash ararinhaazullinux/ferramentas/proxmox/criar-vm-build.sh
+```
+O script cria a VM, espera ela subir, entra nela por ssh, instala o necessário,
+compila a Ninhada e deixa a toolchain compilando dentro de um `tmux`.
+Você não precisa entrar na VM.
+
+Ajustes opcionais: `VMID=9101 RAM_GB=8 DISCO_GB=120 ARMAZENAMENTO=local-zfs bash …`
+e `PREPARAR=0` para só criar a VM.
+
+> Use o `git clone`/`git pull` em vez de baixar o script pelo
+> raw.githubusercontent.com: aquele endereço guarda versões antigas em cache por
+> alguns minutos depois de cada atualização.
+
+## 2. Acompanhar
+```sh
+ssh davi@<ip-da-vm> -t tmux attach -t ninhada   # ao vivo; Ctrl+B depois D para sair
+ssh davi@<ip-da-vm> tail -n 40 toolchain.log      # só o final
 ```
 
-## 2. Preparar a VM
-Atenção: estes comandos rodam **dentro da VM**, não no shell do Proxmox.
+## 3. Construir manualmente (dentro da VM)
 ```sh
-ssh davi@<ip-da-vm>        # do shell do Proxmox
-git clone https://github.com/akkotfpn/ararinhaazullinux
-sudo ararinhaazullinux/ferramentas/preparar-hospedeiro.sh
-```
-
-## 3. Construir a toolchain
-```sh
-cd ararinhaazullinux
+cd ~/ararinhaazullinux
 ninhada fontes --travar
 ninhada construir toolchain
 ninhada construir toolchain --arq aarch64
-ninhada construir zlib            # primeiro pacote .pena
 ```
 
 ### Conferindo os hashes travados
