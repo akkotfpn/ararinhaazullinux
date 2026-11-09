@@ -18,9 +18,12 @@ construcao = ["toolchain"]
 
 [construcao]
 passos = [
+  # Diferença do LFS (só no aarch64): gzip.h define a macro `head`, e os
+  # cabeçalhos de sinal do kernel arm64 têm campos chamados `head`. Incluir
+  # <signal.h> antes de tudo evita que a macro estrague esses cabeçalhos.
   """
-  ./configure --prefix=/usr \
-              --host=$ALVO
+  if [ "$ARQ" = aarch64 ]; then export CFLAGS="-O2 -include signal.h"; fi
+  ./configure --prefix=/usr --host=$ALVO
   """,
 "make",
 ]

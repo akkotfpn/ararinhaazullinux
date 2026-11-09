@@ -1,12 +1,27 @@
 # Hashes SHA-256 das fontes, gerados por `ninhada fontes --travar`.
 # Revise cada linha nova contra o checksum ou a assinatura oficial
 # do projeto original antes de fazer commit.
+ed14656883b23a364b4057c05595d93252da9bc473d30106519519d0da141283  https://astron.com/pub/file/file-5.48.tar.gz
 ff01dcb449279d5b4cfccdb01fee639cf5ff1803f1749a77844dd33915422c49  https://cdn.kernel.org/pub/linux/kernel/v7.x/linux-7.1.8.tar.xz
+0d5cd86965f869a26cf64f4b71be7b96f90a3ba8b3d74e27e8e9d9d5550f31ba  https://ftp.gnu.org/gnu/bash/bash-5.3.tar.gz
+a480198559733e9b3da999e90543ac6f888a2caa544d8d664c5a1f17e528e210  https://ftp.gnu.org/gnu/coreutils/coreutils-9.12.tar.xz
+7c8b7f9fc8609141fdea9cece85249d308624391ff61dedaf528fcb337727dfd  https://ftp.gnu.org/gnu/diffutils/diffutils-3.12.tar.xz
+bfd19cb06cc71f3352d567e90284d8cdac02ac89774bbeadf0b533b0c11432fd  https://ftp.gnu.org/gnu/findutils/findutils-4.11.0.tar.xz
+07f6f7342b7febe4313fc2c2542ad93d64fe20ad8717200109f105a826f5fd37  https://ftp.gnu.org/gnu/gawk/gawk-5.4.1.tar.xz
 e6738e29597f733270731aa90600f37ffdc045079dfc27ec7e8192cc81085c3e  https://ftp.gnu.org/gnu/gcc/gcc-16.2.0/gcc-16.2.0.tar.xz
 37f600f2bef3c5e8300147059568b2a2e40a7ad6ccc65ce942556d49429cc667  https://ftp.gnu.org/gnu/glibc/glibc-2.44.tar.xz
 a3c2b80201b89e68616f4ad30bc66aee4927c3ce50e33929ca819d5c43538898  https://ftp.gnu.org/gnu/gmp/gmp-6.3.0.tar.xz
+2649b27c0e90e632eadcd757be06c6e9a4f48d941de51e7c0f83ff76408a07b9  https://ftp.gnu.org/gnu/grep/grep-3.12.tar.xz
+9aa0cc780dec156b8282844833b342ab7cb08c25d2cd9a1869cdd0df31deff48  https://ftp.gnu.org/gnu/gzip/gzip-1.15.tar.xz
+f25c6ab51548a73a75558742fb031e0625d6485fe5f9155949d6486a2408ab66  https://ftp.gnu.org/gnu/m4/m4-1.4.21.tar.xz
+dd16fb1d67bfab79a72f5e8390735c49e3e8e70b4945a15ab1f81ddb78658fb3  https://ftp.gnu.org/gnu/make/make-4.4.1.tar.gz
 91204cd32f164bd3b7c992d4a6a8ce6519511aadab30f78b6982d0bf8d73e931  https://ftp.gnu.org/gnu/mpc/mpc-1.4.1.tar.xz
 b67ba0383ef7e8a8563734e2e889ef5ec3c3b898a01d00fa0a6869ad81c6ce01  https://ftp.gnu.org/gnu/mpfr/mpfr-4.2.2.tar.xz
+355b4cbbed880b0381a04c46617b7656e362585d52e9cf84a67e2009b749ff11  https://ftp.gnu.org/gnu/ncurses/ncurses-6.6.tar.gz
+3240c7959c5347c8ed347e3c4201c0337bf4240d5cf09d68889e58eeaba30e17  https://ftp.gnu.org/gnu/patch/patch-2.8.1.tar.xz
+b8e72182b2ec96a3574e2998c47b7aaa64cc20ce000d8e9ac313cc07cecf28c7  https://ftp.gnu.org/gnu/sed/sed-4.10.tar.xz
+4d62ff37342ec7aed748535323930c7cf94acf71c3591882b26a7ea50f3edc16  https://ftp.gnu.org/gnu/tar/tar-1.35.tar.xz
+4ce24038fd4221e0d13bc1a2de7a4db56e90b92b3bf75321f6c14be73f65de4b  https://github.com/tukaani-project/xz/releases/download/v5.8.4/xz-5.8.4.tar.xz
 154ab23b60070e8f27013c22977f1129425d67d1e8acd6e13010e617811e4cff  https://sourceware.org/pub/binutils/releases/binutils-2.47.tar.xz
 630866d6d1282f94c41a59deb2af37b1a2ad1c321f8de7b1aa80f1f4f0431717  https://www.linuxfromscratch.org/patches/lfs/development/glibc-2.44-upstream_fixes-4.patch
 643552db030e2f2d7ffde4f558e0f5f83d3fabf34a2e0e56ebdb49750ac27b0d  https://www.linuxfromscratch.org/patches/lfs/development/glibc-fhs-1.patch
