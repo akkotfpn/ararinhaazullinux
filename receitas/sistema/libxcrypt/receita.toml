@@ -1,0 +1,36 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# LFS 8 (livro LFS, edição systemd): sistema final do Ararinha, compilado
+# dentro do ambiente isolado com as ferramentas dos capítulos 5 a 7.
+
+[pacote]
+nome      = "libxcrypt"
+versao    = "4.5.2"
+resumo    = "Hash de senhas"
+licenca   = "LGPL-2.1-or-later"
+categoria = "sistema"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://github.com/besser82/libxcrypt/releases/download/v4.5.2/libxcrypt-4.5.2.tar.xz"
+
+[dependencias]
+construcao = ["libcap"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+sed -i '/strchr/s/const//' lib/crypt-{sm3,gost}-yescrypt.c
+''',
+  '''
+./configure --prefix=/usr --enable-hashes=strong,glibc --enable-obsolete-api=no --disable-static --disable-failure-tokens
+''',
+  '''
+make
+''',
+]
+instalar = [
+  '''
+make install
+''',
+]

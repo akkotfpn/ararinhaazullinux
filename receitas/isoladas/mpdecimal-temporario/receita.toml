@@ -1,0 +1,28 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# LFS 7 (livro r13.1-39-systemd): roda DENTRO da raiz em construção.
+# No LFS isso é um chroot como root; aqui é o ambiente isolado da Ninhada
+# (namespaces de usuário, sem nenhum privilégio real na máquina de build).
+
+[pacote]
+nome      = "mpdecimal-temporario"
+versao    = "4.0.1"
+resumo    = "Aritmética decimal (para o Python; temporário)"
+licenca   = "BSD-2-Clause"
+categoria = "isoladas"
+tipo      = "toolchain"
+
+[fonte]
+url = "https://www.bytereef.org/software/mpdecimal/releases/mpdecimal-4.0.1.tar.gz"
+
+[dependencias]
+construcao = ["preparar-isolado"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  "./configure --prefix=/usr --disable-static --docdir=/usr/share/doc/mpdecimal-4.0.1",
+  "make",
+]
+instalar = [
+  "make install",
+]

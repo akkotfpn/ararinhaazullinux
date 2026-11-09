@@ -1,0 +1,63 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# LFS 8 (livro LFS, edição systemd): sistema final do Ararinha, compilado
+# dentro do ambiente isolado com as ferramentas dos capítulos 5 a 7.
+
+[pacote]
+nome      = "bzip2"
+versao    = "1.0.8"
+resumo    = "Compressão bzip2"
+licenca   = "bzip2-1.0.6"
+categoria = "sistema"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://www.sourceware.org/pub/bzip2/bzip2-1.0.8.tar.gz"
+
+[[fonte]]
+url = "https://www.linuxfromscratch.org/patches/lfs/development/bzip2-1.0.8-install_docs-1.patch"
+extrair = false
+
+[dependencias]
+construcao = ["zlib"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+patch -Np1 -i ../bzip2-1.0.8-install_docs-1.patch
+''',
+  '''
+sed -i 's@\(ln -s -f \)$(PREFIX)/bin/@\1@' Makefile
+''',
+  '''
+sed -i "s@(PREFIX)/man@(PREFIX)/share/man@g" Makefile
+''',
+  '''
+make -f Makefile-libbz2_so
+''',
+  '''
+make clean
+''',
+  '''
+make
+''',
+]
+instalar = [
+  '''
+make PREFIX=/usr install
+''',
+  '''
+cp -av libbz2.so.* /usr/lib
+''',
+  '''
+ln -sfv libbz2.so.1.0.8 /usr/lib/libbz2.so
+ln -sfv libbz2.so.1.0.8 /usr/lib/libbz2.so.1
+''',
+  '''
+cp -v bzip2-shared /usr/bin/bzip2
+for i in /usr/bin/{bzcat,bunzip2}; do ln -sfv bzip2 $i; done
+''',
+  '''
+rm -fv /usr/lib/libbz2.a
+''',
+]

@@ -1,0 +1,33 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# LFS 8 (livro LFS, edição systemd): sistema final do Ararinha, compilado
+# dentro do ambiente isolado com as ferramentas dos capítulos 5 a 7.
+
+[pacote]
+nome      = "file"
+versao    = "5.48"
+resumo    = "Identificação do tipo de arquivo"
+licenca   = "BSD-2-Clause"
+categoria = "sistema"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://astron.com/pub/file/file-5.48.tar.gz"
+
+[dependencias]
+construcao = ["zstd"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+./configure --prefix=/usr
+''',
+  '''
+make
+''',
+]
+instalar = [
+  '''
+make install
+''',
+]

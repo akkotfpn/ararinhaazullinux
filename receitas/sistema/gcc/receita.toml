@@ -1,0 +1,73 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# LFS 8 (livro LFS, edição systemd): sistema final do Ararinha, compilado
+# dentro do ambiente isolado com as ferramentas dos capítulos 5 a 7.
+# Diferenças do LFS: ajuste lib64→lib também no aarch64; sem --enable-targets=all
+# (desnecessário fora do x86); teste de sanidade mínimo do compilador final.
+
+[pacote]
+nome      = "gcc"
+versao    = "16.2.0"
+resumo    = "Coleção de compiladores GNU (C e C++)"
+licenca   = "GPL-3.0-or-later"
+categoria = "sistema"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://ftp.gnu.org/gnu/gcc/gcc-16.2.0/gcc-16.2.0.tar.xz"
+
+[dependencias]
+construcao = ["shadow"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+case $(uname -m) in
+  x86_64)  sed -e '/m64=/s/lib64/lib/'  -i.orig gcc/config/i386/t-linux64 ;;
+  aarch64) sed -e '/lp64=/s/lib64/lib/' -i.orig gcc/config/aarch64/t-aarch64-linux ;;
+esac
+''',
+  '''
+mkdir -p build && cd build && ../configure --prefix=/usr \
+             LD=ld                    \
+             --enable-languages=c,c++ \
+             --enable-default-pie     \
+             --enable-default-ssp     \
+             --enable-host-pie        \
+             --disable-multilib       \
+             --disable-bootstrap      \
+             --disable-fixincludes    \
+             --with-system-zlib
+''',
+  '''
+cd build && make
+''',
+]
+instalar = [
+  '''
+cd build && make install
+''',
+  '''
+chown -R root:root $(gcc -print-file-name=include)
+[ -d $(gcc -print-file-name=include-fixed) ] && chown -R root:root $(gcc -print-file-name=include-fixed) || true
+''',
+  '''
+ln -sfvr /usr/bin/cpp /usr/lib
+ln -sfv gcc.1 /usr/share/man/man1/cc.1
+''',
+  '''
+mkdir -pv /usr/lib/bfd-plugins
+ln -sfvr $(gcc -print-prog-name=liblto_plugin.so) /usr/lib/bfd-plugins/
+''',
+  '''
+cd /tmp
+echo 'int main(){}' | cc -x c - -v -Wl,--verbose &> dummy.log
+readelf -l a.out | grep ': /lib'
+grep -q "/lib.*/libc.so.6 " dummy.log
+rm -v a.out dummy.log
+''',
+  '''
+mkdir -pv /usr/share/gdb/auto-load/usr/lib
+mv -v /usr/lib/*gdb.py /usr/share/gdb/auto-load/usr/lib
+''',
+]

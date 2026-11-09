@@ -1,0 +1,30 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# LFS 6 (livro r13.1-39-systemd): ferramentas temporárias, compiladas em modo
+# cruzado com a toolchain do capítulo 5 e instaladas direto na raiz.
+
+[pacote]
+nome      = "m4-temporario"
+versao    = "1.4.21"
+resumo    = "Processador de macros (temporário)"
+licenca   = "GPL-3.0-or-later"
+categoria = "temporarias"
+tipo      = "toolchain"
+
+[fonte]
+url = "https://ftp.gnu.org/gnu/m4/m4-1.4.21.tar.xz"
+
+[dependencias]
+construcao = ["toolchain"]
+
+[construcao]
+passos = [
+  """
+  ./configure --prefix=/usr \
+              --host=$ALVO \
+              --build=$(build-aux/config.guess)
+  """,
+"make",
+]
+instalar = [
+  "make DESTDIR=$RAIZ install",
+]

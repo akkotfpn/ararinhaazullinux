@@ -1,0 +1,47 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# LFS 8 (livro LFS, edição systemd): sistema final do Ararinha, compilado
+# dentro do ambiente isolado com as ferramentas dos capítulos 5 a 7.
+
+[pacote]
+nome      = "pkgconf"
+versao    = "3.0.7"
+resumo    = "Localizador de bibliotecas (pkg-config)"
+licenca   = "ISC"
+categoria = "sistema"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://distfiles.ariadne.space/pkgconf/pkgconf-3.0.7.tar.xz"
+
+[[fonte]]
+url = "https://github.com/mesonbuild/meson/releases/download/1.12.0/meson-1.12.0.tar.gz"
+extrair = false
+
+[dependencias]
+construcao = ["ninja"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+tar -xf ../meson-1.12.0.tar.gz
+''',
+  '''
+mkdir -p build && cd build && python3 ../meson-1.12.0/meson.py setup --prefix=/usr --buildtype=release ..
+''',
+  '''
+cd build && ninja
+''',
+]
+instalar = [
+  '''
+cd build && ninja install
+''',
+  '''
+rm -rf /usr/share/doc/pkgconf-3.0.7 && mv /usr/share/doc/pkgconf{,-3.0.7}
+''',
+  '''
+ln -sfv pkgconf /usr/bin/pkg-config
+ln -sfv pkgconf.1 /usr/share/man/man1/pkg-config.1
+''',
+]

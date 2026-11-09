@@ -1,0 +1,33 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# LFS 8 (livro LFS, edição systemd): sistema final do Ararinha, compilado
+# dentro do ambiente isolado com as ferramentas dos capítulos 5 a 7.
+
+[pacote]
+nome      = "libcap"
+versao    = "2.78"
+resumo    = "Capacidades POSIX 1003.1e"
+licenca   = "BSD-3-Clause OR GPL-2.0-only"
+categoria = "sistema"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://www.kernel.org/pub/linux/libs/security/linux-privs/libcap2/libcap-2.78.tar.xz"
+
+[dependencias]
+construcao = ["acl"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+sed -i '/install -m.*STA/d' libcap/Makefile
+''',
+  '''
+make prefix=/usr lib=lib
+''',
+]
+instalar = [
+  '''
+make prefix=/usr lib=lib install
+''',
+]

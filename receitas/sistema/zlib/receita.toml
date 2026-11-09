@@ -1,0 +1,36 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# LFS 8 (livro LFS, edição systemd): sistema final do Ararinha, compilado
+# dentro do ambiente isolado com as ferramentas dos capítulos 5 a 7.
+
+[pacote]
+nome      = "zlib"
+versao    = "1.3.2"
+resumo    = "Biblioteca de compressão deflate"
+licenca   = "Zlib"
+categoria = "sistema"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://zlib.net/fossils/zlib-1.3.2.tar.gz"
+
+[dependencias]
+construcao = ["glibc"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+./configure --prefix=/usr
+''',
+  '''
+make
+''',
+]
+instalar = [
+  '''
+make install
+''',
+  '''
+rm -fv /usr/lib/libz.a
+''',
+]

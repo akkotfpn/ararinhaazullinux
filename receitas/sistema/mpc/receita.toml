@@ -1,0 +1,33 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# LFS 8 (livro LFS, edição systemd): sistema final do Ararinha, compilado
+# dentro do ambiente isolado com as ferramentas dos capítulos 5 a 7.
+
+[pacote]
+nome      = "mpc"
+versao    = "1.4.1"
+resumo    = "Aritmética de números complexos"
+licenca   = "LGPL-3.0-or-later"
+categoria = "sistema"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://ftp.gnu.org/gnu/mpc/mpc-1.4.1.tar.xz"
+
+[dependencias]
+construcao = ["mpfr"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+./configure --prefix=/usr --disable-static --docdir=/usr/share/doc/mpc-1.4.1
+''',
+  '''
+make
+''',
+]
+instalar = [
+  '''
+make install
+''',
+]

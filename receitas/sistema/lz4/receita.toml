@@ -1,0 +1,30 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# LFS 8 (livro LFS, edição systemd): sistema final do Ararinha, compilado
+# dentro do ambiente isolado com as ferramentas dos capítulos 5 a 7.
+
+[pacote]
+nome      = "lz4"
+versao    = "1.10.0"
+resumo    = "Compressão lz4"
+licenca   = "BSD-2-Clause AND GPL-2.0-or-later"
+categoria = "sistema"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://github.com/lz4/lz4/releases/download/v1.10.0/lz4-1.10.0.tar.gz"
+
+[dependencias]
+construcao = ["xz"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+make BUILD_STATIC=no PREFIX=/usr
+''',
+]
+instalar = [
+  '''
+make BUILD_STATIC=no PREFIX=/usr install
+''',
+]

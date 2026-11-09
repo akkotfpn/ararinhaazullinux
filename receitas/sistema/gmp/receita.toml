@@ -1,0 +1,42 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# LFS 8 (livro LFS, edição systemd): sistema final do Ararinha, compilado
+# dentro do ambiente isolado com as ferramentas dos capítulos 5 a 7.
+# Diferença do LFS: GMP genérica (configfsf.*), não otimizada só para a CPU de
+# quem compilou, porque o Ararinha roda em qualquer PC (nota do próprio LFS).
+
+[pacote]
+nome      = "gmp"
+versao    = "6.3.0"
+resumo    = "Aritmética de precisão arbitrária"
+licenca   = "LGPL-3.0-or-later OR GPL-2.0-or-later"
+categoria = "sistema"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://ftp.gnu.org/gnu/gmp/gmp-6.3.0.tar.xz"
+
+[dependencias]
+construcao = ["binutils"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+cp -v configfsf.guess config.guess
+cp -v configfsf.sub config.sub
+''',
+  '''
+sed -i '/long long t1;/,+1s/()/(...)/' configure
+''',
+  '''
+./configure --prefix=/usr --enable-cxx --disable-static --docdir=/usr/share/doc/gmp-6.3.0
+''',
+  '''
+make
+''',
+]
+instalar = [
+  '''
+make install
+''',
+]

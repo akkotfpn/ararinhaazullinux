@@ -1,0 +1,47 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# LFS 8 (livro LFS, edição systemd): sistema final do Ararinha, compilado
+# dentro do ambiente isolado com as ferramentas dos capítulos 5 a 7.
+
+[pacote]
+nome      = "binutils"
+versao    = "2.47"
+resumo    = "Montador, linkeditor e ferramentas binárias"
+licenca   = "GPL-3.0-or-later"
+categoria = "sistema"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://sourceware.org/pub/binutils/releases/binutils-2.47.tar.xz"
+
+[dependencias]
+construcao = ["pkgconf"]
+
+[construcao]
+ambiente = "isolado"
+construir_em = "build"
+passos = [
+  '''
+../configure --prefix=/usr       \
+             --sysconfdir=/etc   \
+             --enable-ld=default \
+             --enable-plugins    \
+             --enable-shared     \
+             --disable-werror    \
+             --enable-64-bit-bfd \
+             --enable-new-dtags  \
+             --with-system-zlib  \
+             --with-lib-path=/usr/lib \
+             --enable-default-hash-style=gnu
+''',
+  '''
+make tooldir=/usr
+''',
+]
+instalar = [
+  '''
+make tooldir=/usr install
+''',
+  '''
+rm -rfv /usr/lib/lib{bfd,ctf,ctf-nobfd,gprofng,opcodes,sframe}.a /usr/share/doc/gprofng/
+''',
+]

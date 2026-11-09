@@ -215,6 +215,30 @@ impl<'a> Leitor<'a> {
         false
     }
 
+    /// Texto literal multilinha (três aspas simples): sem escapes, útil para
+    /// comandos com barras invertidas (sed '\(...\)\1').
+    fn literal_multilinha(&mut self) -> Result<String, ErroToml> {
+        if self.espiar() == Some('\n') {
+            self.avancar();
+        }
+        let mut s = String::new();
+        loop {
+            if self.espiar() == Some('\'')
+                && self.espiar_em(1) == Some('\'')
+                && self.espiar_em(2) == Some('\'')
+            {
+                self.avancar();
+                self.avancar();
+                self.avancar();
+                return Ok(s);
+            }
+            match self.avancar() {
+                None => return self.erro("texto literal multilinha sem fechamento"),
+                Some(c) => s.push(c),
+            }
+        }
+    }
+
     fn string_multilinha(&mut self) -> Result<String, ErroToml> {
         // Já consumiu as três aspas de abertura. Quebra de linha logo após
         // a abertura é ignorada, como no TOML.
@@ -262,6 +286,12 @@ impl<'a> Leitor<'a> {
                 }
             }
             Some('\'') => {
+                if self.espiar_em(1) == Some('\'') && self.espiar_em(2) == Some('\'') {
+                    self.avancar();
+                    self.avancar();
+                    self.avancar();
+                    return Ok(Valor::Texto(self.literal_multilinha()?));
+                }
                 self.avancar();
                 Ok(Valor::Texto(self.string_literal()?))
             }
@@ -460,6 +490,12 @@ echo "oi"
         let c = t["construcao"].como_tabela().unwrap();
         assert_eq!(c["passos"].como_lista().unwrap().len(), 2);
         assert_eq!(c["script"].como_texto(), Some("echo \"oi\"\n"));
+    }
+
+    #[test]
+    fn literal_multilinha_mantem_barras() {
+        let t = ler("a = '''\nsed 's@\\(x\\)@\\1@' f\n'''\n").unwrap();
+        assert_eq!(t["a"].como_texto(), Some("sed 's@\\(x\\)@\\1@' f\n"));
     }
 
     #[test]

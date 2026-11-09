@@ -1,0 +1,33 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# LFS 8 (livro LFS, edição systemd): sistema final do Ararinha, compilado
+# dentro do ambiente isolado com as ferramentas dos capítulos 5 a 7.
+
+[pacote]
+nome      = "attr"
+versao    = "2.6.0"
+resumo    = "Atributos estendidos de arquivos"
+licenca   = "GPL-2.0-or-later"
+categoria = "sistema"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://download.savannah.gnu.org/releases/attr/attr-2.6.0.tar.gz"
+
+[dependencias]
+construcao = ["mpc"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+./configure --prefix=/usr --disable-static --sysconfdir=/etc --docdir=/usr/share/doc/attr-2.6.0
+''',
+  '''
+make
+''',
+]
+instalar = [
+  '''
+make install
+''',
+]

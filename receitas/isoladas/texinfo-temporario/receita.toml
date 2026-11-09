@@ -1,0 +1,28 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# LFS 7 (livro r13.1-39-systemd): roda DENTRO da raiz em construção.
+# No LFS isso é um chroot como root; aqui é o ambiente isolado da Ninhada
+# (namespaces de usuário, sem nenhum privilégio real na máquina de build).
+
+[pacote]
+nome      = "texinfo-temporario"
+versao    = "7.3"
+resumo    = "Sistema de documentação (temporário)"
+licenca   = "GPL-3.0-or-later"
+categoria = "isoladas"
+tipo      = "toolchain"
+
+[fonte]
+url = "https://ftp.gnu.org/gnu/texinfo/texinfo-7.3.tar.xz"
+
+[dependencias]
+construcao = ["preparar-isolado", "perl-temporario"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  "./configure --prefix=/usr",
+  "make",
+]
+instalar = [
+  "make install",
+]

@@ -1,0 +1,38 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# LFS 8 (livro LFS, edição systemd): sistema final do Ararinha, compilado
+# dentro do ambiente isolado com as ferramentas dos capítulos 5 a 7.
+
+[pacote]
+nome      = "ninja"
+versao    = "1.13.2"
+resumo    = "Sistema de build Ninja"
+licenca   = "Apache-2.0"
+categoria = "sistema"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://github.com/ninja-build/ninja/archive/v1.13.2/ninja-1.13.2.tar.gz"
+
+[dependencias]
+construcao = ["flex"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+sed -i '/int Guess/a \
+  int   j = 0;\
+  char* jobs = getenv( "NINJAJOBS" );\
+  if ( jobs != NULL ) j = atoi( jobs );\
+  if ( j > 0 ) return j;\
+' src/ninja.cc
+''',
+  '''
+python3 configure.py --bootstrap --verbose
+''',
+]
+instalar = [
+  '''
+install -vm755 ninja /usr/bin/
+''',
+]

@@ -1,0 +1,38 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# LFS 6 (livro r13.1-39-systemd): ferramentas temporárias, compiladas em modo
+# cruzado com a toolchain do capítulo 5 e instaladas direto na raiz.
+# Primeiro compila um `file` para o hospedeiro, usado para gerar o banco de assinaturas.
+
+[pacote]
+nome      = "file-temporario"
+versao    = "5.48"
+resumo    = "Identificação do tipo de arquivo (temporário)"
+licenca   = "BSD-2-Clause"
+categoria = "temporarias"
+tipo      = "toolchain"
+
+[fonte]
+url = "https://astron.com/pub/file/file-5.48.tar.gz"
+
+[dependencias]
+construcao = ["toolchain"]
+
+[construcao]
+passos = [
+  """
+  mkdir -p build-local
+  cd build-local
+  ../configure --disable-bzlib --disable-libseccomp --disable-xzlib --disable-zlib
+  make
+  """,
+  """
+  ./configure --prefix=/usr \
+              --host=$ALVO \
+              --build=$(./config.guess)
+  """,
+"make FILE_COMPILE=$(pwd)/build-local/src/file",
+]
+instalar = [
+  "make DESTDIR=$RAIZ install",
+  "rm -v $RAIZ/usr/lib/libmagic.la",
+]

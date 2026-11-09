@@ -1,0 +1,36 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Primeiro pacote .pena de verdade: compilado em modo cruzado com a toolchain
+# temporária, prova que a cadeia toolchain → pacote → raiz funciona.
+# O hash da fonte fica em receitas/fontes.trava.
+
+[pacote]
+nome      = "zlib-temporario"
+versao    = "1.3.1"
+revisao   = 1
+resumo    = "Biblioteca de compressão deflate"
+licenca   = "Zlib"
+site      = "https://zlib.net"
+categoria = "temporarias"
+
+[fonte]
+url = "https://zlib.net/fossils/zlib-1.3.1.tar.gz"
+
+[dependencias]
+construcao = ["toolchain"]
+execucao   = []
+
+[construcao]
+# Variáveis: $ALVO (triplet), $PREFIXO (/usr), $DESTINO (raiz do pacote),
+# $RAIZ (sistema em construção), $FERRAMENTAS, $ARQ, $NUCLEOS.
+passos = [
+  "CHOST=$ALVO ./configure --prefix=$PREFIXO",
+  "make",
+]
+testar  = ["make check"]
+instalar = [
+  "make DESTDIR=$DESTINO install",
+  "rm -f $DESTINO/usr/lib/libz.a",
+]
+
+[arquiteturas]
+suportadas = ["x86_64", "aarch64"]

@@ -15,8 +15,7 @@ tipo      = "toolchain"
 url = "https://sourceware.org/pub/binutils/releases/binutils-2.47.tar.xz"
 
 [dependencias]
-construcao = ["toolchain", "m4", "ncurses", "bash", "coreutils", "diffutils", "file",
-              "findutils", "gawk", "grep", "gzip", "make", "patch", "sed", "tar", "xz"]
+construcao = ["toolchain", "m4-temporario", "ncurses-temporario", "bash-temporario", "coreutils-temporario", "diffutils-temporario", "file-temporario", "findutils-temporario", "gawk-temporario", "grep-temporario", "gzip-temporario", "make-temporario", "patch-temporario", "sed-temporario", "tar-temporario", "xz-temporario"]
 
 [construcao]
 construir_em = "build"

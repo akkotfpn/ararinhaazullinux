@@ -1,0 +1,33 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# LFS 8 (livro LFS, edição systemd): sistema final do Ararinha, compilado
+# dentro do ambiente isolado com as ferramentas dos capítulos 5 a 7.
+
+[pacote]
+nome      = "mpfr"
+versao    = "4.2.2"
+resumo    = "Ponto flutuante de precisão arbitrária"
+licenca   = "LGPL-3.0-or-later"
+categoria = "sistema"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://ftp.gnu.org/gnu/mpfr/mpfr-4.2.2.tar.xz"
+
+[dependencias]
+construcao = ["gmp"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+./configure --prefix=/usr --disable-static --enable-thread-safe --docdir=/usr/share/doc/mpfr-4.2.2
+''',
+  '''
+make
+''',
+]
+instalar = [
+  '''
+make install
+''',
+]

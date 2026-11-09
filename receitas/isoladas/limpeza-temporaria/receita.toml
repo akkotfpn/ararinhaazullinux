@@ -14,7 +14,7 @@ categoria = "isoladas"
 tipo      = "toolchain"
 
 [dependencias]
-construcao = ["gettext-temporario", "bison", "perl", "mpdecimal", "python", "texinfo", "util-linux"]
+construcao = ["gettext-temporario", "bison-temporario", "perl-temporario", "mpdecimal-temporario", "python-temporario", "texinfo-temporario", "util-linux-temporario"]
 
 [construcao]
 ambiente = "isolado"

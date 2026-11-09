@@ -1,0 +1,33 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# LFS 8 (livro LFS, edição systemd): sistema final do Ararinha, compilado
+# dentro do ambiente isolado com as ferramentas dos capítulos 5 a 7.
+
+[pacote]
+nome      = "acl"
+versao    = "2.4.0"
+resumo    = "Listas de controle de acesso"
+licenca   = "GPL-2.0-or-later"
+categoria = "sistema"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://download.savannah.gnu.org/releases/acl/acl-2.4.0.tar.xz"
+
+[dependencias]
+construcao = ["attr"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+./configure --prefix=/usr --disable-static --docdir=/usr/share/doc/acl-2.4.0
+''',
+  '''
+make
+''',
+]
+instalar = [
+  '''
+make install
+''',
+]
