@@ -1,0 +1,72 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Fase 2: a Plumagem, compositor Wayland do Ararinha (ADR 0004), compilada
+# dentro do próprio sistema com o Rust do Ararinha e sem rede.
+#
+# As crates vêm do plumagem/Cargo.lock: a Ninhada baixa cada uma do
+# crates.io e confere o SHA-256 registrado no Cargo.lock antes do build.
+
+[pacote]
+nome      = "plumagem"
+versao    = "0.1.0"
+resumo    = "Plumagem: compositor e shell gráfico do Ararinha"
+licenca   = "GPL-3.0-or-later AND MIT"
+categoria = "plumagem"
+tipo      = "toolchain"
+
+[dependencias]
+construcao = ["rust", "mesa", "libinput", "seatd", "libxkbcommon", "pixman", "wayland", "libdrm", "systemd"]
+
+[construcao]
+ambiente = "isolado"
+copiar = ["plumagem"]
+crates = "plumagem/Cargo.lock"
+passos = [
+  # Monta a pasta de crates no formato do `cargo vendor`.
+  '''
+mkdir -p ../vendor
+for c in ../*.crate; do
+  n=$(basename "$c" .crate)
+  mkdir -p "../vendor/$n"
+  tar -xzf "$c" -C "../vendor/$n" --strip-components=1 --no-same-owner
+  printf '{"files":{},"package":"%s"}' "$(sha256sum "$c" | cut -d' ' -f1)" > "../vendor/$n/.cargo-checksum.json"
+done
+ls ../vendor | wc -l
+''',
+  '''
+mkdir -p ../plumagem/.cargo
+cat > ../plumagem/.cargo/config.toml << 'FIM'
+[source.crates-io]
+replace-with = "vendorizadas"
+
+[source.vendorizadas]
+directory = "../vendor"
+FIM
+''',
+  '''
+cd ../plumagem && CARGO_HOME=$PWD/../cargo-home cargo build --release --frozen --offline -j $NUCLEOS
+''',
+]
+instalar = [
+  '''
+install -vDm755 ../plumagem/target/release/plumagem /usr/bin/plumagem
+plumagem --versao
+''',
+  # Lançador da sessão. Sem PAM, o login ainda não abre sessão no logind:
+  # a pasta de runtime é criada aqui e, como root, o acesso à tela e ao
+  # teclado usa o backend embutido da libseat.
+  '''
+cat > /usr/bin/plumagem-sessao << 'FIM'
+#!/bin/sh
+# Inicia a Plumagem no terminal atual (tty1, tty2...).
+: "${XDG_RUNTIME_DIR:=/run/user/$(id -u)}"
+export XDG_RUNTIME_DIR
+mkdir -p "$XDG_RUNTIME_DIR" && chmod 700 "$XDG_RUNTIME_DIR"
+if [ -z "$XDG_SESSION_ID" ] && [ "$(id -u)" = 0 ]; then
+  export LIBSEAT_BACKEND="${LIBSEAT_BACKEND:-builtin}"
+fi
+export XDG_SESSION_TYPE=wayland XDG_CURRENT_DESKTOP=Plumagem
+exec plumagem "$@" 2>>"$XDG_RUNTIME_DIR/plumagem.log"
+FIM
+chmod 755 /usr/bin/plumagem-sessao
+''',
+]

@@ -320,7 +320,10 @@ pub fn validar(todas: &BTreeMap<String, Receita>) -> Vec<String> {
             }
         }
         let destinos: Vec<_> = r.fontes.iter().filter(|f| f.destino.is_none() && f.extrair).collect();
-        if !r.fontes.is_empty() && destinos.len() != 1 {
+        // Receitas cujo código vem do repositório (`copiar`) podem ter só
+        // fontes avulsas, como as crates de um Cargo.lock.
+        let so_avulsas = r.fontes.iter().all(|f| !f.extrair) && !r.copiar.is_empty();
+        if !r.fontes.is_empty() && destinos.len() != 1 && !so_avulsas {
             erros.push(format!("{onde}: deve haver exatamente uma fonte principal (sem 'destino')"));
         }
         if r.passos.is_empty() && r.instalar.is_empty() {

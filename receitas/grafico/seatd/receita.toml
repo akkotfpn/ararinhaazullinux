@@ -1,11 +1,14 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Fase 2, base gráfica: BLFS, seatd (só a libseat, sobre o systemd-logind)
 # Compilado no ambiente isolado, sobre o sistema base da Fase 1.
+# Diferença do BLFS: com o seatd e o backend embutido, além do logind. O
+# login do Ararinha ainda não usa PAM, então o logind não cria sessões; até
+# lá, a Plumagem usa o seatd (ou o backend embutido, quando roda como root).
 
 [pacote]
 nome      = "seatd"
 versao    = "0.9.3"
-resumo    = "libseat: acesso à tela e ao teclado via systemd-logind"
+resumo    = "libseat e seatd: acesso à tela e ao teclado"
 licenca   = "MIT"
 categoria = "grafico"
 tipo      = "toolchain"
@@ -20,7 +23,7 @@ construcao = ["meson", "systemd"]
 ambiente = "isolado"
 passos = [
   '''
-mkdir -p build && cd build && meson setup --prefix=/usr --buildtype=release --wrap-mode=nofallback -D server=disabled -D libseat-seatd=disabled -D libseat-logind=systemd -D libseat-builtin=disabled -D man-pages=disabled ..
+mkdir -p build && cd build && meson setup --prefix=/usr --buildtype=release --wrap-mode=nofallback -D server=enabled -D libseat-seatd=enabled -D libseat-logind=systemd -D libseat-builtin=enabled -D man-pages=disabled ..
 ''',
   '''
 cd build && ninja

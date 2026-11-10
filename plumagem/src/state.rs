@@ -661,7 +661,13 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
         let mut seat = seat_state.new_wl_seat(&dh, seat_name.clone());
 
         let pointer = seat.add_pointer();
-        seat.add_keyboard(XkbConfig::default(), 200, 25)
+        // Teclado ABNT2 por padrão (ADR 0009); XKB_DEFAULT_LAYOUT troca.
+        let layout = std::env::var("XKB_DEFAULT_LAYOUT").unwrap_or_else(|_| "br".into());
+        let xkb = XkbConfig {
+            layout: &layout,
+            ..XkbConfig::default()
+        };
+        seat.add_keyboard(xkb, 200, 25)
             .expect("Failed to initialize the keyboard");
 
         let keyboard_shortcuts_inhibit_state = KeyboardShortcutsInhibitState::new::<Self>(&dh);
