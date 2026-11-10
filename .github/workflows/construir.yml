@@ -48,7 +48,7 @@ jobs:
     env:
       SAIDA: /home/ninhada/saida
       ALVOS: ${{ inputs.alvos }}
-      ARQ: ${{ inputs.arq || 'ambas' }}
+      ARQ: ${{ inputs.arq || 'x86_64' }}   # push: só x86_64 até o primeiro boot estável
       TRAVAR: ${{ inputs.travar && '1' || '' }}
       FORCAR: ${{ inputs.forcar && '1' || '' }}
       LIMPAR: ${{ inputs.limpar && '1' || '' }}
@@ -92,6 +92,7 @@ jobs:
           done
 
       - name: Gerar imagem
+        if: always()
         run: |
           [[ "$ARQ" == ambas ]] && arqs=(x86_64 aarch64) || arqs=("$ARQ")
           for a in "${arqs[@]}"; do
