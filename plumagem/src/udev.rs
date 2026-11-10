@@ -778,12 +778,19 @@ impl AnvilState<UdevData> {
             )
             .unwrap();
 
+        let primaria = self.backend_data.primary_gpu;
         let mut try_initialize_gpu = || {
             let display = unsafe { EGLDisplay::new(gbm.clone()).map_err(DeviceAddError::AddNode)? };
             let egl_device = EGLDevice::device_for_display(&display).map_err(DeviceAddError::AddNode)?;
 
-            if egl_device.is_software() {
+            // O Anvil recusa renderização por software. A Plumagem aceita quando
+            // é a GPU principal: VMs (bochs, simpledrm) e máquinas sem driver de
+            // 3D ainda precisam de tela, mesmo que desenhada pelo processador.
+            if egl_device.is_software() && node != primaria {
                 return Err(DeviceAddError::NoRenderNode);
+            }
+            if egl_device.is_software() {
+                warn!("sem aceleração 3D em {node}: desenhando a tela pelo processador");
             }
 
             let render_node = egl_device.try_get_render_node().ok().flatten().unwrap_or(node);
