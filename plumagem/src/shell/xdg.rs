@@ -345,53 +345,32 @@ impl<BackendData: Backend> XdgShellHandler for AnvilState<BackendData> {
     }
 
     fn maximize_request(&mut self, surface: ToplevelSurface) {
-        // NOTE: This should use layer-shell when it is implemented to
-        // get the correct maximum size
+        // A Plumagem maximiza respeitando a barra de tarefas (ver janelas.rs).
         if surface
             .current_state()
             .capabilities
             .contains(xdg_toplevel::WmCapabilities::Maximize)
         {
-            let window = self.window_for_surface(surface.wl_surface()).unwrap();
-            let outputs_for_window = self.space.outputs_for_element(&window);
-            let output = outputs_for_window
-                .first()
-                // The window hasn't been mapped yet, use the primary output instead
-                .or_else(|| self.space.outputs().next())
-                // Assumes that at least one output exists
-                .expect("No outputs found");
-            let geometry = self.space.output_geometry(output).unwrap();
-
-            surface.with_pending_state(|state| {
-                state.states.set(xdg_toplevel::State::Maximized);
-                state.size = Some(geometry.size);
-            });
-            self.space.map_element(window, geometry.loc, true);
+            if let Some(window) = self.window_for_surface(surface.wl_surface()) {
+                // Responde com configure (ou deixa para a configuração inicial).
+                self.maximizar(&window);
+                return;
+            }
         }
 
         // The protocol demands us to always reply with a configure,
         // regardless of we fulfilled the request or not
         if surface.is_initial_configure_sent() {
             surface.send_configure();
-        } else {
-            // Will be sent during initial configure
         }
     }
 
     fn unmaximize_request(&mut self, surface: ToplevelSurface) {
-        if !surface
-            .current_state()
-            .states
-            .contains(xdg_toplevel::State::Maximized)
-        {
-            return;
+        if let Some(window) = self.window_for_surface(surface.wl_surface()) {
+            if self.esta_maximizada(&window) {
+                self.restaurar(&window);
+            }
         }
-
-        surface.with_pending_state(|state| {
-            state.states.unset(xdg_toplevel::State::Maximized);
-            state.size = None;
-        });
-        surface.send_pending_configure();
     }
 
     fn grab(&mut self, surface: PopupSurface, seat: wl_seat::WlSeat, serial: Serial) {

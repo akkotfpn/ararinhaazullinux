@@ -2,7 +2,10 @@ use std::{borrow::Cow, time::Duration};
 
 use smithay::{
     backend::renderer::{
-        element::{solid::SolidColorRenderElement, surface::WaylandSurfaceRenderElement, AsRenderElements},
+        element::{
+            memory::MemoryRenderBufferRenderElement, solid::SolidColorRenderElement,
+            surface::WaylandSurfaceRenderElement, AsRenderElements,
+        },
         ImportAll, ImportMem, Renderer, Texture,
     },
     desktop::{
@@ -20,6 +23,7 @@ use smithay::{
     output::Output,
     reexports::{
         wayland_protocols::wp::presentation_time::server::wp_presentation_feedback,
+        wayland_protocols::xdg::shell::server::xdg_toplevel,
         wayland_server::protocol::wl_surface::WlSurface,
     },
     render_elements,
@@ -194,7 +198,7 @@ impl<BackendData: Backend> PointerTarget<AnvilState<BackendData>> for SSD {
         event: &ButtonEvent,
     ) {
         let mut state = self.0.decoration_state();
-        if state.is_ssd {
+        if state.is_ssd && event.state == smithay::backend::input::ButtonState::Pressed {
             state.header_bar.clicked(seat, data, &self.0, event.serial);
         }
     }
@@ -401,6 +405,7 @@ render_elements!(
     pub WindowRenderElement<R> where R: ImportAll + ImportMem;
     Window=WaylandSurfaceRenderElement<R>,
     Decoration=SolidColorRenderElement,
+    Barra=MemoryRenderBufferRenderElement<R>,
 );
 
 impl<R: Renderer> std::fmt::Debug for WindowRenderElement<R> {
@@ -408,6 +413,7 @@ impl<R: Renderer> std::fmt::Debug for WindowRenderElement<R> {
         match self {
             Self::Window(arg0) => f.debug_tuple("Window").field(arg0).finish(),
             Self::Decoration(arg0) => f.debug_tuple("Decoration").field(arg0).finish(),
+            Self::Barra(arg0) => f.debug_tuple("Barra").field(arg0).finish(),
             Self::_GenericCatcher(arg0) => f.debug_tuple("_GenericCatcher").field(arg0).finish(),
         }
     }
@@ -416,7 +422,7 @@ impl<R: Renderer> std::fmt::Debug for WindowRenderElement<R> {
 impl<R> AsRenderElements<R> for WindowElement
 where
     R: Renderer + ImportAll + ImportMem,
-    R::TextureId: Clone + Texture + 'static,
+    R::TextureId: Send + Clone + Texture + 'static,
 {
     type RenderElement = WindowRenderElement<R>;
 
@@ -431,10 +437,22 @@ where
 
         if self.decoration_state().is_ssd && !window_bbox.is_empty() {
             let window_geo = SpaceElement::geometry(&self.0);
+            let titulo = crate::painel::titulo(self);
+            let (ativa, maximizada) = self
+                .0
+                .toplevel()
+                .map(|t| {
+                    let s = t.current_state();
+                    (
+                        s.states.contains(xdg_toplevel::State::Activated),
+                        s.states.contains(xdg_toplevel::State::Maximized),
+                    )
+                })
+                .unwrap_or((true, false));
 
             let mut state = self.decoration_state();
             let width = window_geo.size.w;
-            state.header_bar.redraw(width as u32);
+            state.header_bar.redraw(width as u32, &titulo, ativa, maximizada);
             let mut vec = AsRenderElements::<R>::render_elements::<WindowRenderElement<R>>(
                 &state.header_bar,
                 renderer,

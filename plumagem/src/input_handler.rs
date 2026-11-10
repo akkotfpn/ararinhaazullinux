@@ -70,6 +70,8 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         match action {
             KeyAction::None => (),
 
+            KeyAction::Menu => self.alternar_menu(),
+
             KeyAction::Quit => {
                 info!("Quitting.");
                 self.running.store(false, Ordering::SeqCst);
@@ -227,6 +229,11 @@ impl<BackendData: Backend> AnvilState<BackendData> {
 
         let state = wl_pointer::ButtonState::from(evt.state());
 
+        // Barra de tarefas e menu iniciar ficam por cima das janelas.
+        if !self.pointer.is_grabbed() && self.clique_na_interface(wl_pointer::ButtonState::Pressed == state) {
+            return;
+        }
+
         if wl_pointer::ButtonState::Pressed == state {
             self.update_keyboard_focus(self.pointer.current_location(), serial);
         };
@@ -335,6 +342,9 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         &self,
         pos: Point<f64, Logical>,
     ) -> Option<(PointerFocusTarget, Point<f64, Logical>)> {
+        if self.sobre_a_interface(pos) {
+            return None;
+        }
         let output = self.space.outputs().find(|o| {
             let geometry = self.space.output_geometry(o).unwrap();
             geometry.contains(pos.to_i32_round())
@@ -505,6 +515,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                     KeyAction::None
                     | KeyAction::Quit
                     | KeyAction::Run(_)
+                    | KeyAction::Menu
                     | KeyAction::TogglePreview
                     | KeyAction::ToggleDecorations => self.process_common_key_action(action),
 
@@ -720,6 +731,7 @@ impl AnvilState<UdevData> {
                     KeyAction::None
                     | KeyAction::Quit
                     | KeyAction::Run(_)
+                    | KeyAction::Menu
                     | KeyAction::TogglePreview
                     | KeyAction::ToggleDecorations => self.process_common_key_action(action),
 
@@ -1283,6 +1295,8 @@ enum KeyAction {
     VtSwitch(i32),
     /// run a command
     Run(String),
+    /// Abre ou fecha o menu iniciar
+    Menu,
     /// Switch the current screen
     Screen(usize),
     ScaleUp,
@@ -1306,6 +1320,10 @@ fn process_keyboard_shortcut(modifiers: ModifiersState, keysym: Keysym) -> Optio
         Some(KeyAction::VtSwitch(
             (keysym.raw() - xkb::KEY_XF86Switch_VT_1 + 1) as i32,
         ))
+    } else if modifiers.ctrl && !modifiers.alt && keysym == Keysym::Escape {
+        // Ctrl+Esc: menu iniciar (como no Windows; a tecla Windows sozinha
+        // costuma ficar com o sistema do PC no console remoto)
+        Some(KeyAction::Menu)
     } else if modifiers.logo && keysym == Keysym::Return
         || modifiers.ctrl && modifiers.alt && (keysym == Keysym::t || keysym == Keysym::T)
     {

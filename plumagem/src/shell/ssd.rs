@@ -1,20 +1,33 @@
+// SPDX-License-Identifier: MIT AND GPL-3.0-or-later
+//! Barra de título das janelas (decoração do lado do servidor).
+//!
+//! Base do Anvil (Smithay, MIT); redesenhada para a Plumagem com o tema
+//! Spix: título à esquerda e, à direita, Minimizar, Maximizar e Fechar como
+//! no Windows. Clique duplo no título maximiza/restaura.
+
+use std::{
+    cell::{RefCell, RefMut},
+    time::{Duration, Instant},
+};
+
 use smithay::{
     backend::renderer::{
         element::{
-            solid::{SolidColorBuffer, SolidColorRenderElement},
+            memory::{MemoryRenderBuffer, MemoryRenderBufferRenderElement},
             AsRenderElements, Kind,
         },
-        Renderer,
+        ImportMem, Renderer,
     },
     desktop::WindowSurface,
     input::Seat,
     utils::{Logical, Point, Serial},
-    wayland::shell::xdg::XdgShellHandler,
 };
 
-use std::cell::{RefCell, RefMut};
-
-use crate::{state::Backend, AnvilState};
+use crate::{
+    desenho::{self, tema, Tela},
+    state::Backend,
+    AnvilState,
+};
 
 use super::WindowElement;
 
@@ -23,26 +36,24 @@ pub struct WindowState {
     pub header_bar: HeaderBar,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Botao {
+    Minimizar,
+    Maximizar,
+    Fechar,
+}
+
 #[derive(Debug, Clone)]
 pub struct HeaderBar {
     pub pointer_loc: Option<Point<f64, Logical>>,
     pub width: u32,
-    pub close_button_hover: bool,
-    pub maximize_button_hover: bool,
-    pub background: SolidColorBuffer,
-    pub close_button: SolidColorBuffer,
-    pub maximize_button: SolidColorBuffer,
+    ultimo_clique: Option<Instant>,
+    buffer: Option<(String, MemoryRenderBuffer)>,
 }
 
-const BG_COLOR: [f32; 4] = [0.75f32, 0.9f32, 0.78f32, 1f32];
-const MAX_COLOR: [f32; 4] = [1f32, 0.965f32, 0.71f32, 1f32];
-const CLOSE_COLOR: [f32; 4] = [1f32, 0.66f32, 0.612f32, 1f32];
-const MAX_COLOR_HOVER: [f32; 4] = [0.71f32, 0.624f32, 0f32, 1f32];
-const CLOSE_COLOR_HOVER: [f32; 4] = [0.75f32, 0.11f32, 0.016f32, 1f32];
-
 pub const HEADER_BAR_HEIGHT: i32 = 32;
-const BUTTON_HEIGHT: u32 = HEADER_BAR_HEIGHT as u32;
-const BUTTON_WIDTH: u32 = 32;
+const BOTAO_L: u32 = 46;
+const CLIQUE_DUPLO: Duration = Duration::from_millis(400);
 
 impl HeaderBar {
     pub fn pointer_enter(&mut self, loc: Point<f64, Logical>) {
@@ -53,6 +64,77 @@ impl HeaderBar {
         self.pointer_loc = None;
     }
 
+    fn botao_em(&self, x: f64) -> Option<Botao> {
+        let w = self.width as f64;
+        let b = BOTAO_L as f64;
+        if x >= w - b {
+            Some(Botao::Fechar)
+        } else if x >= w - 2.0 * b {
+            Some(Botao::Maximizar)
+        } else if x >= w - 3.0 * b {
+            Some(Botao::Minimizar)
+        } else {
+            None
+        }
+    }
+
+    fn acionar<BackendData: Backend>(
+        &mut self,
+        seat: &Seat<AnvilState<BackendData>>,
+        state: &mut AnvilState<BackendData>,
+        window: &WindowElement,
+        serial: Serial,
+        mover: bool,
+    ) {
+        let Some(loc) = self.pointer_loc else { return };
+        // As ações rodam fora deste borrow: maximizar consulta a decoração.
+        match self.botao_em(loc.x) {
+            Some(Botao::Fechar) => match window.0.underlying_surface() {
+                WindowSurface::Wayland(w) => w.send_close(),
+                #[cfg(feature = "xwayland")]
+                WindowSurface::X11(w) => {
+                    let _ = w.close();
+                }
+            },
+            Some(Botao::Maximizar) => {
+                let w = window.clone();
+                state.handle.insert_idle(move |data| data.alternar_maximizar(&w));
+            }
+            Some(Botao::Minimizar) => {
+                let w = window.clone();
+                state.handle.insert_idle(move |data| data.minimizar(&w));
+            }
+            None => {
+                let agora = Instant::now();
+                let duplo = self
+                    .ultimo_clique
+                    .map(|t| agora.duration_since(t) < CLIQUE_DUPLO)
+                    .unwrap_or(false);
+                self.ultimo_clique = if duplo { None } else { Some(agora) };
+                if duplo {
+                    let w = window.clone();
+                    state.handle.insert_idle(move |data| data.alternar_maximizar(&w));
+                } else if mover {
+                    match window.0.underlying_surface() {
+                        WindowSurface::Wayland(w) => {
+                            let seat = seat.clone();
+                            let toplevel = w.clone();
+                            state
+                                .handle
+                                .insert_idle(move |data| data.move_request_xdg(&toplevel, &seat, serial));
+                        }
+                        #[cfg(feature = "xwayland")]
+                        WindowSurface::X11(w) => {
+                            let window = w.clone();
+                            state.handle.insert_idle(move |data| data.move_request_x11(&window));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Botão do mouse apertado na barra de título.
     pub fn clicked<BackendData: Backend>(
         &mut self,
         seat: &Seat<AnvilState<BackendData>>,
@@ -60,48 +142,7 @@ impl HeaderBar {
         window: &WindowElement,
         serial: Serial,
     ) {
-        match self.pointer_loc.as_ref() {
-            Some(loc) if loc.x >= (self.width - BUTTON_WIDTH) as f64 => {
-                match window.0.underlying_surface() {
-                    WindowSurface::Wayland(w) => w.send_close(),
-                    #[cfg(feature = "xwayland")]
-                    WindowSurface::X11(w) => {
-                        let _ = w.close();
-                    }
-                };
-            }
-            Some(loc) if loc.x >= (self.width - (BUTTON_WIDTH * 2)) as f64 => {
-                match window.0.underlying_surface() {
-                    WindowSurface::Wayland(w) => state.maximize_request(w.clone()),
-                    #[cfg(feature = "xwayland")]
-                    WindowSurface::X11(w) => {
-                        let surface = w.clone();
-                        state
-                            .handle
-                            .insert_idle(move |data| data.maximize_request_x11(&surface));
-                    }
-                };
-            }
-            Some(_) => {
-                match window.0.underlying_surface() {
-                    WindowSurface::Wayland(w) => {
-                        let seat = seat.clone();
-                        let toplevel = w.clone();
-                        state
-                            .handle
-                            .insert_idle(move |data| data.move_request_xdg(&toplevel, &seat, serial));
-                    }
-                    #[cfg(feature = "xwayland")]
-                    WindowSurface::X11(w) => {
-                        let window = w.clone();
-                        state
-                            .handle
-                            .insert_idle(move |data| data.move_request_x11(&window));
-                    }
-                };
-            }
-            _ => {}
-        };
+        self.acionar(seat, state, window, serial, true);
     }
 
     pub fn touch_down<BackendData: Backend>(
@@ -111,158 +152,105 @@ impl HeaderBar {
         window: &WindowElement,
         serial: Serial,
     ) {
-        match self.pointer_loc.as_ref() {
-            Some(loc) if loc.x >= (self.width - BUTTON_WIDTH) as f64 => {}
-            Some(loc) if loc.x >= (self.width - (BUTTON_WIDTH * 2)) as f64 => {}
-            Some(_) => {
-                match window.0.underlying_surface() {
-                    WindowSurface::Wayland(w) => {
-                        let seat = seat.clone();
-                        let toplevel = w.clone();
-                        state
-                            .handle
-                            .insert_idle(move |data| data.move_request_xdg(&toplevel, &seat, serial));
-                    }
-                    #[cfg(feature = "xwayland")]
-                    WindowSurface::X11(w) => {
-                        let window = w.clone();
-                        state
-                            .handle
-                            .insert_idle(move |data| data.move_request_x11(&window));
-                    }
-                };
-            }
-            _ => {}
-        };
+        // No toque, os botões agem ao soltar; o título começa a mover já.
+        if self.pointer_loc.map(|l| self.botao_em(l.x).is_none()).unwrap_or(false) {
+            self.acionar(seat, state, window, serial, true);
+        }
     }
 
     pub fn touch_up<BackendData: Backend>(
         &mut self,
-        _seat: &Seat<AnvilState<BackendData>>,
+        seat: &Seat<AnvilState<BackendData>>,
         state: &mut AnvilState<BackendData>,
         window: &WindowElement,
-        _serial: Serial,
+        serial: Serial,
     ) {
-        match self.pointer_loc.as_ref() {
-            Some(loc) if loc.x >= (self.width - BUTTON_WIDTH) as f64 => {
-                match window.0.underlying_surface() {
-                    WindowSurface::Wayland(w) => w.send_close(),
-                    #[cfg(feature = "xwayland")]
-                    WindowSurface::X11(w) => {
-                        let _ = w.close();
-                    }
-                };
-            }
-            Some(loc) if loc.x >= (self.width - (BUTTON_WIDTH * 2)) as f64 => {
-                match window.0.underlying_surface() {
-                    WindowSurface::Wayland(w) => state.maximize_request(w.clone()),
-                    #[cfg(feature = "xwayland")]
-                    WindowSurface::X11(w) => {
-                        let surface = w.clone();
-                        state
-                            .handle
-                            .insert_idle(move |data| data.maximize_request_x11(&surface));
-                    }
-                };
-            }
-            _ => {}
-        };
+        if self.pointer_loc.map(|l| self.botao_em(l.x).is_some()).unwrap_or(false) {
+            self.acionar(seat, state, window, serial, false);
+        }
     }
 
-    pub fn redraw(&mut self, width: u32) {
+    pub fn redraw(&mut self, width: u32, titulo: &str, ativa: bool, maximizada: bool) {
+        self.width = width;
         if width == 0 {
-            self.width = 0;
+            return;
+        }
+        let sobre = self.pointer_loc.and_then(|l| self.botao_em(l.x));
+        let chave = format!("{width}|{titulo}|{ativa}|{maximizada}|{sobre:?}");
+        if self.buffer.as_ref().map(|(c, _)| c == &chave).unwrap_or(false) {
             return;
         }
 
-        self.background
-            .update((width as i32, HEADER_BAR_HEIGHT), BG_COLOR);
+        let (l, a) = (width as f32, HEADER_BAR_HEIGHT as f32);
+        let mut t = Tela::nova(width as i32, HEADER_BAR_HEIGHT);
+        let fundo = if ativa { tema::SUPERFICIE } else { tema::FUNDO };
+        t.retangulo(0.0, 0.0, l, a, 0.0, fundo);
+        t.retangulo(0.0, a - 1.0, l, 1.0, 0.0, tema::BORDA);
 
-        let mut needs_redraw_buttons = false;
-        if width != self.width {
-            needs_redraw_buttons = true;
-            self.width = width;
+        let cor_titulo = if ativa { tema::TEXTO } else { tema::TEXTO_SECUNDARIO };
+        let espaco = l - 3.0 * BOTAO_L as f32 - 24.0;
+        if espaco > 20.0 {
+            let txt = desenho::encurtar(13.0, titulo, espaco);
+            t.texto(12.0, 21.0, 13.0, cor_titulo, &txt);
         }
 
-        if self
-            .pointer_loc
-            .as_ref()
-            .map(|l| l.x >= (width - BUTTON_WIDTH) as f64)
-            .unwrap_or(false)
-            && (needs_redraw_buttons || !self.close_button_hover)
-        {
-            self.close_button
-                .update((BUTTON_WIDTH as i32, BUTTON_HEIGHT as i32), CLOSE_COLOR_HOVER);
-            self.close_button_hover = true;
-        } else if !self
-            .pointer_loc
-            .as_ref()
-            .map(|l| l.x >= (width - BUTTON_WIDTH) as f64)
-            .unwrap_or(false)
-            && (needs_redraw_buttons || self.close_button_hover)
-        {
-            self.close_button
-                .update((BUTTON_WIDTH as i32, BUTTON_HEIGHT as i32), CLOSE_COLOR);
-            self.close_button_hover = false;
+        let b = BOTAO_L as f32;
+        for (i, botao) in [Botao::Minimizar, Botao::Maximizar, Botao::Fechar].iter().enumerate() {
+            let x = l - (3 - i) as f32 * b;
+            let (cx, cy) = (x + b / 2.0, a / 2.0);
+            let mut cor = cor_titulo;
+            if sobre == Some(*botao) {
+                if *botao == Botao::Fechar {
+                    t.retangulo(x, 0.0, b, a - 1.0, 0.0, tema::ERRO);
+                    cor = tema::BRANCO;
+                } else {
+                    t.retangulo(x, 0.0, b, a - 1.0, 0.0, tema::SUPERFICIE_ALTA);
+                }
+            }
+            match botao {
+                Botao::Minimizar => t.linha(cx - 5.0, cy + 0.5, cx + 5.0, cy + 0.5, 1.2, cor),
+                Botao::Maximizar if maximizada => {
+                    t.contorno(cx - 5.0, cy - 2.5, 7.5, 7.5, 1.1, cor);
+                    t.linha(cx - 2.5, cy - 5.0, cx + 5.0, cy - 5.0, 1.1, cor);
+                    t.linha(cx + 5.0, cy - 5.0, cx + 5.0, cy + 2.5, 1.1, cor);
+                }
+                Botao::Maximizar => t.contorno(cx - 5.0, cy - 5.0, 10.0, 10.0, 1.1, cor),
+                Botao::Fechar => {
+                    t.linha(cx - 5.0, cy - 5.0, cx + 5.0, cy + 5.0, 1.2, cor);
+                    t.linha(cx - 5.0, cy + 5.0, cx + 5.0, cy - 5.0, 1.2, cor);
+                }
+            }
         }
-
-        if self
-            .pointer_loc
-            .as_ref()
-            .map(|l| l.x >= (width - BUTTON_WIDTH * 2) as f64 && l.x <= (width - BUTTON_WIDTH) as f64)
-            .unwrap_or(false)
-            && (needs_redraw_buttons || !self.maximize_button_hover)
-        {
-            self.maximize_button
-                .update((BUTTON_WIDTH as i32, BUTTON_HEIGHT as i32), MAX_COLOR_HOVER);
-            self.maximize_button_hover = true;
-        } else if !self
-            .pointer_loc
-            .as_ref()
-            .map(|l| l.x >= (width - BUTTON_WIDTH * 2) as f64 && l.x <= (width - BUTTON_WIDTH) as f64)
-            .unwrap_or(false)
-            && (needs_redraw_buttons || self.maximize_button_hover)
-        {
-            self.maximize_button
-                .update((BUTTON_WIDTH as i32, BUTTON_HEIGHT as i32), MAX_COLOR);
-            self.maximize_button_hover = false;
-        }
+        self.buffer = Some((chave, t.em_buffer()));
     }
 }
 
-impl<R: Renderer> AsRenderElements<R> for HeaderBar {
-    type RenderElement = SolidColorRenderElement;
+impl<R> AsRenderElements<R> for HeaderBar
+where
+    R: Renderer + ImportMem,
+    R::TextureId: Send + Clone + 'static,
+{
+    type RenderElement = MemoryRenderBufferRenderElement<R>;
 
     fn render_elements<C: From<Self::RenderElement>>(
         &self,
-        _renderer: &mut R,
+        renderer: &mut R,
         location: Point<i32, smithay::utils::Physical>,
-        scale: smithay::utils::Scale<f64>,
+        _scale: smithay::utils::Scale<f64>,
         alpha: f32,
     ) -> Vec<C> {
-        let header_end_offset: Point<i32, Logical> = Point::from((self.width as i32, 0));
-        let button_offset: Point<i32, Logical> = Point::from((BUTTON_WIDTH as i32, 0));
-
-        vec![
-            SolidColorRenderElement::from_buffer(
-                &self.close_button,
-                location + (header_end_offset - button_offset).to_physical_precise_round(scale),
-                scale,
-                alpha,
-                Kind::Unspecified,
-            )
-            .into(),
-            SolidColorRenderElement::from_buffer(
-                &self.maximize_button,
-                location + (header_end_offset - button_offset.upscale(2)).to_physical_precise_round(scale),
-                scale,
-                alpha,
-                Kind::Unspecified,
-            )
-            .into(),
-            SolidColorRenderElement::from_buffer(&self.background, location, scale, alpha, Kind::Unspecified)
-                .into(),
-        ]
+        let Some((_, buffer)) = &self.buffer else { return Vec::new() };
+        MemoryRenderBufferRenderElement::from_buffer(
+            renderer,
+            location.to_f64(),
+            buffer,
+            Some(alpha),
+            None,
+            None,
+            Kind::Unspecified,
+        )
+        .map(|e| vec![C::from(e)])
+        .unwrap_or_default()
     }
 }
 
@@ -274,11 +262,8 @@ impl WindowElement {
                 header_bar: HeaderBar {
                     pointer_loc: None,
                     width: 0,
-                    close_button_hover: false,
-                    maximize_button_hover: false,
-                    background: SolidColorBuffer::default(),
-                    close_button: SolidColorBuffer::default(),
-                    maximize_button: SolidColorBuffer::default(),
+                    ultimo_clique: None,
+                    buffer: None,
                 },
             })
         });

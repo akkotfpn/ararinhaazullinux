@@ -82,7 +82,7 @@ pub fn space_preview_elements<'a, R, C>(
 ) -> impl Iterator<Item = C> + 'a
 where
     R: Renderer + ImportAll + ImportMem,
-    R::TextureId: Clone + 'static,
+    R::TextureId: Send + Clone + 'static,
     C: From<CropRenderElement<RelocateRenderElement<RescaleRenderElement<WindowRenderElement<R>>>>> + 'a,
 {
     let constrain_behavior = ConstrainBehavior {
@@ -146,6 +146,7 @@ pub fn output_elements<R>(
     renderer: &mut R,
     show_window_preview: bool,
     fundo: Option<&crate::fundo::Fundo>,
+    interface: Vec<MemoryRenderBufferRenderElement<R>>,
 ) -> (Vec<OutputRenderElements<R, WindowRenderElement<R>>>, Color32F)
 where
     R: Renderer + ImportAll + ImportMem,
@@ -175,6 +176,9 @@ where
             .into_iter()
             .map(OutputRenderElements::from)
             .collect::<Vec<_>>();
+
+        // Barra de tarefas e menu: acima das janelas, abaixo do cursor.
+        output_render_elements.extend(interface.into_iter().map(OutputRenderElements::Fundo));
 
         if show_window_preview && space.elements_for_output(output).count() > 0 {
             output_render_elements.extend(space_preview_elements(renderer, space, output));
@@ -214,6 +218,6 @@ where
     R::TextureId: Send + Clone + 'static,
 {
     let (elements, clear_color) =
-        output_elements(output, space, custom_elements, renderer, show_window_preview, None);
+        output_elements(output, space, custom_elements, renderer, show_window_preview, None, Vec::new());
     damage_tracker.render_output(renderer, framebuffer, age, &elements, clear_color)
 }

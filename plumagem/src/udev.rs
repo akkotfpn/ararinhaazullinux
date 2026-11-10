@@ -43,7 +43,7 @@ use smithay::{
         libinput::{LibinputInputBackend, LibinputSessionInterface},
         renderer::{
             damage::Error as OutputDamageTrackerError,
-            element::{memory::MemoryRenderBuffer, AsRenderElements, RenderElementStates},
+            element::{memory::{MemoryRenderBuffer, MemoryRenderBufferRenderElement}, AsRenderElements, RenderElementStates},
             gles::GlesRenderer,
             multigpu::{gbm::GbmGlesBackend, GpuManager, MultiRenderer},
             DebugFlags, ImportDma, ImportMemWl,
@@ -1455,6 +1455,10 @@ impl AnvilState<UdevData> {
                 buffer
             });
 
+        let interface = self
+            .painel
+            .elementos(&mut renderer, &output, &self.space, self.pointer.current_location());
+
         let result = render_surface(
             surface,
             &mut renderer,
@@ -1467,6 +1471,7 @@ impl AnvilState<UdevData> {
             &mut self.cursor_status,
             self.show_window_preview,
             self.backend_data.fundo.as_ref(),
+            interface,
         );
         let reschedule = match result {
             Ok((has_rendered, states)) => {
@@ -1550,6 +1555,7 @@ fn render_surface<'a>(
     cursor_status: &mut CursorImageStatus,
     show_window_preview: bool,
     fundo: Option<&crate::fundo::Fundo>,
+    interface: Vec<MemoryRenderBufferRenderElement<UdevRenderer<'a>>>,
 ) -> Result<(bool, RenderElementStates), SwapBuffersError> {
     let output_geometry = space.output_geometry(output).unwrap();
     let scale = Scale::from(output.current_scale().fractional_scale());
@@ -1627,7 +1633,7 @@ fn render_surface<'a>(
     }
 
     let (elements, clear_color) =
-        output_elements(output, space, custom_elements, renderer, show_window_preview, fundo);
+        output_elements(output, space, custom_elements, renderer, show_window_preview, fundo, interface);
 
     let frame_mode = if surface.disable_direct_scanout {
         FrameFlags::empty()

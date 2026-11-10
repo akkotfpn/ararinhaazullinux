@@ -411,7 +411,10 @@ fn place_new_window(
             let geo = space.output_geometry(&o)?;
             let map = layer_map_for_output(&o);
             let zone = map.non_exclusive_zone();
-            Some(Rectangle::new(geo.loc + zone.loc, zone.size))
+            let mut area = Rectangle::new(geo.loc + zone.loc, zone.size);
+            // Não nasce embaixo da barra de tarefas.
+            area.size.h = (area.size.h - crate::painel::ALTURA).max(1);
+            Some(area)
         })
         .unwrap_or_else(|| Rectangle::from_size((800, 800).into()));
 
