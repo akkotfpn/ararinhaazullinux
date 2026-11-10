@@ -320,7 +320,37 @@ impl Explorador {
 
 // ---------------------------------------------------------------- ícones
 
+/// Ícones do tema (arte/icones), embutidos e reduzidos sob demanda.
+fn icone_png(nome: &'static str, lado: u32) -> Option<image::RgbaImage> {
+    use std::{cell::RefCell, collections::HashMap};
+    thread_local! {
+        static CACHE: RefCell<HashMap<(&'static str, u32), Option<image::RgbaImage>>> = RefCell::new(HashMap::new());
+    }
+    let png: &[u8] = match nome {
+        "pasta" => include_bytes!("../recursos/pasta.png"),
+        "este-computador" => include_bytes!("../recursos/este-computador.png"),
+        "unidade-sistema" => include_bytes!("../recursos/unidade-sistema.png"),
+        "unidade-disco" => include_bytes!("../recursos/unidade-disco.png"),
+        "unidade-rede" => include_bytes!("../recursos/unidade-rede.png"),
+        _ => return None,
+    };
+    CACHE.with(|c| c.borrow_mut().entry((nome, lado)).or_insert_with(|| desenho::icone(png, lado, lado)).clone())
+}
+
+fn desenhar_icone(t: &mut Tela, nome: &'static str, x: f32, y: f32, s: f32) -> bool {
+    match icone_png(nome, s.round() as u32) {
+        Some(img) => {
+            t.imagem(x.round() as i32, y.round() as i32, &img);
+            true
+        }
+        None => false,
+    }
+}
+
 fn icone_pasta(t: &mut Tela, x: f32, y: f32, s: f32) {
+    if desenhar_icone(t, "pasta", x, y, s) {
+        return;
+    }
     let aba = Cor::hex(0xE0A93A);
     let corpo = Cor::hex(0xF5C451);
     t.retangulo(x + 0.05 * s, y + 0.18 * s, 0.42 * s, 0.2 * s, 0.06 * s, aba);
@@ -339,6 +369,9 @@ fn icone_arquivo(t: &mut Tela, x: f32, y: f32, s: f32) {
 }
 
 fn icone_unidade(t: &mut Tela, x: f32, y: f32, s: f32, sistema: bool) {
+    if desenhar_icone(t, if sistema { "unidade-sistema" } else { "unidade-disco" }, x, y, s) {
+        return;
+    }
     t.retangulo(x + 0.05 * s, y + 0.3 * s, 0.9 * s, 0.42 * s, 0.08 * s, Cor::hex(0x6B7C8F));
     t.retangulo(x + 0.08 * s, y + 0.33 * s, 0.84 * s, 0.3 * s, 0.06 * s, Cor::hex(0xC9D3DD));
     t.retangulo(x + 0.75 * s, y + 0.62 * s, 0.1 * s, 0.05 * s, 0.02 * s, Cor::hex(0x3FBF6B));
@@ -349,6 +382,9 @@ fn icone_unidade(t: &mut Tela, x: f32, y: f32, s: f32, sistema: bool) {
 }
 
 fn icone_computador(t: &mut Tela, x: f32, y: f32, s: f32) {
+    if desenhar_icone(t, "este-computador", x, y, s) {
+        return;
+    }
     t.retangulo(x + 0.08 * s, y + 0.16 * s, 0.84 * s, 0.54 * s, 0.06 * s, Cor::hex(0x3A4A5C));
     t.retangulo(x + 0.12 * s, y + 0.2 * s, 0.76 * s, 0.46 * s, 0.04 * s, tema::DESTAQUE);
     t.retangulo(x + 0.42 * s, y + 0.7 * s, 0.16 * s, 0.1 * s, 0.0, Cor::hex(0x3A4A5C));
@@ -583,7 +619,8 @@ impl Explorador {
 
         ui.tela.texto(x0 + 24.0, y, 15.0, tema::TEXTO, "Locais de rede");
         y += 14.0;
-        let bx = x0 + 24.0;
+        desenhar_icone(ui.tela, "unidade-rede", x0 + 24.0, y + 2.0, 40.0);
+        let bx = x0 + 74.0;
         let bl = 230.0;
         let sobre = ui.sobre(bx, y, bl, 40.0);
         ui.tela.retangulo(bx, y, bl, 40.0, 8.0, if sobre { tema::DESTAQUE_FORTE } else { tema::DESTAQUE });

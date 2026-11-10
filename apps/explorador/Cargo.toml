@@ -8,3 +8,4 @@ authors.workspace = true
 
 [dependencies]
 penas = { path = "../penas" }
+image = { version = "0.25", default-features = false, features = ["png"] }
