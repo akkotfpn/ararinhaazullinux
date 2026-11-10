@@ -31,4 +31,8 @@ pelo smithay-client-toolkit e o mesmo desenho da Plumagem):
   e nos ícones da área de trabalho (Este Computador, Pasta pessoal,
   Lixeira).
 - **Visualizador de Imagens** e **Bloco de Notas**, abertos pelo Explorador.
+- **Configurações**: tamanho da barra de tarefas (aplicado na hora) e Sobre.
+
+Atalhos do Windows na Plumagem: Alt+Tab, Alt+F4, Win+D / Ctrl+Alt+D,
+Win+E / Ctrl+Alt+E, Ctrl+Esc (menu) e Ctrl+Alt+T (terminal).
 
