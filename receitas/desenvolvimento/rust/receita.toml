@@ -64,6 +64,8 @@ for c in rustc rust-std cargo; do
 done
 ''',
   '''
+# metade das tarefas: o LLVM embutido estoura a RAM com 1 tarefa por GB
+J=$(( NUCLEOS / 2 )); [ $J -ge 1 ] || J=1
 cat > bootstrap.toml << EOF
 change-id = 158169
 
@@ -76,7 +78,7 @@ targets = "X86;AArch64"
 description = "Ararinha Azul Linux"
 docs = false
 tools = ["cargo", "clippy", "rustdoc", "rustfmt", "src"]
-jobs = $NUCLEOS
+jobs = $J
 
 [install]
 prefix = "/usr"

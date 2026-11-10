@@ -98,3 +98,6 @@ ec4c8f74942d6dff7ace8b4ce4764f0ef9ff618a935d974ea77edee2ad240b14  https://gitlab
 ab1f0e3ec52448c33e8782eaf0422504b87c7b016b22514653ee0d8fcee479ff  https://github.com/llvm/llvm-project/releases/download/llvmorg-23.1.0/llvm-project-23.1.0.src.tar.xz
 be1816e7f6c40abb90245ad6e024bed2a7e88d7dda4561e4d5470207df616b9f  https://static.rust-lang.org/dist/rustc-1.98.1-src.tar.xz
 c46400618b4f1f2b43507f24fb22f3ae830c3416cf23b776e16e1d413aa892f0  https://cmake.org/files/v4.4/cmake-4.4.3.tar.gz
+6f6376c6ed2960ea8a963cd7387ec9d76e3f629125bc33d1fdcd7eb7012f7bbf  https://github.com/JetBrains/JetBrainsMono/releases/download/v2.304/JetBrainsMono-2.304.zip
+38d6527d346cda5c6049332a1f3338a89ea66cd7981b54d4c3ce801b392496f8  https://github.com/alacritty/alacritty/archive/v0.17.0/alacritty-0.17.0.tar.gz
+9883fdd4a49d4fb66bd8177ba6625ef9a64aa45899767dde3d36aa425756b11e  https://github.com/rsms/inter/releases/download/v4.1/Inter-4.1.zip
