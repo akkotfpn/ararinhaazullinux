@@ -31,7 +31,7 @@ use smithay_client_toolkit::{
     registry::{ProvidesRegistryState, RegistryState},
     registry_handlers,
     seat::{
-        keyboard::{KeyEvent, KeyboardHandler, Keysym, Modifiers},
+        keyboard::{KeyEvent, KeyboardHandler, Modifiers},
         pointer::{PointerEvent, PointerEventKind, PointerHandler, BTN_LEFT, BTN_RIGHT},
         Capability, SeatHandler, SeatState,
     },
