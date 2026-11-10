@@ -14,7 +14,7 @@ categoria = "plumagem"
 tipo      = "toolchain"
 
 [dependencias]
-construcao = ["rust", "mesa", "libinput", "seatd", "libxkbcommon", "pixman", "wayland", "libdrm", "systemd"]
+construcao = ["rust", "mesa", "libinput", "seatd", "libxkbcommon", "pixman", "wayland", "libdrm", "systemd", "libxcrypt", "shadow"]
 
 [construcao]
 ambiente = "isolado"
@@ -69,11 +69,9 @@ exec plumagem "$@" 2>>"$XDG_RUNTIME_DIR/plumagem.log"
 FIM
 chmod 755 /usr/bin/plumagem-sessao
 ''',
-  # Abre a interface sozinha ao entrar no tty1. Ao sair dela (menu → Sair)
-  # o usuário volta ao terminal; nos outros ttys nada muda. Para desligar:
-  # touch /etc/plumagem/sem-interface
+  # Configuração da Plumagem.
   '''
-install -vdm755 /etc/profile.d /etc/plumagem
+install -vdm755 /etc/plumagem
 cat > /etc/plumagem/plumagem.conf << 'FIM'
 # Configuração da Plumagem (vale para todos os usuários; cada um pode ter a
 # sua em ~/.config/plumagem/plumagem.conf). Mudanças valem ao reabrir a sessão.
@@ -81,12 +79,62 @@ cat > /etc/plumagem/plumagem.conf << 'FIM'
 # Tamanho da barra de tarefas: pequena, media ou grande (ou a altura em pixels).
 barra = media
 FIM
-cat > /etc/profile.d/plumagem.sh << 'FIM'
-# Plumagem: interface gráfica automática no tty1.
-if [ -z "$WAYLAND_DISPLAY" ] && [ "$(tty)" = /dev/tty1 ] && [ ! -e /etc/plumagem/sem-interface ]; then
-  plumagem-sessao
-  echo "Plumagem encerrada. Para voltar à interface: plumagem-sessao"
-fi
+rm -f /etc/profile.d/plumagem.sh
+''',
+  # Ninho: a tela de entrada no tty1. O seatd dá às sessões dos usuários
+  # (grupo "seat") acesso à tela e ao teclado, sem precisar de PAM/logind.
+  # Para voltar ao login de texto: systemctl disable --now ninho e
+  # systemctl unmask getty@tty1.
+  '''
+getent group seat >/dev/null || groupadd -r seat
+cat > /usr/bin/ninho << 'FIM'
+#!/bin/sh
+# Ninho: abre a Plumagem como tela de entrada; com a senha certa, abre a
+# sessão do usuário escolhido. Quando a sessão termina, o systemd reinicia
+# o Ninho.
+export XDG_RUNTIME_DIR=/run/ninho XDG_SESSION_TYPE=wayland LIBSEAT_BACKEND=seatd
+mkdir -p "$XDG_RUNTIME_DIR" && chmod 700 "$XDG_RUNTIME_DIR"
+rm -f "$XDG_RUNTIME_DIR/escolha"
+plumagem --ninho 2>>/var/log/ninho.log
+u=$(cat "$XDG_RUNTIME_DIR/escolha" 2>/dev/null) || exit 1
+rm -f "$XDG_RUNTIME_DIR/escolha"
+uid=$(id -u "$u") || exit 1
+dir=/run/user/$uid
+mkdir -p "$dir" && chown "$u:" "$dir" && chmod 700 "$dir"
+exec su -l "$u" -c plumagem-sessao
 FIM
+chmod 755 /usr/bin/ninho
+cat > /usr/lib/systemd/system/seatd.service << 'FIM'
+[Unit]
+Description=seatd: acesso à tela e ao teclado para as sessões gráficas
+Documentation=man:seatd(1)
+
+[Service]
+ExecStart=/usr/bin/seatd -g seat
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+FIM
+cat > /usr/lib/systemd/system/ninho.service << 'FIM'
+[Unit]
+Description=Ninho: tela de entrada do Ararinha
+Wants=seatd.service
+After=seatd.service systemd-user-sessions.service systemd-logind.service
+
+[Service]
+ExecStart=/usr/bin/ninho
+Restart=always
+RestartSec=1
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+
+[Install]
+WantedBy=multi-user.target
+Alias=display-manager.service
+FIM
+systemctl enable seatd.service ninho.service
+systemctl mask getty@tty1.service
 ''',
 ]
