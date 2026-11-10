@@ -83,6 +83,9 @@ const ICONES_AREA: [(&str, &str); 3] = [
         "sh -c 'mkdir -p \"$HOME/.local/share/Trash/files\" && exec explorador \"$HOME/.local/share/Trash/files\"'",
     ),
 ];
+/// Apps fixados na barra de tarefas: id do .desktop.
+pub const FIXADOS: [&str; 1] = ["explorador"];
+const FIXADO_L: i32 = 40;
 const ICONE_L: i32 = 92;
 const ICONE_A: i32 = 92;
 const AREA_X: i32 = 10;
@@ -106,6 +109,8 @@ pub enum Alvo {
     SomBarra(u16),
     SomMudo,
     SomPainel,
+    /// App fixado na barra (atalho ao lado do botão iniciar).
+    Fixado(usize),
     /// Ícone de rede na bandeja e o painel dele.
     Rede,
     RedePainel,
@@ -267,8 +272,18 @@ impl Painel {
         altura() - 8
     }
 
+    fn fixados_x() -> i32 {
+        INICIAR_X + Self::iniciar_l() + 6
+    }
+
     fn tarefas_x() -> i32 {
-        INICIAR_X + Self::iniciar_l() + 10
+        Self::fixados_x() + FIXADOS.len() as i32 * FIXADO_L + 10
+    }
+
+    /// App (em `apps`) de um fixado, pelo id do .desktop.
+    pub fn app_fixado(&self, i: usize) -> Option<&App> {
+        let id = FIXADOS.get(i)?;
+        self.apps.as_ref()?.iter().find(|a| a.ids.first().map(|x| x == id).unwrap_or(false))
     }
 
     fn largura_tarefa(&self, largura_tela: i32) -> i32 {
@@ -335,6 +350,10 @@ impl Painel {
         }
         if (INICIAR_X..INICIAR_X + Self::iniciar_l()).contains(&x) {
             return Some(Alvo::Iniciar);
+        }
+        let fx = Self::fixados_x();
+        if x >= fx && x < fx + FIXADOS.len() as i32 * FIXADO_L {
+            return Some(Alvo::Fixado(((x - fx) / FIXADO_L) as usize));
         }
         let bx = tela.w - RELOGIO_L - BANDEJA_L;
         if (bx..bx + ICONE_BANDEJA).contains(&x) {
@@ -839,6 +858,26 @@ impl Painel {
         } else {
             t.retangulo(INICIAR_X as f32 + 6.0, meio - 14.0, 28.0, 28.0, 14.0, tema::DESTAQUE);
         }
+
+        // Apps fixados (ícone só).
+        for i in 0..FIXADOS.len() {
+            let x = (Self::fixados_x() + i as i32 * FIXADO_L) as f32;
+            if hover == Some(Alvo::Fixado(i)) {
+                t.retangulo(x + 2.0, 4.0, FIXADO_L as f32 - 4.0, bh, 6.0, tema::BRANCO.com_alfa(130));
+            }
+            let app = self.app_fixado(i);
+            let nome = app.map(|a| a.nome.clone()).unwrap_or_else(|| FIXADOS[i].to_string());
+            let lado = (hf * 0.55).round().clamp(18.0, 30.0);
+            self.desenhar_icone(&mut t, app, &nome, x + (FIXADO_L as f32 - lado) / 2.0, meio - lado / 2.0, lado);
+        }
+        t.retangulo(
+            (Self::tarefas_x() - 6) as f32,
+            hf * 0.28,
+            1.0,
+            hf * 0.44,
+            0.0,
+            tema::TEXTO_SECUNDARIO.com_alfa(70),
+        );
 
         // Um botão por janela.
         let lt = self.largura_tarefa(largura);

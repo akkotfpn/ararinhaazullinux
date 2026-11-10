@@ -186,6 +186,15 @@ impl<B: Backend> AnvilState<B> {
 
         match alvo {
             Alvo::Iniciar => self.alternar_menu(),
+            Alvo::Fixado(i) => {
+                self.painel.menu_aberto = false;
+                let cmd = self
+                    .painel
+                    .app_fixado(i)
+                    .map(|a| a.exec.clone())
+                    .unwrap_or_else(|| painel::FIXADOS[i].to_string());
+                self.executar_programa(&cmd);
+            }
             Alvo::Tarefa(i) => {
                 self.painel.menu_aberto = false;
                 if let Some(w) = self.painel.ordem.get(i).cloned() {
