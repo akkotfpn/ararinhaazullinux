@@ -13,6 +13,8 @@ pub struct Opcoes {
     pub testar: bool,
     pub isolar: bool,
     pub nucleos: usize,
+    /// Raiz do repositório (para `copiar`).
+    pub repo: PathBuf,
 }
 
 pub enum Resultado {
@@ -373,6 +375,13 @@ pub fn construir(
     for a in avulsos {
         let nome = a.file_name().ok_or("fonte sem nome de arquivo")?;
         fs::copy(&a, ao_lado.join(nome)).map_err(|e| format!("copiar {}: {e}", a.display()))?;
+    }
+    for item in &r.copiar {
+        let origem = op.repo.join(item);
+        if !origem.exists() {
+            return Err(format!("copiar: {} não existe no repositório", origem.display()));
+        }
+        executar(Command::new("cp").arg("-a").arg(&origem).arg(&ao_lado), &format!("copiar {item}"))?;
     }
     for (d, origem) in extras {
         let alvo = codigo.join(&d);

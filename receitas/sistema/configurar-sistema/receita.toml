@@ -1,0 +1,83 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# LFS 9 e 10 (edição systemd) com a identidade do Ararinha: nome, os-release,
+# pt_BR.UTF-8, teclado ABNT2, rede por DHCP e tela de login com o Mingau.
+
+[pacote]
+nome      = "configurar-sistema"
+versao    = "0.1"
+resumo    = "Configuração do sistema (LFS 9 e 10) com a identidade do Ararinha"
+licenca   = "GPL-3.0-or-later"
+categoria = "sistema"
+tipo      = "toolchain"
+
+[dependencias]
+construcao = ["spix-kernel"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+echo ararinha > /etc/hostname
+''',
+  '''
+cat > /etc/os-release << "EOF"
+NAME="Ararinha Azul Linux"
+PRETTY_NAME="Ararinha Azul Linux 0.1 (Primeiro Pio)"
+ID=ararinha
+VERSION="0.1 (Primeiro Pio)"
+VERSION_ID=0.1
+VERSION_CODENAME=primeiro-pio
+ANSI_COLOR="0;38;2;43;123;196"
+HOME_URL="https://github.com/akkotfpn/ararinhaazullinux"
+LOGO=ararinha
+EOF
+''',
+  '''
+echo 'LANG=pt_BR.UTF-8' > /etc/locale.conf
+''',
+  '''
+echo 'KEYMAP=br-abnt2' > /etc/vconsole.conf
+''',
+  '''
+printf '/bin/sh\n/bin/bash\n' > /etc/shells
+''',
+  '''
+cat > /etc/fstab << "EOF"
+# Ararinha Azul Linux — a raiz é achada pelo nome da partição GPT
+PARTLABEL=ararinha-raiz  /  ext4  defaults  1 1
+EOF
+''',
+  '''
+mkdir -p /etc/systemd/network
+cat > /etc/systemd/network/10-cabo.network << "EOF"
+# Rede cabeada por DHCP (provisório na Fase 1; o Canto usa NetworkManager)
+[Match]
+Name=en* eth*
+
+[Network]
+DHCP=yes
+EOF
+''',
+  '''
+systemctl enable systemd-networkd systemd-resolved
+''',
+  '''
+ln -sfv ../run/systemd/resolve/stub-resolv.conf /etc/resolv.conf
+''',
+  '''
+cat > /etc/issue << "EOF"
+
+        .--.
+       / o  \__     Ararinha Azul Linux 0.1 (Primeiro Pio)
+      (   ___  >    Bem-vindo! O Mingau estava te esperando.
+       \  \  \/
+        '--'--'     \n  \l
+
+EOF
+''',
+  '''
+rm -f /etc/machine-id
+''',
+]
+instalar = [
+]

@@ -91,6 +91,17 @@ jobs:
             $N construir "${alvos[@]}" --arq "$a" --saida "$SAIDA" ${FORCAR:+--forcar}
           done
 
+      - name: Gerar imagem
+        run: |
+          [[ "$ARQ" == ambas ]] && arqs=(x86_64 aarch64) || arqs=("$ARQ")
+          for a in "${arqs[@]}"; do
+            if [[ -f "$SAIDA/$a/estado/configurar-sistema.ok" ]]; then
+              ferramentas/gerar-imagem.sh "$SAIDA" "$a"
+            else
+              echo "$a: sistema ainda incompleto, sem imagem."
+            fi
+          done
+
       - name: Log da construção que falhou
         if: failure()
         run: |
@@ -103,6 +114,8 @@ jobs:
           {
             echo "### Pacotes .pena"
             ls -1 "$SAIDA"/*/pacotes/ 2>/dev/null | sed 's/^/    /' || echo "nenhum"
+            echo "### Imagens"
+            ls -lh "$SAIDA"/imagens/ 2>/dev/null | sed 's/^/    /' || echo "nenhuma"
             echo "### Espaço em disco"
             df -h "$SAIDA" | tail -n1
           } >> "$GITHUB_STEP_SUMMARY"

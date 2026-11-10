@@ -56,6 +56,9 @@ pub struct Receita {
     /// `true` = os passos rodam DENTRO da raiz em construção (o chroot do
     /// LFS, cap. 7 em diante), via namespaces de usuário, sem root real.
     pub isolado: bool,
+    /// Arquivos ou pastas do repositório copiados para o lado do código
+    /// (ex.: "kernel/config"), visíveis como ../config nos passos.
+    pub copiar: Vec<String>,
     pub arquiteturas: Vec<String>,
     pub caminho: PathBuf,
     /// Conteúdo bruto, usado para calcular a "impressão digital" da receita.
@@ -150,6 +153,7 @@ pub fn de_texto(conteudo: &str, caminho: &Path) -> Result<Receita, String> {
         instalar: lista_textos(cons, "instalar")?,
         diretorio: cons.and_then(|c| texto(c, "diretorio")),
         construir_em: cons.and_then(|c| texto(c, "construir_em")),
+        copiar: lista_textos(cons, "copiar")?,
         isolado: match cons.and_then(|c| texto(c, "ambiente")).as_deref() {
             None | Some("hospedeiro") => false,
             Some("isolado") => true,

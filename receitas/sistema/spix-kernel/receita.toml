@@ -1,0 +1,57 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# LFS 10.3 com a configuração do Spix Kernel (docs/adr/0001): defconfig da
+# arquitetura + fragmentos de kernel/config. O kernel é um aplicativo UEFI
+# (EFI stub) e inicia direto do firmware no primeiro boot.
+
+[pacote]
+nome      = "spix-kernel"
+versao    = "7.1.8"
+resumo    = "Spix Kernel: o kernel Linux do Ararinha"
+licenca   = "GPL-2.0-only"
+categoria = "sistema"
+tipo      = "toolchain"
+
+[fonte]
+url = "https://cdn.kernel.org/pub/linux/kernel/v7.x/linux-7.1.8.tar.xz"
+
+[dependencias]
+construcao = ["e2fsprogs"]
+
+[construcao]
+ambiente = "isolado"
+copiar = ["kernel/config"]
+passos = [
+  '''
+make mrproper
+''',
+  '''
+make defconfig
+''',
+  '''
+scripts/kconfig/merge_config.sh -m .config ../config/base.config ../config/vm.config ../config/primeiro-boot.config
+''',
+  '''
+make olddefconfig
+''',
+  '''
+make
+''',
+]
+instalar = [
+  '''
+make modules_install
+''',
+  '''
+mkdir -p /boot
+case $(uname -m) in
+  x86_64)  cp -v arch/x86/boot/bzImage /boot/vmlinuz-spix ;;
+  aarch64) cp -v arch/arm64/boot/Image  /boot/vmlinuz-spix ;;
+esac
+cp -v .config /boot/config-spix
+''',
+  '''
+for op in CONFIG_EFI_STUB CONFIG_EXT4_FS CONFIG_SCSI_VIRTIO CONFIG_VIRTIO_BLK CONFIG_DEVTMPFS; do
+  grep -q "^$op=y" .config || { echo "faltou $op=y"; exit 1; }
+done
+''',
+]

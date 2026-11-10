@@ -225,7 +225,7 @@ fn rodar(a: Args) -> Result<(), String> {
             if a.isolar && !isolar {
                 eprintln!("aviso: namespaces indisponíveis; construindo sem isolamento de rede.");
             }
-            let op = construir::Opcoes { forcar: a.forcar, testar: a.testar, isolar, nucleos: a.nucleos };
+            let op = construir::Opcoes { forcar: a.forcar, testar: a.testar, isolar, nucleos: a.nucleos, repo: repo.clone() };
             println!("Construindo {} pacotes para {} em {}", p.len(), a.arq, amb.base.display());
             let mut impressoes: BTreeMap<String, String> = BTreeMap::new();
             for (i, n) in p.iter().enumerate() {
@@ -238,6 +238,16 @@ fn rodar(a: Args) -> Result<(), String> {
                             deps.push(format!("{x}={imp}"));
                         }
                     }
+                }
+                // Arquivos copiados do repositório também entram na impressão:
+                // mudar a config do kernel reconstrói o kernel.
+                for item in &r.copiar {
+                    let saida = std::process::Command::new("bash")
+                        .args(["-c", "find \"$1\" -type f -print0 | sort -z | xargs -0 -r sha256sum | sha256sum", "_", item])
+                        .current_dir(&repo)
+                        .output()
+                        .map_err(|e| e.to_string())?;
+                    deps.push(format!("copiar:{item}={}", String::from_utf8_lossy(&saida.stdout).trim()));
                 }
                 deps.sort();
                 deps.dedup();

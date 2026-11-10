@@ -27,8 +27,15 @@ cd build && ninja
 ''',
 ]
 instalar = [
+  # DESTDIR=/ faz o script de pós-instalação do dbus pular o chown em Python
+  # (no ambiente isolado só existe o uid 0); dono e permissão do launch-helper
+  # são definidos logo abaixo e o grupo fica anotado para a imagem.
   '''
-cd build && ninja install
+cd build && DESTDIR=/ ninja install
+''',
+  '''
+chgrp messagebus /usr/libexec/dbus-daemon-launch-helper
+chmod 4750 /usr/libexec/dbus-daemon-launch-helper
 ''',
   '''
 mkdir -p /var/lib/dbus && ln -sfv /etc/machine-id /var/lib/dbus
