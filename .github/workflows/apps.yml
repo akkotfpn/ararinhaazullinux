@@ -27,7 +27,7 @@ jobs:
 
       - name: Compilar
         working-directory: apps
-        run: cargo build --release 2>&1 | tee ../compilacao.log
+        run: set -o pipefail; cargo build --release 2>&1 | tee ../compilacao.log
 
       - name: Erros (resumo)
         if: failure()
