@@ -36,7 +36,7 @@ EOF
 echo 'LANG=pt_BR.UTF-8' > /etc/locale.conf
 ''',
   '''
-echo 'KEYMAP=br-abnt2' > /etc/vconsole.conf
+printf 'KEYMAP=br-abnt2\nFONT=eurlatgr\n' > /etc/vconsole.conf
 ''',
   '''
 printf '/bin/sh\n/bin/bash\n' > /etc/shells

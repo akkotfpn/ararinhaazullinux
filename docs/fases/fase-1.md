@@ -12,7 +12,8 @@ Sem interface gráfica nesta fase. A Plumagem começa na Fase 2.
 
 > **9 de novembro de 2026, 21h46: o Ararinha Azul Linux bootou pela primeira vez** no Proxmox
 > (`ararinha login:` no console serial), entrou na rede por DHCP com o nome
-> "ararinha" e, às 22h04, aconteceu o primeiro login como root, em pt_BR.
+> "ararinha" e, às 22h04, aconteceu o primeiro login como root, em pt_BR. Às 22h16 o console de vídeo
+> funcionou: logo do Mingau e login direto na tela da VM.
 
 | Etapa | Situação |
 |---|---|
