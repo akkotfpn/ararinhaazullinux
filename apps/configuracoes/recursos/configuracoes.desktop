@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Configurações
+Name[en]=Settings
+Comment=Personalize o Ararinha e veja as informações do computador
+Exec=configuracoes
+Icon=configuracoes
+StartupWMClass=configuracoes
+Categories=Settings;System;

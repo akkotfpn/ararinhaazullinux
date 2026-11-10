@@ -32,32 +32,52 @@ use crate::{
 const ALTURAS: [(&str, i32); 3] = [("pequena", 38), ("media", 44), ("grande", 50)];
 const ALTURA_PADRAO: i32 = 44;
 
-/// Altura da barra de tarefas, lida uma vez da configuração.
-pub fn altura() -> i32 {
-    static ALTURA: std::sync::OnceLock<i32> = std::sync::OnceLock::new();
-    *ALTURA.get_or_init(|| {
-        let caminhos = [
-            std::env::var("HOME").map(|h| format!("{h}/.config/plumagem/plumagem.conf")).unwrap_or_default(),
-            "/etc/plumagem/plumagem.conf".to_string(),
-        ];
-        for caminho in caminhos {
-            let Ok(texto) = std::fs::read_to_string(&caminho) else { continue };
-            for linha in texto.lines() {
-                let Some((k, v)) = linha.split_once('=') else { continue };
-                if k.trim() != "barra" {
-                    continue;
-                }
-                let v = v.trim().trim_matches('"').to_lowercase().replace('é', "e");
-                if let Some((_, a)) = ALTURAS.iter().find(|(n, _)| *n == v) {
-                    return *a;
-                }
-                if let Ok(a) = v.parse::<i32>() {
-                    return a.clamp(32, 72);
-                }
+static ALTURA_ATUAL: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(0);
+
+fn caminhos_config() -> [String; 2] {
+    [
+        std::env::var("HOME").map(|h| format!("{h}/.config/plumagem/plumagem.conf")).unwrap_or_default(),
+        "/etc/plumagem/plumagem.conf".to_string(),
+    ]
+}
+
+fn ler_altura() -> i32 {
+    for caminho in caminhos_config() {
+        let Ok(texto) = std::fs::read_to_string(&caminho) else { continue };
+        for linha in texto.lines() {
+            let Some((k, v)) = linha.split_once('=') else { continue };
+            if k.trim() != "barra" {
+                continue;
+            }
+            let v = v.trim().trim_matches('"').to_lowercase().replace('é', "e");
+            if let Some((_, a)) = ALTURAS.iter().find(|(n, _)| *n == v) {
+                return *a;
+            }
+            if let Ok(a) = v.parse::<i32>() {
+                return a.clamp(32, 72);
             }
         }
-        ALTURA_PADRAO
-    })
+    }
+    ALTURA_PADRAO
+}
+
+/// Altura da barra de tarefas (relida quando a configuração muda).
+pub fn altura() -> i32 {
+    let a = ALTURA_ATUAL.load(std::sync::atomic::Ordering::Relaxed);
+    if a > 0 {
+        return a;
+    }
+    let a = ler_altura();
+    ALTURA_ATUAL.store(a, std::sync::atomic::Ordering::Relaxed);
+    a
+}
+
+/// Data de modificação das configurações (para perceber mudanças).
+fn versao_config() -> Vec<Option<std::time::SystemTime>> {
+    caminhos_config()
+        .iter()
+        .map(|c| std::fs::metadata(c).and_then(|m| m.modified()).ok())
+        .collect()
 }
 
 const MENU_L: i32 = 380;
@@ -182,6 +202,8 @@ pub struct Painel {
     menu: Option<(String, MemoryRenderBuffer)>,
     logo: Option<image::RgbaImage>,
     mingau: Option<image::RgbaImage>,
+    /// Última checagem da configuração: (segundo, datas dos arquivos).
+    config_visto: (u64, Vec<Option<std::time::SystemTime>>),
 }
 
 impl std::fmt::Debug for Painel {
@@ -223,6 +245,7 @@ impl Default for Painel {
             menu: None,
             logo: desenho::icone(LOGO_PNG, (altura() - 16).max(16) as u32, (altura() - 16).max(16) as u32),
             mingau: desenho::icone(MINGAU_PNG, 44, 51),
+            config_visto: (0, versao_config()),
         }
     }
 }
@@ -401,6 +424,25 @@ impl Painel {
                 self.som.mudo = false;
             }
         }
+    }
+
+    /// A cada segundo, vê se a configuração mudou (o app Configurações
+    /// grava nela) e aplica o novo tamanho da barra na hora.
+    fn ver_config(&mut self) {
+        let seg = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+        if seg == self.config_visto.0 {
+            return;
+        }
+        let v = versao_config();
+        if v != self.config_visto.1 {
+            let a = ler_altura();
+            ALTURA_ATUAL.store(a, std::sync::atomic::Ordering::Relaxed);
+            let lado = (a - 16).max(16) as u32;
+            self.logo = desenho::icone(LOGO_PNG, lado, lado);
+            self.barra = None;
+            self.menu = None;
+        }
+        self.config_visto = (seg, v);
     }
 
     /// Lê o estado da rede: interface com rota padrão, IP e se é sem fio.
@@ -708,6 +750,7 @@ impl Painel {
 
         self.ler_som(false);
         self.ler_rede();
+        self.ver_config();
         let mut elementos = Vec::new();
 
         if self.rede_aberta {
@@ -777,8 +820,9 @@ impl Painel {
         }
 
         let chave = format!(
-            "{}|{hover:?}|{}|{}|{}|{janelas:?}|{:?}|{}",
-            tela.w, self.menu_aberto, self.relogio.1, self.relogio.2, self.som, self.som_aberto
+            "{}|{}|{hover:?}|{}|{}|{}|{janelas:?}|{:?}|{}",
+            tela.w,
+            altura(), self.menu_aberto, self.relogio.1, self.relogio.2, self.som, self.som_aberto
         ) + &format!("|{:?}|{}", self.rede, self.rede_aberta);
         if self.barra.as_ref().map(|(c, _)| c != &chave).unwrap_or(true) {
             let t = self.desenhar_barra(tela.w, tela.h, hover, &janelas);
