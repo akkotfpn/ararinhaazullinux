@@ -460,12 +460,12 @@ impl Painel {
         if h < 42 {
             let txt = format!("{hora}  {data}");
             let lx = desenho::medir(12.0, &txt);
-            t.texto_com_brilho(l - 12.0 - lx, meio + 4.5, 12.0, tema::TEXTO, &txt);
+            t.texto(l - 12.0 - lx, meio + 4.5, 12.0, tema::TEXTO, &txt);
         } else {
             let lh = desenho::medir(13.0, hora);
             let ld = desenho::medir(12.0, data);
             t.texto_com_brilho(l - 14.0 - lh, meio - 3.0, 13.0, tema::TEXTO, hora);
-            t.texto_com_brilho(l - 14.0 - ld, meio + 14.0, 12.0, tema::TEXTO_SECUNDARIO, data);
+            t.texto(l - 14.0 - ld, meio + 14.0, 12.0, tema::TEXTO, data);
         }
         t
     }

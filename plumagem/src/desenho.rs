@@ -159,8 +159,9 @@ impl Tela {
     /// Texto com um halo claro atrás, como os títulos do Aero no Windows 7:
     /// continua legível sobre o vidro, qualquer que seja o fundo.
     pub fn texto_com_brilho(&mut self, x: f32, y: f32, tamanho: f32, cor: Cor, texto: &str) -> f32 {
-        let halo = tema::BRANCO.com_alfa(70);
-        for (dx, dy) in [(-1.0, 0.0), (1.0, 0.0), (0.0, -1.0), (0.0, 1.0), (-1.0, -1.0), (1.0, 1.0), (-1.0, 1.0), (1.0, -1.0)] {
+        // Halo leve: forte demais, deixa letras pequenas borradas.
+        let halo = tema::BRANCO.com_alfa(45);
+        for (dx, dy) in [(-1.0, 0.0), (1.0, 0.0), (0.0, -1.0), (0.0, 1.0)] {
             self.texto(x + dx, y + dy, tamanho, halo, texto);
         }
         self.texto(x, y, tamanho, cor, texto)
