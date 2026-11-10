@@ -1400,6 +1400,30 @@ impl AnvilState<UdevData> {
 
         self.pre_repaint(&output, frame_target);
 
+        // Forma do cursor: redimensionar (borda ou arrasto em andamento), a
+        // pedida pelo programa ou a seta. Desenhada pela própria Plumagem.
+        use crate::cursor::Forma;
+        let pos = self.pointer.current_location();
+        let bordas = if self.ninho.is_some() {
+            None
+        } else {
+            self.painel.cursor_redim.or_else(|| {
+                (!self.pointer.is_grabbed() && !self.sobre_a_interface(pos))
+                    .then(|| self.borda_sob(pos).map(|(_, e)| e))
+                    .flatten()
+            })
+        };
+        let forma = match (&bordas, &self.cursor_status) {
+            (Some(e), _) => Forma::de_bordas(*e),
+            (None, CursorImageStatus::Named(icone)) => Forma::de_icone(*icone),
+            _ => Forma::Seta,
+        };
+        let frame = crate::cursor::imagem_da_forma(forma);
+        let quente_nomeado = Point::<i32, Logical>::from((frame.xhot as i32, frame.yhot as i32));
+        // Sobre a borda, a forma da Plumagem vale mesmo que o programa tenha
+        // posto o cursor dele.
+        let mut status_forcado = CursorImageStatus::Named(smithay::input::pointer::CursorIcon::Default);
+
         let device = if let Some(device) = self.backend_data.backends.get_mut(&node) {
             device
         } else {
@@ -1414,11 +1438,6 @@ impl AnvilState<UdevData> {
 
         let start = Instant::now();
 
-        // TODO get scale from the rendersurface when supporting HiDPI
-        let frame = self
-            .backend_data
-            .pointer_image
-            .get_image(1 /*scale*/, self.clock.now().into());
 
         let primary_gpu = self.backend_data.primary_gpu;
         let render_node = surface.render_node.unwrap_or(primary_gpu);
@@ -1482,7 +1501,8 @@ impl AnvilState<UdevData> {
             &pointer_image,
             &mut self.backend_data.pointer_element,
             &self.dnd_icon,
-            &mut self.cursor_status,
+            if bordas.is_some() { &mut status_forcado } else { &mut self.cursor_status },
+            quente_nomeado,
             self.show_window_preview,
             self.backend_data.fundo.as_ref(),
             interface,
@@ -1568,6 +1588,7 @@ fn render_surface<'a>(
     pointer_element: &mut PointerElement,
     dnd_icon: &Option<DndIcon>,
     cursor_status: &mut CursorImageStatus,
+    quente_nomeado: Point<i32, Logical>,
     show_window_preview: bool,
     fundo: Option<&crate::fundo::Fundo>,
     interface: Vec<MemoryRenderBufferRenderElement<UdevRenderer<'a>>>,
@@ -1590,7 +1611,7 @@ fn render_surface<'a>(
                     .hotspot
             })
         } else {
-            (0, 0).into()
+            quente_nomeado
         };
         let cursor_pos = pointer_location - output_geometry.loc.to_f64();
 

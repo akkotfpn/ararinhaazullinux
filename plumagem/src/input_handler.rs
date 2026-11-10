@@ -245,6 +245,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
 
         if wl_pointer::ButtonState::Released == state {
             self.painel.selecao = None;
+            self.painel.cursor_redim = None;
         }
 
         // Ninho (tela de entrada): só o cartão de login recebe cliques.

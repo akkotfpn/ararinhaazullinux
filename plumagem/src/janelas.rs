@@ -286,6 +286,7 @@ impl<B: Backend> AnvilState<B> {
             }
         });
         self.focar_janela(w);
+        self.painel.cursor_redim = Some(bordas);
         let grab = PointerResizeSurfaceGrab {
             start_data: GrabStartData {
                 focus: None,

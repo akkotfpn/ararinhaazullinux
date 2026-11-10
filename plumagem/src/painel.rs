@@ -107,6 +107,8 @@ pub struct Painel {
     /// Retângulo de seleção na área de trabalho: onde o arrasto começou.
     pub selecao: Option<Point<f64, Logical>>,
     sel: [SolidColorBuffer; 5],
+    /// Bordas da janela sendo redimensionada (para a forma do cursor).
+    pub cursor_redim: Option<crate::shell::ResizeEdge>,
     pub apps: Option<Vec<App>>,
     relogio: (u64, String, String),
     barra: Option<(String, MemoryRenderBuffer)>,
@@ -133,6 +135,7 @@ impl Default for Painel {
             minimizadas: Vec::new(),
             selecao: None,
             sel: Default::default(),
+            cursor_redim: None,
             apps: None,
             relogio: (0, String::new(), String::new()),
             barra: None,

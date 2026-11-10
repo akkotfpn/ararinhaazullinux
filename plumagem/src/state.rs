@@ -316,6 +316,10 @@ impl<BackendData: Backend> TabletSeatHandler for AnvilState<BackendData> {
 }
 delegate_tablet_manager!(@<BackendData: Backend + 'static> AnvilState<BackendData>);
 
+// Cursores pelo nome (cursor-shape): o programa pede "texto", "mão"...
+// e a Plumagem desenha a forma dela.
+smithay::delegate_cursor_shape!(@<BackendData: Backend + 'static> AnvilState<BackendData>);
+
 delegate_text_input_manager!(@<BackendData: Backend + 'static> AnvilState<BackendData>);
 
 impl<BackendData: Backend> InputMethodHandler for AnvilState<BackendData> {
@@ -654,6 +658,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             PointerGesturesState::new::<Self>(&dh);
         }
         TabletManagerState::new::<Self>(&dh);
+        smithay::wayland::cursor_shape::CursorShapeManagerState::new::<Self>(&dh);
         SecurityContextState::new::<Self, _>(&dh, |client| {
             client
                 .get_data::<ClientState>()
