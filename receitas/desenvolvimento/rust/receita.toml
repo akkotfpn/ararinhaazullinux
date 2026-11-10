@@ -1,0 +1,111 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Fase 2: BLFS, Rust. A Plumagem e os apps do Ararinha são escritos em Rust.
+#
+# Como o GCC no LFS, o rustc precisa de um compilador anterior para nascer
+# (o "stage0"). O BLFS baixa o stage0 durante o build; aqui ele entra como
+# fonte travada por SHA-256, e o build roda sem rede. Os hashes também batem
+# com os publicados pelo próprio Rust em src/stage0 da versão 1.98.1.
+# Diferença do BLFS: instala em /usr (o /usr é a parte imutável do Ararinha).
+
+[pacote]
+nome      = "rust"
+versao    = "1.98.1"
+resumo    = "Compilador Rust e Cargo"
+licenca   = "MIT OR Apache-2.0"
+categoria = "desenvolvimento"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://static.rust-lang.org/dist/rustc-1.98.1-src.tar.xz"
+
+[[fonte]]
+url = "https://www.linuxfromscratch.org/patches/blfs/svn/rustc-1.98.1-llvm_23-1.patch"
+extrair = false
+
+[[fonte]]
+url = "https://static.rust-lang.org/dist/2026-07-16/rustc-1.97.1-x86_64-unknown-linux-gnu.tar.xz"
+sha256 = "9819d0a32d56bd339585319c80260e332779f5541fd66838ab7e016d6c814819"
+extrair = false
+
+[[fonte]]
+url = "https://static.rust-lang.org/dist/2026-07-16/rust-std-1.97.1-x86_64-unknown-linux-gnu.tar.xz"
+sha256 = "1c1e704ae80126b7de34f72ea2825f7fd01736dec20732faed47374b95282fba"
+extrair = false
+
+[[fonte]]
+url = "https://static.rust-lang.org/dist/2026-07-16/cargo-1.97.1-x86_64-unknown-linux-gnu.tar.xz"
+sha256 = "e1be5f5ff7f7f80ca506fb65770b759edbdc6d303781ed71c5de8ec8a8394779"
+extrair = false
+
+[[fonte]]
+url = "https://static.rust-lang.org/dist/2026-07-16/rustc-1.97.1-aarch64-unknown-linux-gnu.tar.xz"
+sha256 = "b344b81f0cd4c2246c7da8b197fe7a339d7dd02bb15cb69b2524115d9c75224c"
+extrair = false
+
+[[fonte]]
+url = "https://static.rust-lang.org/dist/2026-07-16/rust-std-1.97.1-aarch64-unknown-linux-gnu.tar.xz"
+sha256 = "46aed8e63186350004d8ec6afca798811e6530b514352e5a8a26f3dc4939b3be"
+extrair = false
+
+[[fonte]]
+url = "https://static.rust-lang.org/dist/2026-07-16/cargo-1.97.1-aarch64-unknown-linux-gnu.tar.xz"
+sha256 = "8f70bcaccea5ba4db187c3fd4d64e24592b4e16af513497201f5909d61691dbe"
+extrair = false
+
+[dependencias]
+construcao = ["llvm", "cmake", "openssl", "python"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+patch -Np1 -i ../rustc-1.98.1-llvm_23-1.patch
+''',
+  # O bootstrap procura o stage0 em build/cache/<data>/ e confere o SHA-256
+  # com src/stage0 antes de usar; só baixaria se não achasse.
+  '''
+mkdir -p build/cache/2026-07-16
+for c in rustc rust-std cargo; do
+  cp -v ../$c-1.97.1-$ARQ-unknown-linux-gnu.tar.xz build/cache/2026-07-16/
+done
+''',
+  '''
+cat > bootstrap.toml << EOF
+change-id = 158169
+
+[llvm]
+link-shared = true
+
+[build]
+description = "Ararinha Azul Linux"
+docs = false
+tools = ["cargo", "clippy", "rustdoc", "rustfmt", "src"]
+jobs = $NUCLEOS
+
+[install]
+prefix = "/usr"
+docdir = "share/doc/rustc-1.98.1"
+
+[rust]
+channel = "stable"
+lto = "thin"
+codegen-units = 1
+llvm-bitcode-linker = false
+
+[target.$ARQ-unknown-linux-gnu]
+llvm-config = "/usr/bin/llvm-config"
+EOF
+''',
+  '''
+./x.py build
+''',
+]
+instalar = [
+  '''
+./x.py install
+''',
+  '''
+rm -fv /usr/share/doc/rustc-1.98.1/*.old
+rustc --version && cargo --version
+''',
+]

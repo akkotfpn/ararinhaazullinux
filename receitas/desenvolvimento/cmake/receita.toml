@@ -1,0 +1,37 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Fase 2: BLFS, CMake. Necessário para compilar o LLVM e o Rust.
+# Diferença do BLFS: usa as bibliotecas que vêm com o CMake (curl, libuv,
+# libarchive), pois o Ararinha ainda não tem as do sistema.
+
+[pacote]
+nome      = "cmake"
+versao    = "4.4.3"
+resumo    = "Sistema de build CMake"
+licenca   = "BSD-3-Clause"
+categoria = "desenvolvimento"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://cmake.org/files/v4.4/cmake-4.4.3.tar.gz"
+
+[dependencias]
+construcao = ["openssl", "zlib", "ncurses"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+sed -i '/"lib64"/s/64//' Modules/GNUInstallDirs.cmake
+''',
+  '''
+./bootstrap --prefix=/usr --mandir=/share/man --docdir=/share/doc/cmake-4.4.3 --parallel=$NUCLEOS
+''',
+  '''
+make
+''',
+]
+instalar = [
+  '''
+make install
+''',
+]
