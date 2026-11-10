@@ -78,6 +78,13 @@ EOF
   '''
 rm -f /etc/machine-id
 ''',
+  # Fase 1 (imagem de teste): o root entra sem senha UMA vez e é obrigado a
+  # criar a senha no primeiro login. O instalador (Primeiro Voo) vai pedir a
+  # senha durante a instalação.
+  '''
+passwd -d root
+chage -d 0 root
+''',
 ]
 instalar = [
 ]
