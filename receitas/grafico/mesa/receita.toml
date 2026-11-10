@@ -1,9 +1,10 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Fase 2, base gráfica: BLFS, Mesa
 # Compilado no ambiente isolado, sobre o sistema base da Fase 1.
-# Primeira etapa sem LLVM: softpipe (desenho por CPU, funciona em qualquer
-# máquina, inclusive na VM) e virgl (aceleração 3D em VM). Os drivers das
-# placas reais (radeonsi, iris, nouveau) e o Vulkan entram com o LLVM.
+# Drivers Gallium: llvmpipe (desenho por CPU rápido, com LLVM; é o que a VM
+# usa), softpipe (reserva), virgl (3D em VM), radeonsi/r600/r300 (AMD),
+# nouveau (NVIDIA) e svga (VMware). Ainda faltam: iris/crocus (Intel) e
+# o Vulkan, que pedem libclc, SPIRV-LLVM-Translator e glslang.
 
 [pacote]
 nome      = "mesa"
@@ -17,13 +18,13 @@ tipo      = "toolchain"
 url = "https://archive.mesa3d.org/mesa-26.2.3.tar.xz"
 
 [dependencias]
-construcao = ["libdrm", "wayland-protocols", "mako", "pyyaml", "packaging", "zstd", "libelf"]
+construcao = ["libdrm", "wayland-protocols", "mako", "pyyaml", "packaging", "zstd", "libelf", "llvm"]
 
 [construcao]
 ambiente = "isolado"
 passos = [
   '''
-mkdir -p build && cd build && meson setup --prefix=/usr --buildtype=release --wrap-mode=nofallback -D platforms=wayland -D gallium-drivers=softpipe,virgl -D vulkan-drivers= -D llvm=disabled -D glx=disabled -D gles1=disabled -D valgrind=disabled -D libunwind=disabled -D video-codecs= -D build-tests=false ..
+mkdir -p build && cd build && meson setup --prefix=/usr --buildtype=release --wrap-mode=nofallback -D platforms=wayland -D gallium-drivers=llvmpipe,softpipe,virgl,radeonsi,r600,r300,nouveau,svga -D vulkan-drivers= -D llvm=enabled -D shared-llvm=enabled -D glx=disabled -D gles1=disabled -D valgrind=disabled -D libunwind=disabled -D video-codecs= -D build-tests=false ..
 ''',
   '''
 cd build && ninja
