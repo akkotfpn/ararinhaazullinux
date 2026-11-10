@@ -101,3 +101,10 @@ c46400618b4f1f2b43507f24fb22f3ae830c3416cf23b776e16e1d413aa892f0  https://cmake.
 6f6376c6ed2960ea8a963cd7387ec9d76e3f629125bc33d1fdcd7eb7012f7bbf  https://github.com/JetBrains/JetBrainsMono/releases/download/v2.304/JetBrainsMono-2.304.zip
 38d6527d346cda5c6049332a1f3338a89ea66cd7981b54d4c3ce801b392496f8  https://github.com/alacritty/alacritty/archive/v0.17.0/alacritty-0.17.0.tar.gz
 9883fdd4a49d4fb66bd8177ba6625ef9a64aa45899767dde3d36aa425756b11e  https://github.com/rsms/inter/releases/download/v4.1/Inter-4.1.zip
+7b079d614d582cade7ab8db2364e65271d0877a37df8757ac4ac0c8970be861e  https://www.alsa-project.org/files/pub/lib/alsa-lib-1.2.15.3.tar.bz2
+9f79e813c08fc86cfa46dd75c4fcda1a4a51b482db2607e1fcfaafb92f588a31  https://www.alsa-project.org/files/pub/lib/alsa-ucm-conf-1.2.15.3.tar.bz2
+21547f3516120c75597e5b30a992e27a592a31950b5140e7b8bfde3f192033c4  https://github.com/PCRE2Project/pcre2/releases/download/pcre2-10.45/pcre2-10.45.tar.bz2
+17d15cac2af80a33271127408e0abc2748eb297c595c2a26409e81e14e7d1b8f  https://download.gnome.org/sources/glib/2.90/glib-2.90.0.tar.xz
+4f18ddae154e793e46eeab727c59ef1c0c0c2b744e7b94219710d76f530629ae  https://www.lua.org/ftp/lua-5.4.8.tar.gz
+0cde58c124825bad462b32ab79f9aa286ee7b113cc73a5cda923a4365e752657  https://gitlab.freedesktop.org/pipewire/pipewire/-/archive/1.6.9/pipewire-1.6.9.tar.bz2
+c50988232457858e14ecb95ebc9f552df7780f0049d5633f957e82675ae5f05f  https://gitlab.freedesktop.org/pipewire/wireplumber/-/archive/0.5.17/wireplumber-0.5.17.tar.bz2
