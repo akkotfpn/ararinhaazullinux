@@ -1,0 +1,38 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Fase 2, base gráfica: BLFS, FreeType
+# Compilado no ambiente isolado, sobre o sistema base da Fase 1.
+# A HarfBuzz é carregada em tempo de execução, sem dependência circular.
+
+[pacote]
+nome      = "freetype"
+versao    = "2.14.3"
+resumo    = "Desenho de fontes"
+licenca   = "FTL OR GPL-2.0-or-later"
+categoria = "grafico"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://downloads.sourceforge.net/freetype/freetype-2.14.3.tar.xz"
+
+[dependencias]
+construcao = ["libpng", "zlib", "bzip2"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+sed -ri 's:.*(AUX_MODULES.*valid):\1:' modules.cfg
+sed -r 's:.*(#.*SUBPIXEL_RENDERING) .*:\1:' -i include/freetype/config/ftoption.h
+''',
+  '''
+./configure --prefix=/usr --disable-static --enable-freetype-config --with-harfbuzz=dynamic
+''',
+  '''
+make
+''',
+]
+instalar = [
+  '''
+make install
+''',
+]

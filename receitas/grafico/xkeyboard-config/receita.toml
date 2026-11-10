@@ -1,0 +1,33 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Fase 2, base gráfica: BLFS, XKeyboardConfig
+# Compilado no ambiente isolado, sobre o sistema base da Fase 1.
+
+[pacote]
+nome      = "xkeyboard-config"
+versao    = "2.48"
+resumo    = "Layouts de teclado (inclusive ABNT2)"
+licenca   = "MIT"
+categoria = "grafico"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://www.x.org/pub/individual/data/xkeyboard-config/xkeyboard-config-2.48.tar.xz"
+
+[dependencias]
+construcao = ["meson", "gettext", "perl"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+mkdir -p build && cd build && meson setup --prefix=/usr --buildtype=release --wrap-mode=nofallback  ..
+''',
+  '''
+cd build && ninja
+''',
+]
+instalar = [
+  '''
+cd build && ninja install
+''',
+]

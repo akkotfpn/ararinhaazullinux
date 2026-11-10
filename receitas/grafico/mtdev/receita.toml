@@ -1,0 +1,33 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Fase 2, base gráfica: BLFS, mtdev
+# Compilado no ambiente isolado, sobre o sistema base da Fase 1.
+
+[pacote]
+nome      = "mtdev"
+versao    = "1.1.7"
+resumo    = "Eventos multitoque"
+licenca   = "MIT"
+categoria = "grafico"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://bitmath.org/code/mtdev/mtdev-1.1.7.tar.bz2"
+
+[dependencias]
+construcao = ["systemd"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+./configure --prefix=/usr --disable-static
+''',
+  '''
+make
+''',
+]
+instalar = [
+  '''
+make install
+''',
+]

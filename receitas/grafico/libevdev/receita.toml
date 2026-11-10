@@ -1,0 +1,33 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Fase 2, base gráfica: BLFS, libevdev
+# Compilado no ambiente isolado, sobre o sistema base da Fase 1.
+
+[pacote]
+nome      = "libevdev"
+versao    = "1.13.7"
+resumo    = "Leitura de dispositivos de entrada"
+licenca   = "MIT"
+categoria = "grafico"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://www.freedesktop.org/software/libevdev/libevdev-1.13.7.tar.xz"
+
+[dependencias]
+construcao = ["meson", "systemd"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+mkdir -p build && cd build && meson setup --prefix=/usr --buildtype=release --wrap-mode=nofallback -D documentation=disabled -D tests=disabled ..
+''',
+  '''
+cd build && ninja
+''',
+]
+instalar = [
+  '''
+cd build && ninja install
+''',
+]

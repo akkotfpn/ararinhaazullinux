@@ -1,0 +1,33 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Fase 2, base gráfica: BLFS, Fontconfig
+# Compilado no ambiente isolado, sobre o sistema base da Fase 1.
+
+[pacote]
+nome      = "fontconfig"
+versao    = "2.18.3"
+resumo    = "Configuração e busca de fontes"
+licenca   = "MIT"
+categoria = "grafico"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://gitlab.freedesktop.org/api/v4/projects/890/packages/generic/fontconfig/2.18.3/fontconfig-2.18.3.tar.xz"
+
+[dependencias]
+construcao = ["freetype", "expat", "gperf"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+./configure --prefix=/usr --sysconfdir=/etc --localstatedir=/var --disable-docs --disable-static
+''',
+  '''
+make
+''',
+]
+instalar = [
+  '''
+make install
+''',
+]

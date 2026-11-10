@@ -1,0 +1,37 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Fase 2, base gráfica: BLFS, libdrm
+# Compilado no ambiente isolado, sobre o sistema base da Fase 1.
+# Diferença do BLFS: sem libdrm_intel (pede libpciaccess; o Mesa atual não usa).
+
+[pacote]
+nome      = "libdrm"
+versao    = "2.4.134"
+resumo    = "Acesso às placas de vídeo (DRM/KMS)"
+licenca   = "MIT"
+categoria = "grafico"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://dri.freedesktop.org/libdrm/libdrm-2.4.134.tar.xz"
+
+[dependencias]
+construcao = ["meson", "systemd"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+sed -i '/not.*system/s/system/cpu_family/' meson.build
+''',
+  '''
+mkdir -p build && cd build && meson setup --prefix=/usr --buildtype=release --wrap-mode=nofallback -D udev=true -D valgrind=disabled -D intel=disabled -D tests=false ..
+''',
+  '''
+cd build && ninja
+''',
+]
+instalar = [
+  '''
+cd build && ninja install
+''',
+]

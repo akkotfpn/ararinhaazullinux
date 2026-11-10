@@ -28,7 +28,7 @@ make mrproper
 make defconfig
 ''',
   '''
-scripts/kconfig/merge_config.sh -m .config ../config/base.config ../config/vm.config ../config/primeiro-boot.config
+scripts/kconfig/merge_config.sh -m .config ../config/base.config ../config/vm.config ../config/desktop.config ../config/primeiro-boot.config
 ''',
   '''
 make olddefconfig
@@ -51,7 +51,8 @@ cp -v .config /boot/config-spix
 ''',
   '''
 for op in CONFIG_EFI_STUB CONFIG_EXT4_FS CONFIG_SCSI_VIRTIO CONFIG_VIRTIO_BLK CONFIG_DEVTMPFS \
-          CONFIG_DRM_FBDEV_EMULATION CONFIG_FRAMEBUFFER_CONSOLE CONFIG_SYSFB_SIMPLEFB; do
+          CONFIG_DRM_FBDEV_EMULATION CONFIG_FRAMEBUFFER_CONSOLE CONFIG_SYSFB_SIMPLEFB \
+          CONFIG_INPUT_EVDEV; do
   grep -q "^$op=y" .config || { echo "faltou $op=y"; exit 1; }
 done
 ''',

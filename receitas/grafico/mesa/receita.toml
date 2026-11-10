@@ -1,0 +1,36 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Fase 2, base gráfica: BLFS, Mesa
+# Compilado no ambiente isolado, sobre o sistema base da Fase 1.
+# Primeira etapa sem LLVM: softpipe (desenho por CPU, funciona em qualquer
+# máquina, inclusive na VM) e virgl (aceleração 3D em VM). Os drivers das
+# placas reais (radeonsi, iris, nouveau) e o Vulkan entram com o LLVM.
+
+[pacote]
+nome      = "mesa"
+versao    = "26.2.3"
+resumo    = "Mesa: OpenGL, EGL e GBM"
+licenca   = "MIT"
+categoria = "grafico"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://mesa.freedesktop.org/archive/mesa-26.2.3.tar.xz"
+
+[dependencias]
+construcao = ["libdrm", "wayland-protocols", "mako", "pyyaml", "packaging", "zstd", "libelf"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+mkdir -p build && cd build && meson setup --prefix=/usr --buildtype=release --wrap-mode=nofallback -D platforms=wayland -D gallium-drivers=softpipe,virgl -D vulkan-drivers= -D llvm=disabled -D glx=disabled -D gles1=disabled -D valgrind=disabled -D libunwind=disabled -D video-codecs= -D build-tests=false ..
+''',
+  '''
+cd build && ninja
+''',
+]
+instalar = [
+  '''
+cd build && ninja install
+''',
+]

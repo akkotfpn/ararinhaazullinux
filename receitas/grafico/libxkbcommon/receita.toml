@@ -1,0 +1,41 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Fase 2, base gráfica: BLFS, libxkbcommon
+# Compilado no ambiente isolado, sobre o sistema base da Fase 1.
+# Diferença do BLFS: sem X11 e sem xkbregistry (dispensa libxcb e libxml2).
+
+[pacote]
+nome      = "libxkbcommon"
+versao    = "1.13.2"
+resumo    = "Mapa de teclado para Wayland"
+licenca   = "MIT"
+categoria = "grafico"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://github.com/lfs-book/libxkbcommon/archive/v1.13.2/libxkbcommon-1.13.2.tar.gz"
+
+[[fonte]]
+url = "https://www.linuxfromscratch.org/patches/blfs/svn/libxkbcommon-1.13.2-upstream_fix-1.patch"
+extrair = false
+
+[dependencias]
+construcao = ["xkeyboard-config", "wayland-protocols", "bison"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+patch -Np1 -i ../libxkbcommon-1.13.2-upstream_fix-1.patch
+''',
+  '''
+mkdir -p build && cd build && meson setup --prefix=/usr --buildtype=release --wrap-mode=nofallback -D enable-docs=false -D enable-x11=false -D enable-xkbregistry=false ..
+''',
+  '''
+cd build && ninja
+''',
+]
+instalar = [
+  '''
+cd build && ninja install
+''',
+]

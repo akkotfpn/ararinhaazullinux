@@ -1,0 +1,33 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Fase 2, base gráfica: BLFS, libpng (sem o patch de PNG animado)
+# Compilado no ambiente isolado, sobre o sistema base da Fase 1.
+
+[pacote]
+nome      = "libpng"
+versao    = "1.6.58"
+resumo    = "Imagens PNG"
+licenca   = "libpng-2.0"
+categoria = "grafico"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://downloads.sourceforge.net/libpng/libpng-1.6.58.tar.xz"
+
+[dependencias]
+construcao = ["zlib"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+./configure --prefix=/usr --disable-static
+''',
+  '''
+make
+''',
+]
+instalar = [
+  '''
+make install
+''',
+]

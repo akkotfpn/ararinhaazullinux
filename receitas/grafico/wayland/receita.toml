@@ -1,0 +1,34 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Fase 2, base gráfica: BLFS, Wayland
+# Compilado no ambiente isolado, sobre o sistema base da Fase 1.
+# Diferença do BLFS: sem validação DTD (dispensa a libxml2) e sem testes.
+
+[pacote]
+nome      = "wayland"
+versao    = "1.26.0"
+resumo    = "Protocolo Wayland (bibliotecas e wayland-scanner)"
+licenca   = "MIT"
+categoria = "grafico"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://gitlab.freedesktop.org/wayland/wayland/-/releases/1.26.0/downloads/wayland-1.26.0.tar.xz"
+
+[dependencias]
+construcao = ["meson", "libffi", "expat"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+mkdir -p build && cd build && meson setup --prefix=/usr --buildtype=release --wrap-mode=nofallback -D documentation=false -D dtd_validation=false -D tests=false ..
+''',
+  '''
+cd build && ninja
+''',
+]
+instalar = [
+  '''
+cd build && ninja install
+''',
+]
