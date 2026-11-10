@@ -69,4 +69,17 @@ exec plumagem "$@" 2>>"$XDG_RUNTIME_DIR/plumagem.log"
 FIM
 chmod 755 /usr/bin/plumagem-sessao
 ''',
+  # Abre a interface sozinha ao entrar no tty1. Ao sair dela (menu → Sair)
+  # o usuário volta ao terminal; nos outros ttys nada muda. Para desligar:
+  # touch /etc/plumagem/sem-interface
+  '''
+install -vdm755 /etc/profile.d /etc/plumagem
+cat > /etc/profile.d/plumagem.sh << 'FIM'
+# Plumagem: interface gráfica automática no tty1.
+if [ -z "$WAYLAND_DISPLAY" ] && [ "$(tty)" = /dev/tty1 ] && [ ! -e /etc/plumagem/sem-interface ]; then
+  plumagem-sessao
+  echo "Plumagem encerrada. Para voltar à interface: plumagem-sessao"
+fi
+FIM
+''',
 ]
