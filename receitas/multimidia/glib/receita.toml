@@ -1,0 +1,34 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Fase 2, som: BLFS, GLib
+# Compilado no ambiente isolado, sobre o sistema base da Fase 1.
+# Diferença do BLFS: sem gobject-introspection e sem páginas de manual.
+
+[pacote]
+nome      = "glib"
+versao    = "2.90.0"
+resumo    = "GLib: biblioteca base (usada pelo WirePlumber)"
+licenca   = "LGPL-2.1-or-later"
+categoria = "multimidia"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://download.gnome.org/sources/glib/2.90/glib-2.90.0.tar.xz"
+
+[dependencias]
+construcao = ["meson", "pcre2", "libffi", "zlib", "util-linux", "packaging"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+mkdir -p build && cd build && meson setup --prefix=/usr --buildtype=release --wrap-mode=nofallback -D introspection=disabled -D glib_debug=disabled -D man-pages=disabled -D sysprof=disabled -D tests=false ..
+''',
+  '''
+cd build && ninja
+''',
+]
+instalar = [
+  '''
+cd build && ninja install
+''',
+]

@@ -14,7 +14,7 @@ categoria = "plumagem"
 tipo      = "toolchain"
 
 [dependencias]
-construcao = ["rust", "mesa", "libinput", "seatd", "libxkbcommon", "pixman", "wayland", "libdrm", "systemd", "libxcrypt", "shadow"]
+construcao = ["rust", "mesa", "libinput", "seatd", "libxkbcommon", "pixman", "wayland", "libdrm", "systemd", "libxcrypt", "shadow", "wireplumber"]
 
 [construcao]
 ambiente = "isolado"
@@ -65,7 +65,23 @@ if [ -z "$XDG_SESSION_ID" ] && [ "$(id -u)" = 0 ]; then
   export LIBSEAT_BACKEND="${LIBSEAT_BACKEND:-builtin}"
 fi
 export XDG_SESSION_TYPE=wayland XDG_CURRENT_DESKTOP=Plumagem
-exec plumagem "$@" 2>>"$XDG_RUNTIME_DIR/plumagem.log"
+# Barramento D-Bus da sessão (o som e os apps usam).
+if [ -z "$DBUS_SESSION_BUS_ADDRESS" ] && command -v dbus-run-session >/dev/null; then
+  exec dbus-run-session -- "$0" "$@"
+fi
+# Som: PipeWire, WirePlumber e o servidor compatível com PulseAudio.
+pids=
+if command -v pipewire >/dev/null; then
+  for p in pipewire-pulse wireplumber pipewire; do pkill -u "$(id -u)" -x "$p" 2>/dev/null; done
+  pipewire >>"$XDG_RUNTIME_DIR/som.log" 2>&1 & pids="$pids $!"
+  sleep 0.3
+  wireplumber >>"$XDG_RUNTIME_DIR/som.log" 2>&1 & pids="$pids $!"
+  pipewire-pulse >>"$XDG_RUNTIME_DIR/som.log" 2>&1 & pids="$pids $!"
+fi
+plumagem "$@" 2>>"$XDG_RUNTIME_DIR/plumagem.log"
+estado=$?
+[ -n "$pids" ] && kill $pids 2>/dev/null
+exit $estado
 FIM
 chmod 755 /usr/bin/plumagem-sessao
 ''',

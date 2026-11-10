@@ -1,0 +1,33 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Fase 2, som: BLFS, WirePlumber
+# Compilado no ambiente isolado, sobre o sistema base da Fase 1.
+
+[pacote]
+nome      = "wireplumber"
+versao    = "0.5.17"
+resumo    = "WirePlumber: gerente de sessão do PipeWire"
+licenca   = "MIT"
+categoria = "multimidia"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://gitlab.freedesktop.org/pipewire/wireplumber/-/archive/0.5.17/wireplumber-0.5.17.tar.bz2"
+
+[dependencias]
+construcao = ["meson", "pipewire", "glib", "lua"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+mkdir -p build && cd build && meson setup --prefix=/usr --buildtype=release --wrap-mode=nofallback -D system-lua=true -D introspection=disabled -D doc=disabled -D tests=false ..
+''',
+  '''
+cd build && ninja
+''',
+]
+instalar = [
+  '''
+cd build && ninja install
+''',
+]

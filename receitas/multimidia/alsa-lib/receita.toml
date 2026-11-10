@@ -1,0 +1,41 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Fase 2, som: BLFS, alsa-lib (com alsa-ucm-conf, perfis de som de notebooks)
+# Compilado no ambiente isolado, sobre o sistema base da Fase 1.
+
+[pacote]
+nome      = "alsa-lib"
+versao    = "1.2.15.3"
+resumo    = "ALSA: acesso às placas de som"
+licenca   = "LGPL-2.1-or-later"
+categoria = "multimidia"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://www.alsa-project.org/files/pub/lib/alsa-lib-1.2.15.3.tar.bz2"
+
+[[fonte]]
+url = "https://www.alsa-project.org/files/pub/lib/alsa-ucm-conf-1.2.15.3.tar.bz2"
+extrair = false
+
+[dependencias]
+construcao = ["systemd"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+./configure --prefix=/usr --disable-static
+''',
+  '''
+make
+''',
+]
+instalar = [
+  '''
+make install
+''',
+  '''
+install -vdm755 /usr/share/alsa
+tar -C /usr/share/alsa --strip-components=1 -xf ../alsa-ucm-conf-1.2.15.3.tar.bz2
+''',
+]

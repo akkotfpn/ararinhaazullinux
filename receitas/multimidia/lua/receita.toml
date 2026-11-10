@@ -1,0 +1,64 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Fase 2, som: BLFS, Lua
+# Compilado no ambiente isolado, sobre o sistema base da Fase 1.
+
+[pacote]
+nome      = "lua"
+versao    = "5.4.8"
+resumo    = "Lua: linguagem de script (configuração do WirePlumber)"
+licenca   = "MIT"
+categoria = "multimidia"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://www.lua.org/ftp/lua-5.4.8.tar.gz"
+
+[dependencias]
+construcao = ["readline"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+make linux MYCFLAGS=-fPIC
+''',
+  '''
+# Biblioteca compartilhada (o BLFS usa um patch; aqui os mesmos .o são
+# ligados num liblua.so à mão).
+cd src && gcc -shared -Wl,-soname,liblua.so.5.4 -o liblua.so.5.4.8 $(ls *.o | grep -v -e '^lua.o$' -e '^luac.o$') -lm -ldl
+''',
+]
+instalar = [
+  '''
+make INSTALL_TOP=/usr INSTALL_DATA="cp -d" INSTALL_MAN=/usr/share/man/man1 install
+install -vm755 src/liblua.so.5.4.8 /usr/lib/
+ln -sfv liblua.so.5.4.8 /usr/lib/liblua.so.5.4
+ln -sfv liblua.so.5.4 /usr/lib/liblua.so
+rm -fv /usr/lib/liblua.a
+''',
+  '''
+install -vdm755 /usr/lib/pkgconfig
+cat > /usr/lib/pkgconfig/lua.pc << 'FIM'
+V=5.4
+R=5.4.8
+prefix=/usr
+INSTALL_BIN=${prefix}/bin
+INSTALL_INC=${prefix}/include
+INSTALL_LIB=${prefix}/lib
+INSTALL_MAN=${prefix}/share/man/man1
+INSTALL_LMOD=${prefix}/share/lua/${V}
+INSTALL_CMOD=${prefix}/lib/lua/${V}
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib
+includedir=${prefix}/include
+
+Name: Lua
+Description: An Extensible Extension Language
+Version: ${R}
+Requires:
+Libs: -L${libdir} -llua -lm -ldl
+Cflags: -I${includedir}
+FIM
+ln -sfv lua.pc /usr/lib/pkgconfig/lua5.4.pc
+''',
+]

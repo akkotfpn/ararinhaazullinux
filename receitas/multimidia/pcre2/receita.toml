@@ -1,0 +1,33 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Fase 2, som: BLFS, PCRE2
+# Compilado no ambiente isolado, sobre o sistema base da Fase 1.
+
+[pacote]
+nome      = "pcre2"
+versao    = "10.45"
+resumo    = "Expressões regulares (usada pela GLib)"
+licenca   = "BSD-3-Clause"
+categoria = "multimidia"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://github.com/PCRE2Project/pcre2/releases/download/pcre2-10.45/pcre2-10.45.tar.bz2"
+
+[dependencias]
+construcao = ["zlib", "bzip2", "readline"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+./configure --prefix=/usr --docdir=/usr/share/doc/pcre2-10.45 --enable-unicode --enable-jit --enable-pcre2-16 --enable-pcre2-32 --enable-pcre2grep-libz --enable-pcre2grep-libbz2 --enable-pcre2test-libreadline --disable-static
+''',
+  '''
+make
+''',
+]
+instalar = [
+  '''
+make install
+''',
+]
