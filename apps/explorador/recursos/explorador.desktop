@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Explorador de Arquivos
+Name[pt_BR]=Explorador de Arquivos
+Name[en]=File Explorer
+Comment=Navegue pelas suas pastas e unidades
+Exec=explorador %f
+Icon=explorador
+StartupWMClass=explorador
+Categories=System;FileManager;

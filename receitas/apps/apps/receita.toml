@@ -1,0 +1,54 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Fase 3: os aplicativos do Ararinha (ADR 0015), feitos com o kit Penas.
+# Compilados dentro do próprio sistema, com as crates travadas no
+# apps/Cargo.lock (baixadas e conferidas pela Ninhada).
+
+[pacote]
+nome      = "apps"
+versao    = "0.1.0"
+resumo    = "Aplicativos do Ararinha: Explorador de Arquivos"
+licenca   = "GPL-3.0-or-later"
+categoria = "apps"
+tipo      = "toolchain"
+
+[dependencias]
+construcao = ["rust", "libxkbcommon", "wayland", "fonte-inter"]
+
+[construcao]
+ambiente = "isolado"
+copiar = ["apps"]
+crates = "apps/Cargo.lock"
+passos = [
+  # Monta a pasta de crates no formato do `cargo vendor`.
+  '''
+mkdir -p ../vendor
+for c in ../*.crate; do
+  n=$(basename "$c" .crate)
+  mkdir -p "../vendor/$n"
+  tar -xzf "$c" -C "../vendor/$n" --strip-components=1 --no-same-owner
+  printf '{"files":{},"package":"%s"}' "$(sha256sum "$c" | cut -d' ' -f1)" > "../vendor/$n/.cargo-checksum.json"
+done
+ls ../vendor | wc -l
+''',
+  '''
+mkdir -p ../apps/.cargo
+cat > ../apps/.cargo/config.toml << 'FIM'
+[source.crates-io]
+replace-with = "vendorizadas"
+
+[source.vendorizadas]
+directory = "../vendor"
+FIM
+''',
+  '''
+cd ../apps && CARGO_HOME=$PWD/../cargo-home cargo build --release --frozen --offline -j $NUCLEOS
+''',
+]
+instalar = [
+  '''
+cd ../apps
+install -vDm755 target/release/explorador /usr/bin/explorador
+install -vDm644 explorador/recursos/explorador.desktop /usr/share/applications/explorador.desktop
+install -vDm644 explorador/recursos/explorador.png /usr/share/icons/hicolor/64x64/apps/explorador.png
+''',
+]
