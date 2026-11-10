@@ -1306,8 +1306,11 @@ fn process_keyboard_shortcut(modifiers: ModifiersState, keysym: Keysym) -> Optio
         Some(KeyAction::VtSwitch(
             (keysym.raw() - xkb::KEY_XF86Switch_VT_1 + 1) as i32,
         ))
-    } else if modifiers.logo && keysym == Keysym::Return {
-        // run terminal
+    } else if modifiers.logo && keysym == Keysym::Return
+        || modifiers.ctrl && modifiers.alt && (keysym == Keysym::t || keysym == Keysym::T)
+    {
+        // Super+Enter ou Ctrl+Alt+T: terminal. O Ctrl+Alt+T também chega pelo
+        // console do Proxmox, onde a tecla Windows fica com o sistema do PC.
         Some(KeyAction::Run("alacritty".into()))
     } else if modifiers.logo && (xkb::KEY_1..=xkb::KEY_9).contains(&keysym.raw()) {
         Some(KeyAction::Screen((keysym.raw() - xkb::KEY_1) as usize))
