@@ -170,10 +170,14 @@ impl<B: Backend> AnvilState<B> {
             return std::mem::take(&mut self.painel.segurando) || alvo.is_some();
         }
         let Some(alvo) = alvo else {
-            // Clique fora: fecha o menu e segue para a janela.
+            // Clique fora: fecha o menu e o painel de som e segue para a janela.
             self.painel.menu_aberto = false;
+            self.painel.som_aberto = false;
             return false;
         };
+        if !matches!(alvo, Alvo::Som | Alvo::SomBarra(_) | Alvo::SomMudo | Alvo::SomPainel) {
+            self.painel.som_aberto = false;
+        }
         self.painel.segurando = true;
 
         match alvo {
@@ -202,7 +206,14 @@ impl<B: Backend> AnvilState<B> {
             }
             Alvo::Reiniciar => self.executar_programa("systemctl reboot"),
             Alvo::Desligar => self.executar_programa("systemctl poweroff"),
-            Alvo::Barra | Alvo::Menu => {}
+            Alvo::Som => {
+                self.painel.menu_aberto = false;
+                self.painel.som_aberto = !self.painel.som_aberto;
+                self.painel.ler_som(true);
+            }
+            Alvo::SomBarra(f) => self.painel.definir_volume(f as f32 / 1000.0),
+            Alvo::SomMudo => self.painel.alternar_mudo(),
+            Alvo::Barra | Alvo::Menu | Alvo::SomPainel => {}
         }
         true
     }

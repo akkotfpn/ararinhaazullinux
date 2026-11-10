@@ -84,7 +84,28 @@ pub enum Alvo {
     Reiniciar,
     Desligar,
     Menu,
+    /// Ícone de som na bandeja.
+    Som,
+    /// Barra de volume no painel de som (posição em milésimos).
+    SomBarra(u16),
+    SomMudo,
+    SomPainel,
 }
+
+/// Estado do som (lido com o wpctl, do WirePlumber).
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Som {
+    /// Volume de 0.0 a 1.5; `None` sem saída de som.
+    pub volume: Option<f32>,
+    pub mudo: bool,
+    lido_em: u64,
+}
+
+const BANDEJA_L: i32 = 40;
+const SOM_L: i32 = 280;
+const SOM_A: i32 = 104;
+const SOM_BARRA_X0: f32 = 64.0;
+const SOM_BARRA_X1: f32 = 220.0;
 
 #[derive(Debug, Clone)]
 pub struct App {
@@ -109,6 +130,9 @@ pub struct Painel {
     sel: [SolidColorBuffer; 5],
     /// Bordas da janela sendo redimensionada (para a forma do cursor).
     pub cursor_redim: Option<crate::shell::ResizeEdge>,
+    pub som: Som,
+    pub som_aberto: bool,
+    painel_som: Option<(String, MemoryRenderBuffer)>,
     pub apps: Option<Vec<App>>,
     relogio: (u64, String, String),
     barra: Option<(String, MemoryRenderBuffer)>,
@@ -136,6 +160,9 @@ impl Default for Painel {
             selecao: None,
             sel: Default::default(),
             cursor_redim: None,
+            som: Som::default(),
+            som_aberto: false,
+            painel_som: None,
             apps: None,
             relogio: (0, String::new(), String::new()),
             barra: None,
@@ -197,7 +224,7 @@ impl Painel {
 
     fn largura_tarefa(&self, largura_tela: i32) -> i32 {
         let n = self.ordem.len().max(1) as i32;
-        let livre = largura_tela - Self::tarefas_x() - RELOGIO_L - 8;
+        let livre = largura_tela - Self::tarefas_x() - RELOGIO_L - BANDEJA_L - 8;
         ((livre / n) - 4).clamp(48, TAREFA_MAX)
     }
 
@@ -212,6 +239,20 @@ impl Painel {
     /// O que está em `p` (coordenadas da tela), se for a interface.
     pub fn alvo(&self, p: Point<f64, Logical>, tela: Size<i32, Logical>) -> Option<Alvo> {
         let (x, y) = (p.x as i32, p.y as i32);
+        if self.som_aberto {
+            let o = Self::som_origem(tela);
+            let (sx, sy) = ((x - o.x) as f32, (y - o.y) as f32);
+            if sx >= 0.0 && sy >= 0.0 && sx < SOM_L as f32 && sy < SOM_A as f32 {
+                if (12.0..52.0).contains(&sx) && (44.0..84.0).contains(&sy) {
+                    return Some(Alvo::SomMudo);
+                }
+                if (SOM_BARRA_X0 - 8.0..SOM_BARRA_X1 + 8.0).contains(&sx) && (48.0..80.0).contains(&sy) {
+                    let f = ((sx - SOM_BARRA_X0) / (SOM_BARRA_X1 - SOM_BARRA_X0)).clamp(0.0, 1.0);
+                    return Some(Alvo::SomBarra((f * 1000.0) as u16));
+                }
+                return Some(Alvo::SomPainel);
+            }
+        }
         if self.menu_aberto {
             let o = Self::menu_origem(tela);
             let (mx, my) = (x - o.x, y - o.y);
@@ -240,6 +281,10 @@ impl Painel {
         if (INICIAR_X..INICIAR_X + Self::iniciar_l()).contains(&x) {
             return Some(Alvo::Iniciar);
         }
+        let bx = tela.w - RELOGIO_L - BANDEJA_L;
+        if (bx..bx + BANDEJA_L).contains(&x) {
+            return Some(Alvo::Som);
+        }
         let lt = self.largura_tarefa(tela.w);
         let tx = Self::tarefas_x();
         if x >= tx {
@@ -249,6 +294,81 @@ impl Painel {
             }
         }
         Some(Alvo::Barra)
+    }
+
+    fn som_origem(tela: Size<i32, Logical>) -> Point<i32, Logical> {
+        (tela.w - SOM_L - 8, tela.h - altura() - 8 - SOM_A).into()
+    }
+
+    /// Lê volume e mudo com o wpctl (no máximo a cada 5 s, ou se `agora`).
+    pub fn ler_som(&mut self, agora: bool) {
+        let seg = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+        if !agora && seg < self.som.lido_em + 5 {
+            return;
+        }
+        self.som.lido_em = seg;
+        let saida = std::process::Command::new("wpctl")
+            .args(["get-volume", "@DEFAULT_AUDIO_SINK@"])
+            .output()
+            .ok()
+            .filter(|o| o.status.success())
+            .and_then(|o| String::from_utf8(o.stdout).ok());
+        // Formato: "Volume: 0.40" ou "Volume: 0.40 [MUTED]".
+        match saida {
+            Some(s) => {
+                self.som.volume = s.split_whitespace().nth(1).and_then(|v| v.parse().ok());
+                self.som.mudo = s.contains("MUTED");
+            }
+            None => {
+                self.som.volume = None;
+                self.som.mudo = false;
+            }
+        }
+    }
+
+    pub fn definir_volume(&mut self, f: f32) {
+        let _ = std::process::Command::new("wpctl")
+            .args(["set-volume", "-l", "1.0", "@DEFAULT_AUDIO_SINK@", &format!("{:.2}", f.clamp(0.0, 1.0))])
+            .status();
+        if self.som.mudo {
+            let _ = std::process::Command::new("wpctl").args(["set-mute", "@DEFAULT_AUDIO_SINK@", "0"]).status();
+        }
+        self.ler_som(true);
+    }
+
+    pub fn alternar_mudo(&mut self) {
+        let _ = std::process::Command::new("wpctl")
+            .args(["set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"])
+            .status();
+        self.ler_som(true);
+    }
+
+    fn desenhar_som(&self, hover: Option<Alvo>, origem: Point<i32, Logical>) -> Tela {
+        let mut t = Tela::nova(SOM_L, SOM_A);
+        let (l, a) = (SOM_L as f32, SOM_A as f32);
+        t.vidro(0.0, 0.0, l, a, 12.0, (origem.x, origem.y), tema::FUNDO.com_alfa(175));
+        t.texto(16.0, 28.0, 13.0, tema::TEXTO, "Volume");
+        let Some(vol) = self.som.volume else {
+            t.texto(16.0, 70.0, 13.0, tema::TEXTO_SECUNDARIO, "Nenhuma saída de som encontrada.");
+            return t;
+        };
+        if hover == Some(Alvo::SomMudo) {
+            t.retangulo(12.0, 44.0, 40.0, 40.0, 8.0, tema::BRANCO.com_alfa(150));
+        }
+        alto_falante(&mut t, 18.0, 50.0, 28.0, vol, self.som.mudo, tema::TEXTO);
+        let v = vol.clamp(0.0, 1.0);
+        let y = 64.0;
+        t.retangulo(SOM_BARRA_X0, y - 2.0, SOM_BARRA_X1 - SOM_BARRA_X0, 4.0, 2.0, tema::TEXTO_SECUNDARIO.com_alfa(90));
+        let cor = if self.som.mudo { tema::TEXTO_SECUNDARIO } else { tema::DESTAQUE };
+        let xk = SOM_BARRA_X0 + v * (SOM_BARRA_X1 - SOM_BARRA_X0);
+        t.retangulo(SOM_BARRA_X0, y - 2.0, xk - SOM_BARRA_X0, 4.0, 2.0, cor);
+        let r = if matches!(hover, Some(Alvo::SomBarra(_))) { 9.0 } else { 8.0 };
+        t.retangulo(xk - r, y - r, 2.0 * r, 2.0 * r, r, tema::BRANCO);
+        t.retangulo(xk - r + 3.0, y - r + 3.0, 2.0 * r - 6.0, 2.0 * r - 6.0, r - 3.0, cor);
+        let pct = format!("{}", (vol * 100.0).round() as i32);
+        let lp = desenho::medir(13.0, &pct);
+        t.texto(l - 18.0 - lp, y + 5.0, 13.0, tema::TEXTO, &pct);
+        t
     }
 
     fn atualizar_relogio(&mut self) {
@@ -360,7 +480,30 @@ impl Painel {
             .map(|w| (titulo(w), Some(w) == ativa.as_ref(), self.esta_minimizada(w), self.app_da_janela(w)))
             .collect();
 
+        self.ler_som(false);
         let mut elementos = Vec::new();
+
+        if self.som_aberto {
+            let o = Self::som_origem(tela);
+            let chave = format!("{hover:?}|{:?}|{o:?}", self.som);
+            if self.painel_som.as_ref().map(|(c, _)| c != &chave).unwrap_or(true) {
+                let t = self.desenhar_som(hover, o);
+                self.painel_som = Some((chave, t.em_buffer()));
+            }
+            if let Some((_, buf)) = &self.painel_som {
+                if let Ok(e) = MemoryRenderBufferRenderElement::from_buffer(
+                    renderer,
+                    o.to_f64().to_physical(escala),
+                    buf,
+                    None,
+                    None,
+                    None,
+                    Kind::Unspecified,
+                ) {
+                    elementos.push(e);
+                }
+            }
+        }
 
         if self.menu_aberto {
             let chave = format!("{hover:?}|{:?}", self.apps.as_ref().map(|a| a.len()));
@@ -385,8 +528,8 @@ impl Painel {
         }
 
         let chave = format!(
-            "{}|{hover:?}|{}|{}|{}|{janelas:?}",
-            tela.w, self.menu_aberto, self.relogio.1, self.relogio.2
+            "{}|{hover:?}|{}|{}|{}|{janelas:?}|{:?}|{}",
+            tela.w, self.menu_aberto, self.relogio.1, self.relogio.2, self.som, self.som_aberto
         );
         if self.barra.as_ref().map(|(c, _)| c != &chave).unwrap_or(true) {
             let t = self.desenhar_barra(tela.w, tela.h, hover, &janelas);
@@ -495,6 +638,22 @@ impl Painel {
                 t.texto_com_brilho(x + icone + 16.0, meio + tam_txt * 0.36, tam_txt, cor, &txt);
             }
         }
+
+        // Bandeja: ícone de som.
+        let bx = l - (RELOGIO_L + BANDEJA_L) as f32;
+        if self.som_aberto || hover == Some(Alvo::Som) {
+            t.retangulo(bx + 2.0, 4.0, BANDEJA_L as f32 - 4.0, bh, 6.0, tema::BRANCO.com_alfa(150));
+        }
+        let lado = (hf * 0.45).clamp(16.0, 24.0);
+        alto_falante(
+            &mut t,
+            bx + (BANDEJA_L as f32 - lado) / 2.0,
+            meio - lado / 2.0,
+            lado,
+            self.som.volume.unwrap_or(0.0),
+            self.som.mudo || self.som.volume.is_none(),
+            tema::TEXTO,
+        );
 
         // Relógio à direita (uma linha só na barra pequena).
         let (hora, data) = (&self.relogio.1, &self.relogio.2);
@@ -632,4 +791,40 @@ fn achar_icone(nome: &str) -> Option<image::RgbaImage> {
             img
         })
     })
+}
+
+/// Ícone de alto-falante: corpo, cone e ondas conforme o volume (ou um X,
+/// se mudo).
+fn alto_falante(t: &mut Tela, x: f32, y: f32, s: f32, volume: f32, mudo: bool, cor: desenho::Cor) {
+    t.retangulo(x + 0.08 * s, y + 0.36 * s, 0.2 * s, 0.28 * s, 1.5, cor);
+    t.poligono(
+        &[
+            (x + 0.26 * s, y + 0.36 * s),
+            (x + 0.5 * s, y + 0.14 * s),
+            (x + 0.5 * s, y + 0.86 * s),
+            (x + 0.26 * s, y + 0.64 * s),
+        ],
+        cor,
+    );
+    let (cx, cy) = (x + 0.5 * s, y + 0.5 * s);
+    if mudo {
+        let (a, b) = (x + 0.66 * s, x + 0.94 * s);
+        t.linha(a, y + 0.36 * s, b, y + 0.64 * s, 0.09 * s, cor);
+        t.linha(a, y + 0.64 * s, b, y + 0.36 * s, 0.09 * s, cor);
+        return;
+    }
+    let ondas = if volume <= 0.001 { 0 } else if volume < 0.34 { 1 } else if volume < 0.67 { 2 } else { 3 };
+    for k in 0..ondas {
+        let r = (0.2 + 0.14 * k as f32) * s;
+        let passos = 10;
+        let mut ant: Option<(f32, f32)> = None;
+        for i in 0..=passos {
+            let ang = (-45.0 + 90.0 * i as f32 / passos as f32).to_radians();
+            let p = (cx + r * ang.cos(), cy + r * ang.sin());
+            if let Some(a) = ant {
+                t.linha(a.0, a.1, p.0, p.1, 0.075 * s, cor);
+            }
+            ant = Some(p);
+        }
+    }
 }
