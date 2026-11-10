@@ -13,6 +13,11 @@ o kernel Linux, a GNU toolchain, o Mesa, o Wine, o Proton/DXVK/VKD3D,
 o Waydroid, o Darling, o systemd, o Smithay, o Btrfs e muitos outros.
 Cada pacote incluído no sistema mantém sua licença e seus créditos originais.
 
+A **Plumagem** começou a partir do **Anvil**, o compositor de referência do
+[Smithay](https://github.com/Smithay/smithay) (licença MIT, de Victor Berger,
+Victoria Brekenfeld e colaboradores). O texto da licença original está em
+[plumagem/LICENSE-smithay-MIT.txt](plumagem/LICENSE-smithay-MIT.txt).
+
 As obras que guiaram o design estão em [docs/fundamentos.md](docs/fundamentos.md).
 
 ## A ave

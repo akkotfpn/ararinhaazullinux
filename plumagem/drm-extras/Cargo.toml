@@ -1,0 +1,14 @@
+# Cópia do smithay-drm-extras do Smithay v0.7.0 (licença MIT), sem a parte de
+# libdisplay-info, que o Ararinha ainda não compila.
+[package]
+name = "smithay-drm-extras"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+publish = false
+
+[dependencies]
+drm = "0.14.0"
+
+[features]
+default = []

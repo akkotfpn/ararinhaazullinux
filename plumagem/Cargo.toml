@@ -1,0 +1,49 @@
+[package]
+name = "plumagem"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+description = "Plumagem: compositor Wayland do Ararinha Azul Linux"
+authors = ["Davi Souza", "Claude (Anthropic)"]
+publish = false
+
+[dependencies]
+bitflags = "2.2.1"
+image = { version = "0.25.1", default-features = false, features = ["png"] }
+rand = "0.8"
+tracing = { version = "0.1.37", features = ["max_level_trace", "release_max_level_debug"] }
+tracing-subscriber = { version = "0.3.16", features = ["env-filter"] }
+thiserror = "1"
+xcursor = "0.3.3"
+xkbcommon = "0.8.0"
+profiling = "1.0"
+smithay-drm-extras = { path = "drm-extras", default-features = false }
+
+[dependencies.smithay]
+version = "=0.7.0"
+default-features = false
+features = [
+  "desktop",
+  "wayland_frontend",
+  "use_system_lib",
+  "backend_egl",
+  "backend_libinput",
+  "backend_udev",
+  "backend_drm",
+  "backend_gbm",
+  "backend_vulkan",
+  "backend_session_libseat",
+  "renderer_gl",
+  "renderer_pixman",
+  "renderer_multi",
+]
+
+
+[features]
+default = ["egl", "udev"]
+egl = []
+udev = []
+xwayland = ["smithay/xwayland"]
+
+[profile.release]
+lto = "thin"

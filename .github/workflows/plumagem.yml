@@ -1,0 +1,54 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# CI leve da Plumagem: compila o compositor num runner do GitHub, com as
+# bibliotecas de sistema do Ubuntu. Serve para pegar erros de compilação
+# rápido; o binário que vai no Ararinha é compilado pela Ninhada, dentro do
+# próprio sistema, com as crates travadas no Cargo.lock.
+name: Plumagem
+
+on:
+  push:
+    paths: ["plumagem/**", ".github/workflows/plumagem.yml"]
+  pull_request:
+    paths: ["plumagem/**", ".github/workflows/plumagem.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compilar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Bibliotecas de sistema
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends \
+            libudev-dev libinput-dev libgbm-dev libseat-dev libxkbcommon-dev \
+            libegl-dev libgles-dev libdrm-dev libpixman-1-dev libwayland-dev \
+            libsystemd-dev pkg-config
+
+      - name: Compilar
+        working-directory: plumagem
+        run: cargo build --release 2>&1 | tee ../compilacao.log
+
+      - name: Erros (resumo)
+        if: failure()
+        run: grep -E "^(error|warning: unused)" -A12 compilacao.log | head -300
+
+      - name: Cargo.lock (para commit)
+        if: always()
+        run: |
+          echo "::group::Cargo.lock"
+          cat plumagem/Cargo.lock || true
+          echo "::endgroup::"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: plumagem
+          path: |
+            plumagem/Cargo.lock
+            plumagem/target/release/plumagem
+          if-no-files-found: ignore
