@@ -345,4 +345,40 @@ impl<B: Backend> AnvilState<B> {
             self.running.store(false, Ordering::SeqCst);
         }
     }
+
+    /// Alt+Tab: traz a janela que estava logo atrás (ou restaura uma
+    /// minimizada, se só houver ela).
+    pub fn alt_tab(&mut self) {
+        let janelas: Vec<WindowElement> = self.space.elements().cloned().collect();
+        if janelas.len() >= 2 {
+            let w = janelas[janelas.len() - 2].clone();
+            self.focar_janela(&w);
+        } else if let Some((w, _)) = self.painel.minimizadas.last().cloned() {
+            self.desminimizar(&w);
+        }
+    }
+
+    /// Alt+F4: pede para a janela ativa fechar.
+    pub fn fechar_janela_ativa(&mut self) {
+        if let Some(w) = self.space.elements().last() {
+            if let Some(t) = w.0.toplevel() {
+                t.send_close();
+            }
+        }
+    }
+
+    /// Win+D: minimiza todas; se já está tudo minimizado, restaura.
+    pub fn mostrar_area_de_trabalho(&mut self) {
+        let abertas: Vec<WindowElement> = self.space.elements().cloned().collect();
+        if abertas.is_empty() {
+            let todas: Vec<WindowElement> = self.painel.minimizadas.iter().map(|(w, _)| w.clone()).collect();
+            for w in todas {
+                self.desminimizar(&w);
+            }
+        } else {
+            for w in abertas {
+                self.minimizar(&w);
+            }
+        }
+    }
 }
