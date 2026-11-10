@@ -14,7 +14,7 @@ IMAGEM_REMOTA=/home/ninhada/saida/imagens/ararinha-x86_64.qcow2
 LOCAL=/var/lib/vz/template/iso/ararinha-x86_64.qcow2
 
 echo "== Copiando a imagem da VM de build"
-ssh "$BUILD" "sudo cat $IMAGEM_REMOTA" > "$LOCAL.tmp"
+ssh -n "$BUILD" "sudo -n cat $IMAGEM_REMOTA" > "$LOCAL.tmp"
 mv "$LOCAL.tmp" "$LOCAL"
 ls -lh "$LOCAL"
 
