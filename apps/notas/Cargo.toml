@@ -1,0 +1,10 @@
+[package]
+name = "notas"
+version = "0.1.0"
+description = "Bloco de Notas do Ararinha Azul Linux"
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+penas = { path = "../penas" }

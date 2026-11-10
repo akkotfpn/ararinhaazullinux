@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Visualizador de Imagens
+Name[en]=Image Viewer
+Comment=Veja suas fotos e imagens
+Exec=imagens %f
+Icon=imagens
+StartupWMClass=imagens
+MimeType=image/png;image/jpeg;image/gif;image/bmp;image/webp;
+Categories=Graphics;Viewer;

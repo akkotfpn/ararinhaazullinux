@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Bloco de Notas
+Name[en]=Notepad
+Comment=Escreva e edite textos simples
+Exec=notas %f
+Icon=notas
+StartupWMClass=notas
+MimeType=text/plain;
+Categories=Utility;TextEditor;

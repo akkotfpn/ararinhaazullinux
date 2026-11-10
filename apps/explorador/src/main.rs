@@ -529,7 +529,34 @@ impl Explorador {
         if e.pasta {
             self.ir(Local::Pasta(e.caminho.clone()));
         } else {
-            self.aviso = Some(format!("Abrir \"{}\" chega em breve: os apps padrão estão a caminho.", e.nome));
+            let ext = e
+                .caminho
+                .extension()
+                .and_then(|x| x.to_str())
+                .map(|x| x.to_lowercase())
+                .unwrap_or_default();
+            const IMAGENS: [&str; 7] = ["png", "jpg", "jpeg", "gif", "bmp", "webp", "ico"];
+            const TEXTOS: [&str; 16] = [
+                "txt", "md", "log", "conf", "cfg", "ini", "toml", "json", "csv", "sh", "rs", "py", "c", "h",
+                "desktop", "xml",
+            ];
+            let programa = if IMAGENS.contains(&ext.as_str()) {
+                Some("imagens")
+            } else if TEXTOS.contains(&ext.as_str()) || (ext.is_empty() && e.tamanho < 1_000_000) {
+                Some("notas")
+            } else {
+                None
+            };
+            match programa {
+                Some(p) => {
+                    if let Err(err) = Command::new(p).arg(&e.caminho).spawn() {
+                        self.aviso = Some(format!("Não deu para abrir: {err}"));
+                    }
+                }
+                None => {
+                    self.aviso = Some(format!("Ainda não há um app para abrir arquivos .{ext} (\"{}\").", e.nome))
+                }
+            }
         }
     }
 }
