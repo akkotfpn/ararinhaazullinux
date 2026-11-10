@@ -12,8 +12,8 @@
 | 2.2 LLVM e drivers de placas reais | Receitas `cmake` e `llvm` (com Clang) em `receitas/desenvolvimento/`. A fazer: Mesa com radeonsi, iris, nouveau, llvmpipe e Vulkan |
 | 2.3 Rust dentro do Ararinha | Construído em 10/11/2026. Receita `rust` 1.98.1: compilado do código-fonte e sem rede; o compilador inicial (stage0 1.97.1) entra como fonte travada pelos hashes oficiais |
 | 2.4 Plumagem v0 | Compositor em `plumagem/` (Smithay 0.7, baseado no Anvil): backend udev/DRM, papel de parede Spix com o Mingau, teclado ABNT2, Super+Enter abre o Alacritty. Receitas `plumagem`, `alacritty`, `fonte-inter` e `fonte-jetbrains-mono`; crates do Cargo.lock baixadas e travadas pela Ninhada. Primeira construção completa: 10/11/2026, 11h01. Primeira tela gráfica (Mingau no papel de parede, cursor) às 11h53; primeira janela (Alacritty, Ctrl+Alt+T) às 12h06. **Plumagem v1** (10/11, 13h28): barra de tarefas com o Mingau, botões das janelas e relógio; menu iniciar com aplicativos, Sair, Reiniciar e Desligar (também Ctrl+Esc); barra de título com Minimizar/Maximizar/Fechar; maximizar sem cobrir a barra; interface automática no tty1. A fazer: ícones reais, Ninho (login gráfico), arrastar e redimensionar pelas bordas |
-| 2.5 Som e rede | A fazer: PipeWire, WirePlumber, NetworkManager e Wi-Fi |
-| 2.6 Ninho v0 e Primeiro Voo v1 | A fazer |
+| 2.5 Som e rede | Receitas `receitas/multimidia/` (alsa-lib, pcre2, glib, lua, pipewire, wireplumber), iniciadas pela `plumagem-sessao` com D-Bus de sessão. Bandeja da barra com volume (wpctl) e estado da rede (cabo/Wi-Fi, IP). A fazer: Wi-Fi com iwd (procurar e conectar), Bluetooth |
+| 2.6 Ninho v0 e Primeiro Voo v1 | Ninho (`plumagem --ninho`, `ninho.service` no tty1): relógio, cartão de vidro com o Mingau, senha conferida no /etc/shadow; sem contas comuns, cria a primeira conta (grupos seat, video, audio, input). Sessões dos usuários via seatd. A fazer: Primeiro Voo gráfico (idioma, fuso, teclado) no lugar das perguntas em texto |
 
 Referência: *Beyond Linux From Scratch*, versão systemd
 ([linuxfromscratch.org/blfs](https://www.linuxfromscratch.org/blfs/)).
