@@ -14,7 +14,7 @@ categoria = "grafico"
 tipo      = "toolchain"
 
 [[fonte]]
-url = "https://mesa.freedesktop.org/archive/mesa-26.2.3.tar.xz"
+url = "https://archive.mesa3d.org/mesa-26.2.3.tar.xz"
 
 [dependencias]
 construcao = ["libdrm", "wayland-protocols", "mako", "pyyaml", "packaging", "zstd", "libelf"]
