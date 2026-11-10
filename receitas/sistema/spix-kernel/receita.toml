@@ -50,7 +50,8 @@ esac
 cp -v .config /boot/config-spix
 ''',
   '''
-for op in CONFIG_EFI_STUB CONFIG_EXT4_FS CONFIG_SCSI_VIRTIO CONFIG_VIRTIO_BLK CONFIG_DEVTMPFS; do
+for op in CONFIG_EFI_STUB CONFIG_EXT4_FS CONFIG_SCSI_VIRTIO CONFIG_VIRTIO_BLK CONFIG_DEVTMPFS \
+          CONFIG_DRM_FBDEV_EMULATION CONFIG_FRAMEBUFFER_CONSOLE CONFIG_SYSFB_SIMPLEFB; do
   grep -q "^$op=y" .config || { echo "faltou $op=y"; exit 1; }
 done
 ''',

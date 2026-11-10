@@ -10,6 +10,10 @@ Sem interface gráfica nesta fase. A Plumagem começa na Fase 2.
 
 ## Progresso
 
+> **9 de novembro de 2026, 21h46: o Ararinha Azul Linux bootou pela primeira vez** no Proxmox
+> (`ararinha login:` no console serial), entrou na rede por DHCP com o nome
+> "ararinha" e, às 22h04, aconteceu o primeiro login como root, em pt_BR.
+
 | Etapa | Situação |
 |---|---|
 | 1.1 Máquina de build | ✅ VM `ninhada-build` rodando no Proxmox. Scripts: [`criar-vm-build.sh`](../../ferramentas/proxmox/criar-vm-build.sh) e [`preparar-hospedeiro.sh`](../../ferramentas/preparar-hospedeiro.sh). Guia em [guias/proxmox.md](../guias/proxmox.md) |
