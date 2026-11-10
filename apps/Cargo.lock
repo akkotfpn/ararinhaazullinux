@@ -110,6 +110,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "configuracoes"
+version = "0.1.0"
+dependencies = [
+ "penas",
+]
+
+[[package]]
 name = "core_maths"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

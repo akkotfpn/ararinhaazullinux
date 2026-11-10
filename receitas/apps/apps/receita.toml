@@ -50,7 +50,7 @@ cd ../apps
 install -vDm755 target/release/explorador /usr/bin/explorador
 install -vDm644 explorador/recursos/explorador.desktop /usr/share/applications/explorador.desktop
 install -vDm644 explorador/recursos/explorador.png /usr/share/icons/hicolor/64x64/apps/explorador.png
-for app in imagens notas; do
+for app in imagens notas configuracoes; do
   install -vDm755 target/release/$app /usr/bin/$app
   install -vDm644 $app/recursos/$app.desktop /usr/share/applications/$app.desktop
   install -vDm644 $app/recursos/$app.png /usr/share/icons/hicolor/64x64/apps/$app.png
