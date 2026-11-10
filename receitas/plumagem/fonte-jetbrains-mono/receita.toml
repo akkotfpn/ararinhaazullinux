@@ -1,0 +1,33 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Fonte monoespaçada do Ararinha (ADR 0013): terminal e código.
+
+[pacote]
+nome      = "fonte-jetbrains-mono"
+versao    = "2.304"
+resumo    = "Fonte JetBrains Mono"
+licenca   = "OFL-1.1"
+categoria = "plumagem"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://github.com/JetBrains/JetBrainsMono/releases/download/v2.304/JetBrainsMono-2.304.zip"
+extrair = false
+
+[dependencias]
+construcao = ["fontconfig", "python"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+python3 -m zipfile -e ../JetBrainsMono-2.304.zip .
+''',
+]
+instalar = [
+  '''
+install -vdm755 /usr/share/fonts/jetbrains-mono
+install -vm644 fonts/ttf/*.ttf /usr/share/fonts/jetbrains-mono/
+install -vDm644 OFL.txt /usr/share/licenses/jetbrains-mono/OFL.txt
+fc-cache -f /usr/share/fonts/jetbrains-mono
+''',
+]

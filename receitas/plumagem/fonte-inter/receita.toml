@@ -1,0 +1,33 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Fonte da interface do Ararinha (ADR 0013).
+
+[pacote]
+nome      = "fonte-inter"
+versao    = "4.1"
+resumo    = "Fonte Inter"
+licenca   = "OFL-1.1"
+categoria = "plumagem"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://github.com/rsms/inter/releases/download/v4.1/Inter-4.1.zip"
+extrair = false
+
+[dependencias]
+construcao = ["fontconfig", "python"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+python3 -m zipfile -e ../Inter-4.1.zip .
+''',
+]
+instalar = [
+  '''
+install -vdm755 /usr/share/fonts/inter
+install -vm644 InterVariable*.ttf /usr/share/fonts/inter/
+install -vDm644 LICENSE.txt /usr/share/licenses/inter/LICENSE.txt
+fc-cache -f /usr/share/fonts/inter
+''',
+]
