@@ -19,6 +19,13 @@ construcao = ["systemd"]
 [construcao]
 ambiente = "isolado"
 passos = [
+  # O pós-instalação do dbus faz os.chown() em Python; no ambiente isolado só
+  # existe o uid 0, então a chamada vira nada. Dono e permissão do
+  # launch-helper são aplicados na instalação, logo abaixo.
+  '''
+sed -i 's/os\.chown(/(lambda *a, **k: None)(/g' meson_post_install.py
+! grep -q 'os\.chown(' meson_post_install.py
+''',
   '''
 mkdir -p build && cd build && meson setup --prefix=/usr --buildtype=release --wrap-mode=nofallback ..
 ''',
@@ -27,11 +34,8 @@ cd build && ninja
 ''',
 ]
 instalar = [
-  # DESTDIR=/ faz o script de pós-instalação do dbus pular o chown em Python
-  # (no ambiente isolado só existe o uid 0); dono e permissão do launch-helper
-  # são definidos logo abaixo e o grupo fica anotado para a imagem.
   '''
-cd build && DESTDIR=/ ninja install
+cd build && ninja install
 ''',
   '''
 chgrp messagebus /usr/libexec/dbus-daemon-launch-helper
