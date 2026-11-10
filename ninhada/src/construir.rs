@@ -357,7 +357,10 @@ pub fn construir(
         amb.obra(&r.nome)
     };
     limpar_e_criar(&obra)?;
-    let mut codigo = obra.clone();
+    // Sem fonte compactada, os passos rodam numa pasta "codigo" vazia, e o
+    // que é copiado do repositório fica ao lado dela, dentro da obra.
+    let mut codigo = obra.join("codigo");
+    fs::create_dir_all(&codigo).map_err(|e| e.to_string())?;
     let mut extras = Vec::new();
     let mut avulsos = Vec::new();
     for (i, (f, arquivo)) in fontes.iter().enumerate() {

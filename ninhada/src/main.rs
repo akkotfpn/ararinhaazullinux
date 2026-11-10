@@ -131,7 +131,9 @@ fn achar_repo(dado: Option<PathBuf>) -> Result<PathBuf, String> {
 }
 
 fn carregar(repo: &Path) -> Result<BTreeMap<String, Receita>, String> {
-    receita::carregar_todas(&repo.join("receitas")).map_err(|erros| erros.join("\n"))
+    let mut todas = receita::carregar_todas(&repo.join("receitas")).map_err(|erros| erros.join("\n"))?;
+    receita::expandir_crates(&mut todas, repo)?;
+    Ok(todas)
 }
 
 fn rodar(a: Args) -> Result<(), String> {

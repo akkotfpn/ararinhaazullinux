@@ -5,7 +5,8 @@
 # (o "stage0"). O BLFS baixa o stage0 durante o build; aqui ele entra como
 # fonte travada por SHA-256, e o build roda sem rede. Os hashes também batem
 # com os publicados pelo próprio Rust em src/stage0 da versão 1.98.1.
-# Diferença do BLFS: instala em /usr (o /usr é a parte imutável do Ararinha).
+# Diferenças do BLFS: instala em /usr (o /usr é a parte imutável do Ararinha)
+# e usa o LLVM que acompanha o Rust.
 
 [pacote]
 nome      = "rust"
@@ -17,10 +18,6 @@ tipo      = "toolchain"
 
 [[fonte]]
 url = "https://static.rust-lang.org/dist/rustc-1.98.1-src.tar.xz"
-
-[[fonte]]
-url = "https://www.linuxfromscratch.org/patches/blfs/svn/rustc-1.98.1-llvm_23-1.patch"
-extrair = false
 
 [[fonte]]
 url = "https://static.rust-lang.org/dist/2026-07-16/rustc-1.97.1-x86_64-unknown-linux-gnu.tar.xz"
@@ -53,14 +50,11 @@ sha256 = "8f70bcaccea5ba4db187c3fd4d64e24592b4e16af513497201f5909d61691dbe"
 extrair = false
 
 [dependencias]
-construcao = ["llvm", "cmake", "openssl", "python"]
+construcao = ["cmake", "ninja", "openssl", "python"]
 
 [construcao]
 ambiente = "isolado"
 passos = [
-  '''
-patch -Np1 -i ../rustc-1.98.1-llvm_23-1.patch
-''',
   # O bootstrap procura o stage0 em build/cache/<data>/ e confere o SHA-256
   # com src/stage0 antes de usar; só baixaria se não achasse.
   '''
@@ -74,7 +68,9 @@ cat > bootstrap.toml << EOF
 change-id = 158169
 
 [llvm]
-link-shared = true
+# LLVM que vem junto do código do Rust (o patch do BLFS para o LLVM 23 do
+# sistema não está publicado), só com os alvos das duas arquiteturas.
+targets = "X86;AArch64"
 
 [build]
 description = "Ararinha Azul Linux"
@@ -91,9 +87,6 @@ channel = "stable"
 lto = "thin"
 codegen-units = 1
 llvm-bitcode-linker = false
-
-[target.$ARQ-unknown-linux-gnu]
-llvm-config = "/usr/bin/llvm-config"
 EOF
 ''',
   '''

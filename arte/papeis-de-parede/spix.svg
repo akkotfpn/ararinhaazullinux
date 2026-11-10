@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->
+<!-- Papel de parede "Spix": amanhecer no sertão de Curaçá (BA), onde vive a
+     ararinha-azul. Arte original do projeto. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080" width="1920" height="1080">
+  <title>Spix</title>
+  <defs>
+    <linearGradient id="ceu" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0"    stop-color="#0B2A4F"/>
+      <stop offset="0.38" stop-color="#1E5FA3"/>
+      <stop offset="0.66" stop-color="#4E9AD8"/>
+      <stop offset="0.82" stop-color="#A9D2F0"/>
+      <stop offset="1"    stop-color="#F3D9A4"/>
+    </linearGradient>
+    <radialGradient id="brilho" cx="0.72" cy="0.74" r="0.42">
+      <stop offset="0"   stop-color="#FFE7AE" stop-opacity="0.85"/>
+      <stop offset="0.4" stop-color="#E8B23A" stop-opacity="0.25"/>
+      <stop offset="1"   stop-color="#E8B23A" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="serra1" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#5D86AE"/><stop offset="1" stop-color="#3F6890"/>
+    </linearGradient>
+    <linearGradient id="serra2" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2E557E"/><stop offset="1" stop-color="#1D3F64"/>
+    </linearGradient>
+    <linearGradient id="chao" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#14304F"/><stop offset="1" stop-color="#0A1D33"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1920" height="1080" fill="url(#ceu)"/>
+  <rect width="1920" height="1080" fill="url(#brilho)"/>
+
+  <!-- Estrelas que ainda restam -->
+  <g fill="#FFFFFF">
+    <circle cx="180" cy="90"  r="1.6" opacity="0.7"/>
+    <circle cx="420" cy="160" r="1.2" opacity="0.5"/>
+    <circle cx="690" cy="70"  r="1.8" opacity="0.6"/>
+    <circle cx="980" cy="130" r="1.1" opacity="0.4"/>
+    <circle cx="1260" cy="60" r="1.5" opacity="0.55"/>
+    <circle cx="1540" cy="140" r="1.2" opacity="0.4"/>
+    <circle cx="1780" cy="80" r="1.7" opacity="0.6"/>
+    <circle cx="300" cy="260" r="1.0" opacity="0.35"/>
+    <circle cx="1650" cy="250" r="1.0" opacity="0.3"/>
+  </g>
+
+  <!-- Sol nascendo -->
+  <circle cx="1382" cy="742" r="80" fill="#FFE2A0" opacity="0.95"/>
+
+  <!-- Serras ao longe -->
+  <path d="M0 790 C 160 742, 300 760, 420 728 S 700 690, 860 742 S 1120 770, 1260 730
+           S 1560 700, 1700 748 S 1860 772, 1920 756 L1920 1080 L0 1080 Z" fill="url(#serra1)" opacity="0.9"/>
+  <path d="M0 850 C 200 812, 380 838, 560 812 S 880 790, 1040 836 S 1340 860, 1520 828
+           S 1800 812, 1920 842 L1920 1080 L0 1080 Z" fill="url(#serra2)"/>
+
+  <!-- Caatinga: chão e arbustos -->
+  <path d="M0 930 C 300 902, 640 918, 960 908 S 1600 896, 1920 918 L1920 1080 L0 1080 Z" fill="url(#chao)"/>
+  <g fill="#0E2640">
+    <path d="M140 918 q 18 -46 40 -6 q 14 -30 30 2 q 10 -18 24 4 z"/>
+    <path d="M620 912 q 22 -60 50 -8 q 16 -36 36 2 q 12 -20 26 6 z"/>
+    <path d="M1120 906 q 16 -40 36 -4 q 12 -26 26 2 z"/>
+    <path d="M1700 914 q 20 -52 46 -6 q 14 -32 32 2 q 12 -18 24 4 z"/>
+  </g>
+
+  <!-- Galho da caraibeira, onde o Mingau pousa (o Mingau é colocado à parte) -->
+  <path d="M-20 642 C 160 612, 330 606, 520 622 S 760 650, 820 636" stroke="#5B3A21" stroke-width="18"
+        fill="none" stroke-linecap="round"/>
+  <path d="M300 612 q 30 -50 92 -64" stroke="#5B3A21" stroke-width="9" fill="none" stroke-linecap="round"/>
+  <path d="M600 636 q 40 30 96 34" stroke="#5B3A21" stroke-width="8" fill="none" stroke-linecap="round"/>
+  <g fill="#E8B23A">
+    <ellipse cx="398" cy="544" rx="20" ry="10" transform="rotate(-24 398 544)"/>
+    <ellipse cx="372" cy="560" rx="16" ry="8"  transform="rotate(20 372 560)"/>
+    <ellipse cx="700" cy="672" rx="18" ry="9"  transform="rotate(16 700 672)"/>
+    <ellipse cx="128" cy="616" rx="15" ry="8"  transform="rotate(-12 128 616)"/>
+  </g>
+  <g fill="#F2C75C">
+    <circle cx="410" cy="532" r="5"/><circle cx="690" cy="664" r="4"/>
+  </g>
+</svg>

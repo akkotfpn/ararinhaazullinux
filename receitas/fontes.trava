@@ -94,3 +94,7 @@ d76623373421df22fb4cf8817020cbb7ef15c725b9d5e45f17e189bfc384190f  https://files.
 d978cac5875fed73b7223866a1138718afeba58c1390a412affdcf2cd7744a34  https://www.linuxfromscratch.org/patches/blfs/svn/libxkbcommon-1.13.2-upstream_fix-1.patch
 e5d5eff0ea09d82c44a96aec75c719b6969fdc602da82e6b1c9aa74cac5fd488  https://github.com/lfs-book/libxkbcommon/archive/v1.13.2/libxkbcommon-1.13.2.tar.gz
 ec4c8f74942d6dff7ace8b4ce4764f0ef9ff618a935d974ea77edee2ad240b14  https://gitlab.freedesktop.org/wayland/wayland-protocols/-/releases/1.49/downloads/wayland-protocols-1.49.tar.xz
+1628058a8d2c0615975de5a15ab7bbb9638c50000b5bed9456ff423ea034a81f  https://archive.mesa3d.org/mesa-26.2.3.tar.xz
+ab1f0e3ec52448c33e8782eaf0422504b87c7b016b22514653ee0d8fcee479ff  https://github.com/llvm/llvm-project/releases/download/llvmorg-23.1.0/llvm-project-23.1.0.src.tar.xz
+be1816e7f6c40abb90245ad6e024bed2a7e88d7dda4561e4d5470207df616b9f  https://static.rust-lang.org/dist/rustc-1.98.1-src.tar.xz
+c46400618b4f1f2b43507f24fb22f3ae830c3416cf23b776e16e1d413aa892f0  https://cmake.org/files/v4.4/cmake-4.4.3.tar.gz

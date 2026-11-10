@@ -59,6 +59,9 @@ pub struct Receita {
     /// Arquivos ou pastas do repositório copiados para o lado do código
     /// (ex.: "kernel/config"), visíveis como ../config nos passos.
     pub copiar: Vec<String>,
+    /// Cargo.lock do repositório (ex.: "plumagem/Cargo.lock"): cada crate
+    /// listada vira uma fonte, travada pelo próprio checksum do Cargo.lock.
+    pub crates: Option<String>,
     pub arquiteturas: Vec<String>,
     pub caminho: PathBuf,
     /// Conteúdo bruto, usado para calcular a "impressão digital" da receita.
@@ -154,6 +157,7 @@ pub fn de_texto(conteudo: &str, caminho: &Path) -> Result<Receita, String> {
         diretorio: cons.and_then(|c| texto(c, "diretorio")),
         construir_em: cons.and_then(|c| texto(c, "construir_em")),
         copiar: lista_textos(cons, "copiar")?,
+        crates: cons.and_then(|c| texto(c, "crates")),
         isolado: match cons.and_then(|c| texto(c, "ambiente")).as_deref() {
             None | Some("hospedeiro") => false,
             Some("isolado") => true,
@@ -175,6 +179,53 @@ pub fn de_texto(conteudo: &str, caminho: &Path) -> Result<Receita, String> {
 pub fn carregar(caminho: &Path) -> Result<Receita, String> {
     let conteudo = fs::read_to_string(caminho).map_err(|e| format!("{}: {e}", caminho.display()))?;
     de_texto(&conteudo, caminho).map_err(|e| format!("{}: {e}", caminho.display()))
+}
+
+/// Lê um Cargo.lock e devolve uma fonte por crate do crates.io, com o
+/// SHA-256 que o próprio Cargo.lock registra (é o hash do arquivo `.crate`).
+/// Pacotes locais (sem `source`) ficam de fora: vêm do repositório.
+pub fn fontes_de_cargo_lock(texto: &str) -> Result<Vec<Fonte>, String> {
+    const REGISTRO: &str = "registry+https://github.com/rust-lang/crates.io-index";
+    let mut fontes = Vec::new();
+    for bloco in texto.split("[[package]]").skip(1) {
+        let campo = |nome: &str| {
+            bloco.lines().find_map(|l| {
+                let (k, v) = l.split_once('=')?;
+                (k.trim() == nome).then(|| v.trim().trim_matches('"').to_string())
+            })
+        };
+        let (Some(nome), Some(versao)) = (campo("name"), campo("version")) else {
+            return Err("Cargo.lock: pacote sem name ou version".into());
+        };
+        match campo("source") {
+            None => continue,
+            Some(s) if s == REGISTRO => {}
+            Some(s) => return Err(format!("Cargo.lock: {nome} vem de fonte não suportada ({s})")),
+        }
+        let sha = campo("checksum").ok_or_else(|| format!("Cargo.lock: {nome} {versao} sem checksum"))?;
+        if !hex64(&sha) {
+            return Err(format!("Cargo.lock: checksum inválido em {nome} {versao}"));
+        }
+        fontes.push(Fonte {
+            url: format!("https://static.crates.io/crates/{nome}/{nome}-{versao}.crate"),
+            sha256: Some(sha),
+            destino: None,
+            extrair: false,
+        });
+    }
+    Ok(fontes)
+}
+
+/// Acrescenta às receitas com `crates = "..."` as fontes do Cargo.lock.
+pub fn expandir_crates(todas: &mut BTreeMap<String, Receita>, repo: &Path) -> Result<(), String> {
+    for r in todas.values_mut() {
+        let Some(lock) = &r.crates else { continue };
+        let caminho = repo.join(lock);
+        let texto = fs::read_to_string(&caminho).map_err(|e| format!("{}: {e}", caminho.display()))?;
+        let fontes = fontes_de_cargo_lock(&texto).map_err(|e| format!("{}: {e}", r.nome))?;
+        r.fontes.extend(fontes);
+    }
+    Ok(())
 }
 
 /// Procura todos os `receita.toml` dentro de `raiz`.
@@ -323,6 +374,26 @@ passos = ["make"]
         let erros = validar(&todas);
         assert!(erros.iter().any(|e| e.contains("pasta")));
         assert!(erros.iter().any(|e| e.contains("inexistente")));
+    }
+
+    #[test]
+    fn le_cargo_lock() {
+        let lock = r#"version = 4
+
+[[package]]
+name = "plumagem"
+version = "0.1.0"
+
+[[package]]
+name = "bitflags"
+version = "2.9.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1b8e56985ec62d17e9c1001dc89c88ecd7dc08e47eba5ec7c29c7b5eeecde967"
+"#;
+        let f = fontes_de_cargo_lock(lock).unwrap();
+        assert_eq!(f.len(), 1);
+        assert_eq!(f[0].nome_arquivo(), "bitflags-2.9.1.crate");
+        assert!(!f[0].extrair);
     }
 
     #[test]
