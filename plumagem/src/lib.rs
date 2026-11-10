@@ -14,6 +14,7 @@ pub mod focus;
 pub mod fundo;
 pub mod input_handler;
 pub mod janelas;
+pub mod ninho;
 pub mod painel;
 pub mod render;
 pub mod shell;

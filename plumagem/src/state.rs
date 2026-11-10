@@ -179,6 +179,8 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     pub show_window_preview: bool,
     /// Barra de tarefas, menu iniciar e janelas minimizadas.
     pub painel: crate::painel::Painel,
+    /// Tela de entrada (login), quando a Plumagem roda como Ninho.
+    pub ninho: Option<crate::ninho::Ninho>,
 }
 
 #[derive(Debug)]
@@ -725,6 +727,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             renderdoc: renderdoc::RenderDoc::new().ok(),
             show_window_preview: false,
             painel: Default::default(),
+            ninho: std::env::var_os("PLUMAGEM_NINHO").map(|_| crate::ninho::Ninho::novo()),
         }
     }
 

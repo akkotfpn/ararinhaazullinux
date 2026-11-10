@@ -17,12 +17,17 @@ fn main() {
             tracing::info!("Plumagem iniciando direto na tela (DRM/KMS)");
             plumagem::udev::run_udev();
         }
+        Some("--ninho") => {
+            tracing::info!("Plumagem iniciando como Ninho (tela de entrada)");
+            std::env::set_var("PLUMAGEM_NINHO", "1");
+            plumagem::udev::run_udev();
+        }
         Some("--versao") | Some("--version") => {
             println!("plumagem {}", env!("CARGO_PKG_VERSION"));
         }
         Some(outro) => {
             eprintln!("opção desconhecida: {outro}");
-            eprintln!("uso: plumagem [--tela | --versao]");
+            eprintln!("uso: plumagem [--tela | --ninho | --versao]");
             std::process::exit(2);
         }
     }

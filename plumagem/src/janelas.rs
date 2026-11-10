@@ -301,4 +301,18 @@ impl<B: Backend> AnvilState<B> {
         let ponteiro = self.pointer.clone();
         ponteiro.set_grab(self, grab, serial, Focus::Clear);
     }
+
+    /// Executa o que foi pedido no Ninho; se a entrada foi aceita, grava o
+    /// usuário em $XDG_RUNTIME_DIR/escolha e encerra (o script abre a sessão).
+    pub fn processar_ninho(&mut self) {
+        let Some(n) = self.ninho.as_mut() else { return };
+        if let Some(login) = n.processar() {
+            let dir = std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/run/ninho".into());
+            if let Err(e) = std::fs::write(format!("{dir}/escolha"), &login) {
+                error!(err = %e, "não deu para gravar a escolha do Ninho");
+                return;
+            }
+            self.running.store(false, Ordering::SeqCst);
+        }
+    }
 }

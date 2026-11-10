@@ -1455,9 +1455,12 @@ impl AnvilState<UdevData> {
                 buffer
             });
 
-        let interface = self
-            .painel
-            .elementos(&mut renderer, &output, &self.space, self.pointer.current_location());
+        let interface = if let Some(ninho) = self.ninho.as_mut() {
+            ninho.elementos(&mut renderer, &output, &self.space, self.pointer.current_location())
+        } else {
+            self.painel
+                .elementos(&mut renderer, &output, &self.space, self.pointer.current_location())
+        };
         let selecao = self
             .space
             .output_geometry(&output)

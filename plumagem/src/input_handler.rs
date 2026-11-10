@@ -145,6 +145,20 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         let mut suppressed_keys = self.suppressed_keys.clone();
         let keyboard = self.seat.get_keyboard().unwrap();
 
+        // Ninho: todas as teclas vão para o cartão de login.
+        if self.ninho.is_some() {
+            keyboard.input::<(), _>(self, keycode, state, serial, time, |data, mods, handle| {
+                if let KeyState::Pressed = state {
+                    if let Some(n) = data.ninho.as_mut() {
+                        n.tecla(handle.modified_sym(), *mods);
+                    }
+                }
+                FilterResult::Intercept(())
+            });
+            self.processar_ninho();
+            return KeyAction::None;
+        }
+
         for layer in self.layer_shell_state.layer_surfaces().rev() {
             let data = with_states(layer.wl_surface(), |states| {
                 *states.cached_state.get::<LayerSurfaceCachedState>().current()
@@ -231,6 +245,20 @@ impl<BackendData: Backend> AnvilState<BackendData> {
 
         if wl_pointer::ButtonState::Released == state {
             self.painel.selecao = None;
+        }
+
+        // Ninho (tela de entrada): só o cartão de login recebe cliques.
+        if self.ninho.is_some() {
+            if wl_pointer::ButtonState::Pressed == state && button == 0x110 {
+                let pos = self.pointer.current_location();
+                if let Some(geo) = self.space.outputs().next().and_then(|o| self.space.output_geometry(o)) {
+                    if let Some(n) = self.ninho.as_mut() {
+                        n.clique(pos - geo.loc.to_f64(), geo.size);
+                    }
+                }
+                self.processar_ninho();
+            }
+            return;
         }
 
         // Barra de tarefas e menu iniciar ficam por cima das janelas.
@@ -364,7 +392,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         &self,
         pos: Point<f64, Logical>,
     ) -> Option<(PointerFocusTarget, Point<f64, Logical>)> {
-        if self.sobre_a_interface(pos) {
+        if self.ninho.is_some() || self.sobre_a_interface(pos) {
             return None;
         }
         let output = self.space.outputs().find(|o| {
