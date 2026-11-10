@@ -11,7 +11,7 @@ use std::{cell::RefCell, collections::HashMap};
 
 use smithay::{
     backend::{allocator::Fourcc, renderer::element::memory::MemoryRenderBuffer},
-    utils::{Rectangle, Transform},
+    utils::Transform,
 };
 
 /// Cor em RGBA (0–255), sem pré-multiplicar.
@@ -164,7 +164,10 @@ impl Tela {
             (self.largura, self.altura),
             1,
             Transform::Normal,
-            Some(vec![Rectangle::from_size((self.largura, self.altura).into())]),
+            // Sem região opaca: a barra é translúcida e o menu tem cantos
+            // arredondados; com a tela inteira marcada como opaca, o que
+            // está atrás não era desenhado e aparecia preto/cinza.
+            None,
         )
     }
 }
