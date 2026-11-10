@@ -1458,6 +1458,17 @@ impl AnvilState<UdevData> {
         let interface = self
             .painel
             .elementos(&mut renderer, &output, &self.space, self.pointer.current_location());
+        let selecao = self
+            .space
+            .output_geometry(&output)
+            .map(|geo| {
+                self.painel.elementos_selecao(
+                    geo,
+                    self.pointer.current_location(),
+                    output.current_scale().fractional_scale(),
+                )
+            })
+            .unwrap_or_default();
 
         let result = render_surface(
             surface,
@@ -1472,6 +1483,7 @@ impl AnvilState<UdevData> {
             self.show_window_preview,
             self.backend_data.fundo.as_ref(),
             interface,
+            selecao,
         );
         let reschedule = match result {
             Ok((has_rendered, states)) => {
@@ -1556,6 +1568,7 @@ fn render_surface<'a>(
     show_window_preview: bool,
     fundo: Option<&crate::fundo::Fundo>,
     interface: Vec<MemoryRenderBufferRenderElement<UdevRenderer<'a>>>,
+    selecao: Vec<smithay::backend::renderer::element::solid::SolidColorRenderElement>,
 ) -> Result<(bool, RenderElementStates), SwapBuffersError> {
     let output_geometry = space.output_geometry(output).unwrap();
     let scale = Scale::from(output.current_scale().fractional_scale());
@@ -1633,7 +1646,7 @@ fn render_surface<'a>(
     }
 
     let (elements, clear_color) =
-        output_elements(output, space, custom_elements, renderer, show_window_preview, fundo, interface);
+        output_elements(output, space, custom_elements, renderer, show_window_preview, fundo, interface, selecao);
 
     let frame_mode = if surface.disable_direct_scanout {
         FrameFlags::empty()

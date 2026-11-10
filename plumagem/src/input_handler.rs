@@ -229,9 +229,23 @@ impl<BackendData: Backend> AnvilState<BackendData> {
 
         let state = wl_pointer::ButtonState::from(evt.state());
 
+        if wl_pointer::ButtonState::Released == state {
+            self.painel.selecao = None;
+        }
+
         // Barra de tarefas e menu iniciar ficam por cima das janelas.
         if !self.pointer.is_grabbed() && self.clique_na_interface(wl_pointer::ButtonState::Pressed == state) {
             return;
+        }
+
+        // Arrastar com o botão esquerdo na área de trabalho: seleção azul.
+        let pos = self.pointer.current_location();
+        if wl_pointer::ButtonState::Pressed == state
+            && button == 0x110
+            && !self.pointer.is_grabbed()
+            && self.surface_under(pos).is_none()
+        {
+            self.painel.selecao = Some(pos);
         }
 
         if wl_pointer::ButtonState::Pressed == state {

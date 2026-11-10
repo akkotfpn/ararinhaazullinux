@@ -156,6 +156,124 @@ impl Tela {
         caneta - x
     }
 
+    /// Texto com um halo claro atrás, como os títulos do Aero no Windows 7:
+    /// continua legível sobre o vidro, qualquer que seja o fundo.
+    pub fn texto_com_brilho(&mut self, x: f32, y: f32, tamanho: f32, cor: Cor, texto: &str) -> f32 {
+        let halo = tema::BRANCO.com_alfa(70);
+        for (dx, dy) in [(-1.0, 0.0), (1.0, 0.0), (0.0, -1.0), (0.0, 1.0), (-1.0, -1.0), (1.0, 1.0), (-1.0, 1.0), (1.0, -1.0)] {
+            self.texto(x + dx, y + dy, tamanho, halo, texto);
+        }
+        self.texto(x, y, tamanho, cor, texto)
+    }
+
+    /// Vidro (efeito Aero): o papel de parede desfocado atrás do retângulo,
+    /// uma tinta por cima, um brilho na metade de cima e borda fina.
+    /// `origem` é a posição deste desenho na tela, para alinhar o desfoque.
+    #[allow(clippy::too_many_arguments)]
+    pub fn vidro(&mut self, x: f32, y: f32, l: f32, a: f32, raio: f32, origem: (i32, i32), tinta: Cor) {
+        // Borda escura translúcida e, por dentro, o desfoque.
+        self.retangulo(x, y, l, a, raio, Cor(11, 26, 46, 90));
+        let (x, y, l, a, raio) = (x + 1.0, y + 1.0, l - 2.0, a - 2.0, (raio - 1.0).max(0.0));
+        let tem_fundo = VIDRO.with(|v| {
+            let v = v.borrow();
+            let Some(v) = v.as_ref() else { return false };
+            let mascara = {
+                let mut m = Tela::nova(self.largura, self.altura);
+                m.retangulo(x, y, l, a, raio, tema::BRANCO);
+                m
+            };
+            for py in (y.floor() as i32).max(0)..((y + a).ceil() as i32).min(self.altura) {
+                for px in (x.floor() as i32).max(0)..((x + l).ceil() as i32).min(self.largura) {
+                    let cob = mascara.px[((py * self.largura + px) * 4 + 3) as usize] as f32 / 255.0;
+                    if cob <= 0.0 {
+                        continue;
+                    }
+                    let sx = (origem.0 + px).clamp(0, v.l - 1);
+                    let sy = (origem.1 + py).clamp(0, v.a - 1);
+                    let i = ((sy * v.l + sx) * 3) as usize;
+                    self.misturar(px, py, Cor(v.px[i], v.px[i + 1], v.px[i + 2], 255), cob);
+                }
+            }
+            true
+        });
+        if !tem_fundo {
+            self.retangulo(x, y, l, a, raio, tema::SUPERFICIE.com_alfa(200));
+        }
+        self.retangulo(x, y, l, a, raio, tinta);
+        // Brilho: branco que some do topo até a metade.
+        let metade = (a / 2.0).max(1.0);
+        let mut linha = 0.0;
+        while linha < metade {
+            let alfa = (70.0 * (1.0 - linha / metade)) as u8;
+            self.retangulo_recortado(x, y, l, a, raio, y + linha, tema::BRANCO.com_alfa(alfa));
+            linha += 1.0;
+        }
+        // Reflexo de 1 px logo abaixo da borda de cima.
+        self.retangulo_recortado(x, y, l, a, raio, y, tema::BRANCO.com_alfa(150));
+    }
+
+    /// Uma linha horizontal (1 px, na altura `yl`) dentro do retângulo
+    /// arredondado dado, respeitando os cantos.
+    #[allow(clippy::too_many_arguments)]
+    fn retangulo_recortado(&mut self, x: f32, y: f32, l: f32, a: f32, raio: f32, yl: f32, cor: Cor) {
+        let py = yl.floor() as i32;
+        if py < 0 || py >= self.altura {
+            return;
+        }
+        let (cx, cy) = (x + l / 2.0, y + a / 2.0);
+        let r = raio.min(l / 2.0).min(a / 2.0).max(0.0);
+        let (hx, hy) = (l / 2.0 - r, a / 2.0 - r);
+        for px in (x.floor() as i32).max(0)..((x + l).ceil() as i32).min(self.largura) {
+            let dx = (px as f32 + 0.5 - cx).abs() - hx;
+            let dy = (py as f32 + 0.5 - cy).abs() - hy;
+            let (qx, qy) = (dx.max(0.0), dy.max(0.0));
+            let d = (qx * qx + qy * qy).sqrt() + dx.max(dy).min(0.0) - r;
+            self.misturar(px, py, cor, (0.5 - d).clamp(0.0, 1.0));
+        }
+    }
+
+    /// Preenche um polígono (com suavização por subamostras).
+    pub fn poligono(&mut self, pontos: &[(f32, f32)], cor: Cor) {
+        if pontos.len() < 3 {
+            return;
+        }
+        let minx = pontos.iter().map(|p| p.0).fold(f32::MAX, f32::min).floor().max(0.0) as i32;
+        let maxx = pontos.iter().map(|p| p.0).fold(f32::MIN, f32::max).ceil().min(self.largura as f32) as i32;
+        let miny = pontos.iter().map(|p| p.1).fold(f32::MAX, f32::min).floor().max(0.0) as i32;
+        let maxy = pontos.iter().map(|p| p.1).fold(f32::MIN, f32::max).ceil().min(self.altura as f32) as i32;
+        const N: i32 = 4;
+        for py in miny..maxy {
+            for px in minx..maxx {
+                let mut dentro = 0;
+                for sy in 0..N {
+                    for sx in 0..N {
+                        let fx = px as f32 + (sx as f32 + 0.5) / N as f32;
+                        let fy = py as f32 + (sy as f32 + 0.5) / N as f32;
+                        let mut c = false;
+                        let mut j = pontos.len() - 1;
+                        for i in 0..pontos.len() {
+                            let (xi, yi) = pontos[i];
+                            let (xj, yj) = pontos[j];
+                            if (yi > fy) != (yj > fy) && fx < (xj - xi) * (fy - yi) / (yj - yi) + xi {
+                                c = !c;
+                            }
+                            j = i;
+                        }
+                        if c {
+                            dentro += 1;
+                        }
+                    }
+                }
+                self.misturar(px, py, cor, dentro as f32 / (N * N) as f32);
+            }
+        }
+    }
+
+    /// Pixels crus (RGBA pré-multiplicado).
+    pub fn pixels(&self) -> &[u8] {
+        &self.px
+    }
+
     pub fn em_buffer(&self) -> MemoryRenderBuffer {
         MemoryRenderBuffer::from_slice(
             &self.px,
@@ -272,4 +390,87 @@ fn com_fonte(f: impl FnOnce(&mut Fonte)) {
 pub fn icone(png: &[u8], largura: u32, altura: u32) -> Option<image::RgbaImage> {
     let img = image::load_from_memory_with_format(png, image::ImageFormat::Png).ok()?.to_rgba8();
     Some(image::imageops::resize(&img, largura, altura, image::imageops::FilterType::Triangle))
+}
+
+/// Papel de parede desfocado na resolução da tela, base do efeito de vidro.
+struct Vidro {
+    l: i32,
+    a: i32,
+    px: Vec<u8>,
+}
+
+thread_local! {
+    static VIDRO: RefCell<Option<Vidro>> = const { RefCell::new(None) };
+}
+
+/// Prepara (uma vez por tamanho de tela) o papel de parede desfocado.
+/// Usa o mesmo enquadramento do papel de parede ("preencher", centralizado).
+pub fn preparar_vidro(l: i32, a: i32) {
+    if l <= 0 || a <= 0 {
+        return;
+    }
+    let pronto = VIDRO.with(|v| v.borrow().as_ref().map(|v| v.l == l && v.a == a).unwrap_or(false));
+    if pronto {
+        return;
+    }
+    let inicio = std::time::Instant::now();
+    let Ok(img) = image::load_from_memory_with_format(crate::fundo::FUNDO_SPIX_PNG, image::ImageFormat::Png)
+    else {
+        return;
+    };
+    let img = img.to_rgb8();
+    // O desfoque é feito em 1/4 da resolução (mais rápido e mais suave).
+    const Q: f64 = 4.0;
+    let (iw, ih) = (img.width() as f64, img.height() as f64);
+    let fator = f64::max(l as f64 / iw, a as f64 / ih) / Q;
+    let (sw, sh) = ((iw * fator).round().max(1.0) as u32, (ih * fator).round().max(1.0) as u32);
+    let pequena = image::imageops::resize(&img, sw, sh, image::imageops::FilterType::Triangle);
+    let (ql, qa) = (((l as f64) / Q).ceil() as u32, ((a as f64) / Q).ceil() as u32);
+    let ox = (sw.saturating_sub(ql)) / 2;
+    let oy = (sh.saturating_sub(qa)) / 2;
+    let mut recorte = image::imageops::crop_imm(&pequena, ox, oy, ql.min(sw), qa.min(sh)).to_image();
+    for _ in 0..3 {
+        desfocar(&mut recorte, 5);
+    }
+    let cheia = image::imageops::resize(&recorte, l as u32, a as u32, image::imageops::FilterType::Triangle);
+    VIDRO.with(|v| *v.borrow_mut() = Some(Vidro { l, a, px: cheia.into_raw() }));
+    tracing::info!(l, a, tempo = ?inicio.elapsed(), "vidro preparado");
+}
+
+/// Desfoque por média móvel (uma passada horizontal e uma vertical).
+fn desfocar(img: &mut image::RgbImage, raio: i32) {
+    let (w, h) = (img.width() as i32, img.height() as i32);
+    if w == 0 || h == 0 {
+        return;
+    }
+    let janela = (2 * raio + 1) as u32;
+    let mut tmp = img.clone();
+    for y in 0..h {
+        for c in 0..3 {
+            let mut soma: u32 = 0;
+            for k in -raio..=raio {
+                soma += img.get_pixel(k.clamp(0, w - 1) as u32, y as u32)[c] as u32;
+            }
+            for x in 0..w {
+                tmp.get_pixel_mut(x as u32, y as u32)[c] = (soma / janela) as u8;
+                let sai = (x - raio).clamp(0, w - 1) as u32;
+                let entra = (x + raio + 1).clamp(0, w - 1) as u32;
+                soma = soma + img.get_pixel(entra, y as u32)[c] as u32 - img.get_pixel(sai, y as u32)[c] as u32;
+            }
+        }
+    }
+    for x in 0..w {
+        for c in 0..3 {
+            let mut soma: u32 = 0;
+            for k in -raio..=raio {
+                soma += tmp.get_pixel(x as u32, k.clamp(0, h - 1) as u32)[c] as u32;
+            }
+            for y in 0..h {
+                img.get_pixel_mut(x as u32, y as u32)[c] = (soma / janela) as u8;
+                let sai = (y - raio).clamp(0, h - 1) as u32;
+                let entra = (y + raio + 1).clamp(0, h - 1) as u32;
+                soma = soma + tmp.get_pixel(x as u32, entra)[c] as u32 - tmp.get_pixel(x as u32, sai)[c] as u32;
+            }
+        }
+    }
 }

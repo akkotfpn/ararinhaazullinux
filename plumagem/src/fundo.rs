@@ -18,7 +18,7 @@ use smithay::{
 };
 
 /// PNG gerado de `arte/papeis-de-parede/spix.svg` (1920x1080).
-static FUNDO_SPIX_PNG: &[u8] = include_bytes!("../resources/fundo-spix.png");
+pub static FUNDO_SPIX_PNG: &[u8] = include_bytes!("../resources/fundo-spix.png");
 
 #[derive(Debug, Clone)]
 pub struct Fundo {

@@ -6,7 +6,43 @@ use xcursor::{
     CursorTheme,
 };
 
-static FALLBACK_CURSOR_DATA: &[u8] = include_bytes!("../resources/cursor.rgba");
+/// Seta desenhada pela Plumagem quando não há tema de cursor instalado:
+/// branca com contorno preto e uma sombra leve, no tamanho do Windows.
+fn seta_plumagem() -> Image {
+    const LADO: i32 = 32;
+    let mut t = crate::desenho::Tela::nova(LADO, LADO);
+    let e = 1.15; // escala da seta (≈ 21 px de altura)
+    let base = [
+        (0.0, 0.0),
+        (0.0, 16.0),
+        (4.0, 12.3),
+        (6.8, 18.6),
+        (9.4, 17.5),
+        (6.7, 11.4),
+        (11.6, 11.4),
+    ];
+    let pts = |dx: f32, dy: f32| -> Vec<(f32, f32)> {
+        base.iter().map(|(x, y)| (1.5 + dx + x * e, 1.5 + dy + y * e)).collect()
+    };
+    let preto = crate::desenho::Cor(0, 0, 0, 255);
+    t.poligono(&pts(0.8, 1.2), crate::desenho::Cor(0, 0, 0, 60));
+    let seta = pts(0.0, 0.0);
+    t.poligono(&seta, crate::desenho::Cor(255, 255, 255, 255));
+    for i in 0..seta.len() {
+        let (a, b) = (seta[i], seta[(i + 1) % seta.len()]);
+        t.linha(a.0, a.1, b.0, b.1, 1.3, preto);
+    }
+    Image {
+        size: 24,
+        width: LADO as u32,
+        height: LADO as u32,
+        xhot: 2,
+        yhot: 2,
+        delay: 1,
+        pixels_rgba: t.pixels().to_vec(),
+        pixels_argb: vec![],
+    }
+}
 
 pub struct Cursor {
     icons: Vec<Image>,
@@ -26,18 +62,7 @@ impl Cursor {
         let theme = CursorTheme::load(&name);
         let icons = load_icon(&theme)
             .map_err(|err| warn!("Unable to load xcursor: {}, using fallback cursor", err))
-            .unwrap_or_else(|_| {
-                vec![Image {
-                    size: 32,
-                    width: 64,
-                    height: 64,
-                    xhot: 1,
-                    yhot: 1,
-                    delay: 1,
-                    pixels_rgba: Vec::from(FALLBACK_CURSOR_DATA),
-                    pixels_argb: vec![], //unused
-                }]
-            });
+            .unwrap_or_else(|_| vec![seta_plumagem()]);
 
         Cursor { icons, size }
     }

@@ -11,13 +11,14 @@ use smithay::{
     backend::renderer::{
         element::{
             memory::{MemoryRenderBuffer, MemoryRenderBufferRenderElement},
+            solid::{SolidColorBuffer, SolidColorRenderElement},
             Kind,
         },
         ImportMem, Renderer,
     },
     desktop::Space,
     output::Output,
-    utils::{IsAlive, Logical, Point, Size},
+    utils::{IsAlive, Logical, Point, Rectangle, Size},
     wayland::{compositor, shell::xdg::XdgToplevelSurfaceData},
 };
 
@@ -26,8 +27,38 @@ use crate::{
     shell::WindowElement,
 };
 
-/// Altura da barra de tarefas, em pixels lógicos.
-pub const ALTURA: i32 = 48;
+/// Tamanhos da barra de tarefas (em pixels lógicos), escolhidos em
+/// /etc/plumagem/plumagem.conf com `barra = pequena | media | grande`.
+const ALTURAS: [(&str, i32); 3] = [("pequena", 38), ("media", 44), ("grande", 50)];
+const ALTURA_PADRAO: i32 = 44;
+
+/// Altura da barra de tarefas, lida uma vez da configuração.
+pub fn altura() -> i32 {
+    static ALTURA: std::sync::OnceLock<i32> = std::sync::OnceLock::new();
+    *ALTURA.get_or_init(|| {
+        let caminhos = [
+            std::env::var("HOME").map(|h| format!("{h}/.config/plumagem/plumagem.conf")).unwrap_or_default(),
+            "/etc/plumagem/plumagem.conf".to_string(),
+        ];
+        for caminho in caminhos {
+            let Ok(texto) = std::fs::read_to_string(&caminho) else { continue };
+            for linha in texto.lines() {
+                let Some((k, v)) = linha.split_once('=') else { continue };
+                if k.trim() != "barra" {
+                    continue;
+                }
+                let v = v.trim().trim_matches('"').to_lowercase().replace('é', "e");
+                if let Some((_, a)) = ALTURAS.iter().find(|(n, _)| *n == v) {
+                    return *a;
+                }
+                if let Ok(a) = v.parse::<i32>() {
+                    return a.clamp(32, 72);
+                }
+            }
+        }
+        ALTURA_PADRAO
+    })
+}
 
 const MENU_L: i32 = 380;
 const MENU_A: i32 = 470;
@@ -36,8 +67,6 @@ const APPS_Y: i32 = 112;
 const APP_A: i32 = 44;
 const RODAPE_A: i32 = 64;
 const INICIAR_X: i32 = 6;
-const INICIAR_L: i32 = 40;
-const TAREFAS_X: i32 = 56;
 const TAREFA_MAX: i32 = 220;
 const RELOGIO_L: i32 = 120;
 
@@ -71,6 +100,9 @@ pub struct Painel {
     pub ordem: Vec<WindowElement>,
     /// Janelas minimizadas e onde estavam.
     pub minimizadas: Vec<(WindowElement, Point<i32, Logical>)>,
+    /// Retângulo de seleção na área de trabalho: onde o arrasto começou.
+    pub selecao: Option<Point<f64, Logical>>,
+    sel: [SolidColorBuffer; 5],
     pub apps: Option<Vec<App>>,
     relogio: (u64, String, String),
     barra: Option<(String, MemoryRenderBuffer)>,
@@ -95,11 +127,13 @@ impl Default for Painel {
             segurando: false,
             ordem: Vec::new(),
             minimizadas: Vec::new(),
+            selecao: None,
+            sel: Default::default(),
             apps: None,
             relogio: (0, String::new(), String::new()),
             barra: None,
             menu: None,
-            logo: desenho::icone(LOGO_PNG, 30, 30),
+            logo: desenho::icone(LOGO_PNG, (altura() - 16).max(16) as u32, (altura() - 16).max(16) as u32),
             mingau: desenho::icone(MINGAU_PNG, 44, 51),
         }
     }
@@ -146,14 +180,22 @@ impl Painel {
         }
     }
 
+    fn iniciar_l() -> i32 {
+        altura() - 8
+    }
+
+    fn tarefas_x() -> i32 {
+        INICIAR_X + Self::iniciar_l() + 10
+    }
+
     fn largura_tarefa(&self, largura_tela: i32) -> i32 {
         let n = self.ordem.len().max(1) as i32;
-        let livre = largura_tela - TAREFAS_X - RELOGIO_L - 8;
+        let livre = largura_tela - Self::tarefas_x() - RELOGIO_L - 8;
         ((livre / n) - 4).clamp(48, TAREFA_MAX)
     }
 
     fn menu_origem(tela: Size<i32, Logical>) -> Point<i32, Logical> {
-        (MENU_MARGEM, tela.h - ALTURA - MENU_MARGEM - MENU_A).into()
+        (MENU_MARGEM, tela.h - altura() - MENU_MARGEM - MENU_A).into()
     }
 
     fn max_apps() -> usize {
@@ -185,16 +227,17 @@ impl Painel {
                 return Some(Alvo::Menu);
             }
         }
-        if y < tela.h - ALTURA || y >= tela.h || x < 0 || x >= tela.w {
+        if y < tela.h - altura() || y >= tela.h || x < 0 || x >= tela.w {
             return None;
         }
-        if (INICIAR_X..INICIAR_X + INICIAR_L).contains(&x) {
+        if (INICIAR_X..INICIAR_X + Self::iniciar_l()).contains(&x) {
             return Some(Alvo::Iniciar);
         }
         let lt = self.largura_tarefa(tela.w);
-        if x >= TAREFAS_X {
-            let i = ((x - TAREFAS_X) / (lt + 4)) as usize;
-            if i < self.ordem.len() && (x - TAREFAS_X) % (lt + 4) < lt {
+        let tx = Self::tarefas_x();
+        if x >= tx {
+            let i = ((x - tx) / (lt + 4)) as usize;
+            if i < self.ordem.len() && (x - tx) % (lt + 4) < lt {
                 return Some(Alvo::Tarefa(i));
             }
         }
@@ -240,6 +283,43 @@ impl Painel {
         self.apps = Some(apps);
     }
 
+    /// Retângulo azul de seleção ao arrastar na área de trabalho.
+    pub fn elementos_selecao(
+        &mut self,
+        geo: Rectangle<i32, Logical>,
+        ponteiro: Point<f64, Logical>,
+        escala: f64,
+    ) -> Vec<SolidColorRenderElement> {
+        let Some(inicio) = self.selecao else { return Vec::new() };
+        let (x0, y0) = (inicio.x.min(ponteiro.x), inicio.y.min(ponteiro.y));
+        let (x1, y1) = (inicio.x.max(ponteiro.x), inicio.y.max(ponteiro.y));
+        let loc = Point::<f64, Logical>::from((x0, y0)) - geo.loc.to_f64();
+        let (w, h) = ((x1 - x0).round() as i32, (y1 - y0).round() as i32);
+        if w < 2 && h < 2 {
+            return Vec::new();
+        }
+        // Cores pré-multiplicadas: azul-ararinha translúcido e borda mais forte.
+        let (r, g, b) = (0x2B as f32 / 255.0, 0x7B as f32 / 255.0, 0xC4 as f32 / 255.0);
+        let preenchimento = [r * 0.25, g * 0.25, b * 0.25, 0.25];
+        let borda = [r * 0.9, g * 0.9, b * 0.9, 0.9];
+        let partes: [((i32, i32), (i32, i32), [f32; 4]); 5] = [
+            ((0, 0), (w, h), preenchimento),
+            ((0, 0), (w, 1), borda),
+            ((0, h - 1), (w, 1), borda),
+            ((0, 0), (1, h), borda),
+            ((w - 1, 0), (1, h), borda),
+        ];
+        let mut v = Vec::new();
+        for (buf, (desl, tam, cor)) in self.sel.iter_mut().zip(partes) {
+            buf.update(tam, cor);
+            let pos = (loc + Point::from((desl.0 as f64, desl.1 as f64))).to_physical(escala).to_i32_round();
+            v.push(SolidColorRenderElement::from_buffer(buf, pos, escala, 1.0, Kind::Unspecified));
+        }
+        // A borda vem antes (fica por cima do preenchimento).
+        v.rotate_left(1);
+        v
+    }
+
     /// Elementos de desenho da interface para esta saída (menu por cima).
     pub fn elementos<R>(
         &mut self,
@@ -260,6 +340,7 @@ impl Painel {
 
         self.atualizar(space);
         self.atualizar_relogio();
+        desenho::preparar_vidro(tela.w, tela.h);
 
         let ativa = space.elements().last().cloned();
         let janelas: Vec<(String, bool, bool)> = self
@@ -273,7 +354,7 @@ impl Painel {
         if self.menu_aberto {
             let chave = format!("{hover:?}|{:?}", self.apps.as_ref().map(|a| a.len()));
             if self.menu.as_ref().map(|(c, _)| c != &chave).unwrap_or(true) {
-                let tela_menu = self.desenhar_menu(hover);
+                let tela_menu = self.desenhar_menu(hover, Self::menu_origem(tela));
                 self.menu = Some((chave, tela_menu.em_buffer()));
             }
             let o = Self::menu_origem(tela);
@@ -297,11 +378,11 @@ impl Painel {
             tela.w, self.menu_aberto, self.relogio.1, self.relogio.2
         );
         if self.barra.as_ref().map(|(c, _)| c != &chave).unwrap_or(true) {
-            let t = self.desenhar_barra(tela.w, hover, &janelas);
+            let t = self.desenhar_barra(tela.w, tela.h, hover, &janelas);
             self.barra = Some((chave, t.em_buffer()));
         }
         if let Some((_, buf)) = &self.barra {
-            let pos = Point::<i32, Logical>::from((0, tela.h - ALTURA));
+            let pos = Point::<i32, Logical>::from((0, tela.h - altura()));
             if let Ok(e) = MemoryRenderBufferRenderElement::from_buffer(
                 renderer,
                 pos.to_f64().to_physical(escala),
@@ -317,30 +398,41 @@ impl Painel {
         elementos
     }
 
-    fn desenhar_barra(&self, largura: i32, hover: Option<Alvo>, janelas: &[(String, bool, bool)]) -> Tela {
-        let mut t = Tela::nova(largura, ALTURA);
+    fn desenhar_barra(&self, largura: i32, altura_tela: i32, hover: Option<Alvo>, janelas: &[(String, bool, bool)]) -> Tela {
+        let h = altura();
+        let hf = h as f32;
+        let mut t = Tela::nova(largura, h);
         let l = largura as f32;
-        t.retangulo(0.0, 0.0, l, ALTURA as f32, 0.0, tema::SUPERFICIE.com_alfa(225));
-        t.retangulo(0.0, 0.0, l, 1.0, 0.0, tema::BORDA);
+        // Vidro (Aero): papel de parede desfocado com tinta clara.
+        t.vidro(-1.0, 0.0, l + 2.0, hf + 1.0, 0.0, (0, altura_tela - h), tema::SUPERFICIE.com_alfa(120));
+
+        let bh = hf - 8.0; // altura dos botões
+        let meio = hf / 2.0;
 
         // Botão iniciar com o Mingau.
+        let il = Self::iniciar_l() as f32;
         if self.menu_aberto || hover == Some(Alvo::Iniciar) {
-            t.retangulo(INICIAR_X as f32, 4.0, INICIAR_L as f32, 40.0, 8.0, tema::DESTAQUE_SUAVE);
+            t.retangulo(INICIAR_X as f32, 4.0, il, bh, 8.0, tema::BRANCO.com_alfa(150));
+            t.retangulo(INICIAR_X as f32, 4.0, il, bh, 8.0, tema::DESTAQUE.com_alfa(40));
         }
         if let Some(logo) = &self.logo {
-            t.imagem(INICIAR_X + 5, 9, logo);
+            let lado = logo.width() as i32;
+            t.imagem(INICIAR_X + (Self::iniciar_l() - lado) / 2, (h - lado) / 2, logo);
         } else {
-            t.retangulo(INICIAR_X as f32 + 6.0, 10.0, 28.0, 28.0, 14.0, tema::DESTAQUE);
+            t.retangulo(INICIAR_X as f32 + 6.0, meio - 14.0, 28.0, 28.0, 14.0, tema::DESTAQUE);
         }
 
         // Um botão por janela.
         let lt = self.largura_tarefa(largura);
+        let icone = (hf * 0.5).round().clamp(18.0, 28.0);
+        let tam_txt = if h < 42 { 12.0 } else { 13.0 };
         for (i, (nome, ativa, minimizada)) in janelas.iter().enumerate() {
-            let x = (TAREFAS_X + i as i32 * (lt + 4)) as f32;
+            let x = (Self::tarefas_x() + i as i32 * (lt + 4)) as f32;
             if *ativa && !*minimizada {
-                t.retangulo(x, 4.0, lt as f32, 40.0, 6.0, tema::DESTAQUE_SUAVE);
+                t.retangulo(x, 4.0, lt as f32, bh, 6.0, tema::BRANCO.com_alfa(170));
+                t.retangulo(x, 4.0, lt as f32, bh, 6.0, tema::DESTAQUE.com_alfa(45));
             } else if hover == Some(Alvo::Tarefa(i)) {
-                t.retangulo(x, 4.0, lt as f32, 40.0, 6.0, tema::SUPERFICIE_ALTA);
+                t.retangulo(x, 4.0, lt as f32, bh, 6.0, tema::BRANCO.com_alfa(120));
             }
             // Indicador embaixo: longo na ativa, curto nas outras.
             let (il, cor) = if *ativa && !*minimizada {
@@ -348,34 +440,41 @@ impl Painel {
             } else {
                 (8.0, tema::TEXTO_SECUNDARIO.com_alfa(150))
             };
-            t.retangulo(x + lt as f32 / 2.0 - il / 2.0, 41.0, il, 3.0, 1.5, cor);
+            t.retangulo(x + lt as f32 / 2.0 - il / 2.0, hf - 6.0, il, 3.0, 1.5, cor);
 
             // Ícone provisório: a inicial do programa num quadrado azul.
-            t.retangulo(x + 8.0, 12.0, 24.0, 24.0, 6.0, tema::DESTAQUE);
+            t.retangulo(x + 8.0, meio - icone / 2.0, icone, icone, 6.0, tema::DESTAQUE);
             let ini = letra(nome);
-            let li = desenho::medir(14.0, &ini);
-            t.texto(x + 20.0 - li / 2.0, 29.0, 14.0, tema::BRANCO, &ini);
+            let ti = icone * 0.58;
+            let li = desenho::medir(ti, &ini);
+            t.texto(x + 8.0 + icone / 2.0 - li / 2.0, meio + ti * 0.36, ti, tema::BRANCO, &ini);
             if lt > 60 {
-                let txt = desenho::encurtar(13.0, nome, lt as f32 - 48.0);
+                let txt = desenho::encurtar(tam_txt, nome, lt as f32 - icone - 24.0);
                 let cor = if *minimizada { tema::TEXTO_SECUNDARIO } else { tema::TEXTO };
-                t.texto(x + 40.0, 29.0, 13.0, cor, &txt);
+                t.texto_com_brilho(x + icone + 16.0, meio + tam_txt * 0.36, tam_txt, cor, &txt);
             }
         }
 
-        // Relógio à direita.
+        // Relógio à direita (uma linha só na barra pequena).
         let (hora, data) = (&self.relogio.1, &self.relogio.2);
-        let lh = desenho::medir(13.0, hora);
-        let ld = desenho::medir(12.0, data);
-        t.texto(l - 14.0 - lh, 21.0, 13.0, tema::TEXTO, hora);
-        t.texto(l - 14.0 - ld, 38.0, 12.0, tema::TEXTO_SECUNDARIO, data);
+        if h < 42 {
+            let txt = format!("{hora}  {data}");
+            let lx = desenho::medir(12.0, &txt);
+            t.texto_com_brilho(l - 12.0 - lx, meio + 4.5, 12.0, tema::TEXTO, &txt);
+        } else {
+            let lh = desenho::medir(13.0, hora);
+            let ld = desenho::medir(12.0, data);
+            t.texto_com_brilho(l - 14.0 - lh, meio - 3.0, 13.0, tema::TEXTO, hora);
+            t.texto_com_brilho(l - 14.0 - ld, meio + 14.0, 12.0, tema::TEXTO_SECUNDARIO, data);
+        }
         t
     }
 
-    fn desenhar_menu(&self, hover: Option<Alvo>) -> Tela {
+    fn desenhar_menu(&self, hover: Option<Alvo>, origem: Point<i32, Logical>) -> Tela {
         let mut t = Tela::nova(MENU_L, MENU_A);
         let (l, a) = (MENU_L as f32, MENU_A as f32);
-        t.retangulo(0.0, 0.0, l, a, 12.0, tema::BORDA);
-        t.retangulo(1.0, 1.0, l - 2.0, a - 2.0, 11.0, tema::FUNDO);
+        // Vidro com tinta mais forte que a da barra: o menu tem muito texto.
+        t.vidro(0.0, 0.0, l, a, 12.0, (origem.x, origem.y), tema::FUNDO.com_alfa(175));
 
         // Cabeçalho com o Mingau.
         if let Some(m) = &self.mingau {

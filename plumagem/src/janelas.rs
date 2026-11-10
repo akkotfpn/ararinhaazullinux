@@ -25,7 +25,7 @@ struct GeometriaAnterior(RefCell<Option<(Point<i32, Logical>, Option<Size<i32, L
 /// Área da saída que as janelas podem ocupar (tudo menos a barra de tarefas).
 pub fn area_util(space: &Space<WindowElement>, output: &Output) -> Option<Rectangle<i32, Logical>> {
     let mut g = space.output_geometry(output)?;
-    g.size.h = (g.size.h - painel::ALTURA).max(1);
+    g.size.h = (g.size.h - painel::altura()).max(1);
     Some(g)
 }
 

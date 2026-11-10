@@ -452,7 +452,8 @@ where
 
             let mut state = self.decoration_state();
             let width = window_geo.size.w;
-            state.header_bar.redraw(width as u32, &titulo, ativa, maximizada);
+            let origem = location.to_f64().to_logical(scale).to_i32_round();
+            state.header_bar.redraw(width as u32, &titulo, ativa, maximizada, (origem.x, origem.y));
             let mut vec = AsRenderElements::<R>::render_elements::<WindowRenderElement<R>>(
                 &state.header_bar,
                 renderer,

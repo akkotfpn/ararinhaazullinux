@@ -170,28 +170,30 @@ impl HeaderBar {
         }
     }
 
-    pub fn redraw(&mut self, width: u32, titulo: &str, ativa: bool, maximizada: bool) {
+    /// `origem`: posição da barra na tela, para o vidro mostrar o pedaço
+    /// certo do papel de parede desfocado.
+    pub fn redraw(&mut self, width: u32, titulo: &str, ativa: bool, maximizada: bool, origem: (i32, i32)) {
         self.width = width;
         if width == 0 {
             return;
         }
         let sobre = self.pointer_loc.and_then(|l| self.botao_em(l.x));
-        let chave = format!("{width}|{titulo}|{ativa}|{maximizada}|{sobre:?}");
+        let chave = format!("{width}|{titulo}|{ativa}|{maximizada}|{sobre:?}|{origem:?}");
         if self.buffer.as_ref().map(|(c, _)| c == &chave).unwrap_or(false) {
             return;
         }
 
         let (l, a) = (width as f32, HEADER_BAR_HEIGHT as f32);
         let mut t = Tela::nova(width as i32, HEADER_BAR_HEIGHT);
-        let fundo = if ativa { tema::SUPERFICIE } else { tema::FUNDO };
-        t.retangulo(0.0, 0.0, l, a, 0.0, fundo);
-        t.retangulo(0.0, a - 1.0, l, 1.0, 0.0, tema::BORDA);
+        // Vidro (Aero): azul-ararinha na janela ativa, mais apagado nas outras.
+        let tinta = if ativa { tema::DESTAQUE.com_alfa(70) } else { tema::FUNDO.com_alfa(150) };
+        t.vidro(0.0, 0.0, l, a + 1.0, 0.0, origem, tinta);
 
         let cor_titulo = if ativa { tema::TEXTO } else { tema::TEXTO_SECUNDARIO };
         let espaco = l - 3.0 * BOTAO_L as f32 - 24.0;
         if espaco > 20.0 {
             let txt = desenho::encurtar(13.0, titulo, espaco);
-            t.texto(12.0, 21.0, 13.0, cor_titulo, &txt);
+            t.texto_com_brilho(12.0, 21.0, 13.0, cor_titulo, &txt);
         }
 
         let b = BOTAO_L as f32;
@@ -204,7 +206,7 @@ impl HeaderBar {
                     t.retangulo(x, 0.0, b, a - 1.0, 0.0, tema::ERRO);
                     cor = tema::BRANCO;
                 } else {
-                    t.retangulo(x, 0.0, b, a - 1.0, 0.0, tema::SUPERFICIE_ALTA);
+                    t.retangulo(x, 0.0, b, a - 1.0, 0.0, tema::BRANCO.com_alfa(110));
                 }
             }
             match botao {
