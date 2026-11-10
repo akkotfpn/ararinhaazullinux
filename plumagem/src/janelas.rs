@@ -5,6 +5,12 @@
 use std::{cell::RefCell, process::Command, sync::atomic::Ordering};
 
 use smithay::{
+    desktop::space::SpaceElement,
+    input::pointer::{Focus, GrabStartData},
+    wayland::compositor::with_states,
+};
+
+use smithay::{
     desktop::Space,
     output::Output,
     reexports::wayland_protocols::xdg::shell::server::xdg_toplevel,
@@ -15,7 +21,10 @@ use tracing::{error, info};
 use crate::{
     focus::KeyboardFocusTarget,
     painel::{self, Alvo},
-    shell::{ssd::HEADER_BAR_HEIGHT, FullscreenSurface, WindowElement},
+    shell::{
+        ssd::HEADER_BAR_HEIGHT, FullscreenSurface, PointerResizeSurfaceGrab, ResizeData, ResizeEdge,
+        ResizeState, SurfaceData, WindowElement,
+    },
     state::{AnvilState, Backend},
 };
 
@@ -218,5 +227,78 @@ impl<B: Backend> AnvilState<B> {
         }
         let Some(geo) = self.space.output_geometry(output) else { return false };
         self.painel.alvo(pos - geo.loc.to_f64(), geo.size).is_some()
+    }
+
+    /// Borda de janela sob o ponteiro (para redimensionar), se houver.
+    /// Vale para janelas com a barra de título da Plumagem; as que se
+    /// decoram sozinhas cuidam das próprias bordas.
+    pub fn borda_sob(&self, pos: Point<f64, Logical>) -> Option<(WindowElement, ResizeEdge)> {
+        const FORA: f64 = 6.0; // além da janela
+        const DENTRO: f64 = 3.0; // para dentro da janela
+        const CANTO: f64 = 14.0;
+        for w in self.space.elements().rev() {
+            let Some(r) = self.space.element_geometry(w) else { continue };
+            let (x0, y0) = (r.loc.x as f64, r.loc.y as f64);
+            let (x1, y1) = (x0 + r.size.w as f64, y0 + r.size.h as f64);
+            if pos.x < x0 - FORA || pos.x >= x1 + FORA || pos.y < y0 - FORA || pos.y >= y1 + FORA {
+                continue;
+            }
+            let miolo = pos.x >= x0 + DENTRO && pos.x < x1 - DENTRO && pos.y >= y0 + DENTRO && pos.y < y1 - DENTRO;
+            if miolo || !w.decoration_state().is_ssd || self.esta_maximizada(w) {
+                // A janela de cima ganha: não procura bordas das de baixo.
+                return None;
+            }
+            let perto_x = pos.x < x0 + CANTO || pos.x >= x1 - CANTO;
+            let perto_y = pos.y < y0 + CANTO || pos.y >= y1 - CANTO;
+            let na_borda_x = pos.x < x0 + DENTRO || pos.x >= x1 - DENTRO;
+            let na_borda_y = pos.y < y0 + DENTRO || pos.y >= y1 - DENTRO;
+            let mut e = ResizeEdge::NONE;
+            if na_borda_x || (na_borda_y && perto_x) {
+                e |= if pos.x < (x0 + x1) / 2.0 { ResizeEdge::LEFT } else { ResizeEdge::RIGHT };
+            }
+            if na_borda_y || (na_borda_x && perto_y) {
+                e |= if pos.y < (y0 + y1) / 2.0 { ResizeEdge::TOP } else { ResizeEdge::BOTTOM };
+            }
+            return (e != ResizeEdge::NONE).then(|| (w.clone(), e));
+        }
+        None
+    }
+
+    /// Começa a redimensionar a janela pela borda, com o mouse.
+    pub fn iniciar_redimensionar(
+        &mut self,
+        w: &WindowElement,
+        bordas: ResizeEdge,
+        botao: u32,
+        serial: smithay::utils::Serial,
+    ) {
+        let Some(t) = w.0.toplevel().cloned() else { return };
+        let Some(loc) = self.space.element_location(w) else { return };
+        let tamanho = w.geometry().size;
+        let dados = ResizeData {
+            edges: bordas,
+            initial_window_location: loc,
+            initial_window_size: tamanho,
+        };
+        with_states(t.wl_surface(), |states| {
+            if let Some(d) = states.data_map.get::<RefCell<SurfaceData>>() {
+                d.borrow_mut().resize_state = ResizeState::Resizing(dados);
+            }
+        });
+        self.focar_janela(w);
+        let grab = PointerResizeSurfaceGrab {
+            start_data: GrabStartData {
+                focus: None,
+                button: botao,
+                location: self.pointer.current_location(),
+            },
+            window: w.clone(),
+            edges: bordas,
+            initial_window_location: loc,
+            initial_window_size: tamanho,
+            last_window_size: tamanho,
+        };
+        let ponteiro = self.pointer.clone();
+        ponteiro.set_grab(self, grab, serial, Focus::Clear);
     }
 }

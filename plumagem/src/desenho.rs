@@ -270,6 +270,11 @@ impl Tela {
         }
     }
 
+    /// Pinta um pixel (mistura por cima).
+    pub fn pintar(&mut self, x: i32, y: i32, cor: Cor) {
+        self.misturar(x, y, cor, 1.0);
+    }
+
     /// Pixels crus (RGBA pré-multiplicado).
     pub fn pixels(&self) -> &[u8] {
         &self.px

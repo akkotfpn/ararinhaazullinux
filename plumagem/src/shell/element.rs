@@ -462,11 +462,27 @@ where
                 alpha,
             );
 
+            let topo = location;
             location.y += (scale.y * HEADER_BAR_HEIGHT as f64) as i32;
 
             let window_elements =
                 AsRenderElements::render_elements(&self.0, renderer, location, scale, alpha);
             vec.extend(window_elements);
+
+            // Sombra suave por baixo de tudo (menos em janela maximizada).
+            if !maximizada {
+                vec.extend(
+                    super::ssd::elementos_sombra(
+                        renderer,
+                        topo,
+                        width,
+                        window_geo.size.h + HEADER_BAR_HEIGHT,
+                        scale,
+                    )
+                    .into_iter()
+                    .map(WindowRenderElement::Barra),
+                );
+            }
             vec.into_iter().map(C::from).collect()
         } else {
             AsRenderElements::render_elements(&self.0, renderer, location, scale, alpha)

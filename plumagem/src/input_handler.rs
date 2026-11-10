@@ -238,8 +238,16 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             return;
         }
 
-        // Arrastar com o botão esquerdo na área de trabalho: seleção azul.
+        // Bordas das janelas: redimensionar.
         let pos = self.pointer.current_location();
+        if wl_pointer::ButtonState::Pressed == state && button == 0x110 && !self.pointer.is_grabbed() {
+            if let Some((janela, bordas)) = self.borda_sob(pos) {
+                self.iniciar_redimensionar(&janela, bordas, button, serial);
+                return;
+            }
+        }
+
+        // Arrastar com o botão esquerdo na área de trabalho: seleção azul.
         if wl_pointer::ButtonState::Pressed == state
             && button == 0x110
             && !self.pointer.is_grabbed()

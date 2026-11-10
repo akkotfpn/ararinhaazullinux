@@ -280,3 +280,104 @@ impl WindowElement {
         self.decoration_state().is_ssd = ssd;
     }
 }
+
+/// Alcance da sombra das janelas, em pixels.
+const SOMBRA: i32 = 18;
+/// Deslocamento para baixo (a luz vem de cima).
+const SOMBRA_DY: i32 = 3;
+
+fn alfa_sombra(d: f32) -> u8 {
+    let t = (1.0 - d / SOMBRA as f32).clamp(0.0, 1.0);
+    (t * t * 70.0) as u8
+}
+
+/// Peças da sombra (cantos e faixas), desenhadas uma vez e esticadas.
+struct PecasSombra {
+    cantos: [MemoryRenderBuffer; 4], // sup-esq, sup-dir, inf-esq, inf-dir
+    faixas: [MemoryRenderBuffer; 4], // cima, baixo, esquerda, direita
+}
+
+thread_local! {
+    static SOMBRA_PECAS: PecasSombra = {
+        let s = SOMBRA;
+        let canto = |rx: f32, ry: f32| {
+            let mut t = Tela::nova(s, s);
+            for y in 0..s {
+                for x in 0..s {
+                    let dx = ((x as f32 + 0.5) - rx).abs();
+                    let dy = ((y as f32 + 0.5) - ry).abs();
+                    t.pintar(x, y, desenho::Cor(0, 0, 0, alfa_sombra((dx * dx + dy * dy).sqrt())));
+                }
+            }
+            t.em_buffer()
+        };
+        let faixa = |l: i32, a: i32, f: &dyn Fn(i32, i32) -> f32| {
+            let mut t = Tela::nova(l, a);
+            for y in 0..a {
+                for x in 0..l {
+                    t.pintar(x, y, desenho::Cor(0, 0, 0, alfa_sombra(f(x, y))));
+                }
+            }
+            t.em_buffer()
+        };
+        let sf = s as f32;
+        PecasSombra {
+            cantos: [canto(sf, sf), canto(0.0, sf), canto(sf, 0.0), canto(0.0, 0.0)],
+            faixas: [
+                faixa(1, s, &|_, y| sf - y as f32 - 0.5),
+                faixa(1, s, &|_, y| y as f32 + 0.5),
+                faixa(s, 1, &|x, _| sf - x as f32 - 0.5),
+                faixa(s, 1, &|x, _| x as f32 + 0.5),
+            ],
+        }
+    };
+}
+
+/// Sombra suave em volta de uma janela de `largura` x `altura` (lógicos)
+/// cujo canto superior esquerdo está em `local` (físico).
+pub fn elementos_sombra<R>(
+    renderer: &mut R,
+    local: Point<i32, smithay::utils::Physical>,
+    largura: i32,
+    altura: i32,
+    escala: smithay::utils::Scale<f64>,
+) -> Vec<MemoryRenderBufferRenderElement<R>>
+where
+    R: Renderer + ImportMem,
+    R::TextureId: Send + Clone + 'static,
+{
+    let (s, dy, w, h) = (SOMBRA, SOMBRA_DY, largura, altura);
+    if w <= 0 || h <= 0 {
+        return Vec::new();
+    }
+    // (peça, posição lógica relativa, tamanho lógico)
+    SOMBRA_PECAS.with(|p| {
+        let pecas: [(&MemoryRenderBuffer, (i32, i32), (i32, i32)); 8] = [
+            (&p.cantos[0], (-s, -s + dy), (s, s)),
+            (&p.cantos[1], (w, -s + dy), (s, s)),
+            (&p.cantos[2], (-s, h + dy), (s, s)),
+            (&p.cantos[3], (w, h + dy), (s, s)),
+            (&p.faixas[0], (0, -s + dy), (w, s)),
+            (&p.faixas[1], (0, h + dy), (w, s)),
+            (&p.faixas[2], (-s, dy), (s, h)),
+            (&p.faixas[3], (w, dy), (s, h)),
+        ];
+        pecas
+            .into_iter()
+            .filter_map(|(buf, (x, y), (pl, pa))| {
+                let pos = local.to_f64()
+                    + Point::<f64, Logical>::from((x as f64, y as f64)).to_physical(escala);
+                MemoryRenderBufferRenderElement::from_buffer(
+                    renderer,
+                    pos,
+                    buf,
+                    None,
+                    None,
+                    Some((pl, pa).into()),
+                    Kind::Unspecified,
+                )
+                .ok()
+            })
+            .collect()
+    })
+}

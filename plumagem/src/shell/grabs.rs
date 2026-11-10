@@ -407,6 +407,10 @@ impl<BackendData: Backend> PointerGrab<AnvilState<BackendData>> for PointerResiz
         new_window_width = new_window_width.max(min_width).min(max_width);
         new_window_height = new_window_height.max(min_height).min(max_height);
 
+        // Com barra de título da Plumagem, o cliente recebe o tamanho sem ela.
+        if self.window.decoration_state().is_ssd {
+            new_window_height = (new_window_height - super::ssd::HEADER_BAR_HEIGHT).max(1);
+        }
         self.last_window_size = (new_window_width, new_window_height).into();
 
         match &self.window.0.underlying_surface() {
@@ -804,6 +808,10 @@ impl<BackendData: Backend> TouchGrab<AnvilState<BackendData>> for TouchResizeSur
         new_window_width = new_window_width.max(min_width).min(max_width);
         new_window_height = new_window_height.max(min_height).min(max_height);
 
+        // Com barra de título da Plumagem, o cliente recebe o tamanho sem ela.
+        if self.window.decoration_state().is_ssd {
+            new_window_height = (new_window_height - super::ssd::HEADER_BAR_HEIGHT).max(1);
+        }
         self.last_window_size = (new_window_width, new_window_height).into();
 
         match self.window.0.underlying_surface() {
