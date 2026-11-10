@@ -68,12 +68,13 @@ ln -sfv ../run/systemd/resolve/stub-resolv.conf /etc/resolv.conf
 cat > /etc/issue << "EOF"
 
         .--.
-       / o  \__     Ararinha Azul Linux 0.1 (Primeiro Pio)
+       / o  \\__     Ararinha Azul Linux 0.1 (Primeiro Pio)
       (   ___  >    Bem-vindo! O Mingau estava te esperando.
-       \  \  \/
+       \\  \\  \\/
         '--'--'     \n  \l
 
 EOF
+# o agetty interpreta "\x" como código; por isso a arte usa "\\"
 ''',
   '''
 rm -f /etc/machine-id
