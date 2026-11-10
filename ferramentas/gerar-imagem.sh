@@ -30,9 +30,17 @@ echo "== Montando a imagem ($ARQ)"
 unshare --user --map-root-user -- systemd-repart \
   --empty=create --size=auto --offline=yes --dry-run=no \
   --architecture="$ARQ_REPART" \
+  --sector-size=512 \
   --definitions="$REPO/imagem/repart.d" \
   --copy-source="$RAIZ" \
   "$RAW"
+
+# O firmware UEFI só lê a FAT se o setor dela for igual ao do disco (512).
+# Confere direto no setor de boot da FAT (bytes 11-12) da partição EFI.
+INICIO=$(sfdisk -J "$RAW" | python3 -c 'import json,sys; print(json.load(sys.stdin)["partitiontable"]["partitions"][0]["start"])')
+SETOR_FAT=$(od -An -tu2 -j $(( INICIO * 512 + 11 )) -N2 "$RAW" | tr -d ' ')
+echo "== Partição EFI começa no setor $INICIO; setor da FAT: $SETOR_FAT bytes"
+[[ "$SETOR_FAT" == 512 ]] || { echo "FAT com setor de $SETOR_FAT bytes: o UEFI não lê." >&2; exit 1; }
 
 echo "== Convertendo para qcow2 (Proxmox)"
 qemu-img convert -O qcow2 -c "$RAW" "$DESTINO/ararinha-$ARQ.qcow2"
