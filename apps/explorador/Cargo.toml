@@ -1,0 +1,10 @@
+[package]
+name = "explorador"
+version = "0.1.0"
+description = "Explorador de Arquivos do Ararinha Azul Linux"
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+penas = { path = "../penas" }

@@ -1,0 +1,41 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# CI leve dos aplicativos (apps/): compila as Penas e os apps num runner do
+# GitHub. O binário que vai no Ararinha é compilado pela Ninhada, dentro do
+# próprio sistema, com as crates travadas no Cargo.lock.
+name: Apps
+
+on:
+  push:
+    paths: ["apps/**", ".github/workflows/apps.yml"]
+  pull_request:
+    paths: ["apps/**", ".github/workflows/apps.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compilar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Bibliotecas de sistema
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends libxkbcommon-dev libwayland-dev pkg-config
+
+      - name: Compilar
+        working-directory: apps
+        run: cargo build --release 2>&1 | tee ../compilacao.log
+
+      - name: Erros (resumo)
+        if: failure()
+        run: grep -E "^error" -A14 compilacao.log | head -400
+
+      - name: Cargo.lock (para commit)
+        if: always()
+        run: |
+          echo "::group::Cargo.lock"
+          cat apps/Cargo.lock || true
+          echo "::endgroup::"

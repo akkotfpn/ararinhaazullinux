@@ -1,0 +1,12 @@
+[package]
+name = "penas"
+version = "0.1.0"
+description = "Kit de interface dos aplicativos do Ararinha Azul Linux"
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+smithay-client-toolkit = "0.19.2"
+fontdue = "0.9"
+image = { version = "0.25", default-features = false, features = ["png"] }

@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Aplicativos do Ararinha (ADR 0015): o kit de interface Penas e os apps
+# feitos com ele. Cada app é um binário; o Cargo.lock é um só.
+[workspace]
+members = ["penas", "explorador"]
+resolver = "2"
+
+[workspace.package]
+edition = "2021"
+license = "GPL-3.0-or-later"
+authors = ["Davi Souza"]
+
+[profile.release]
+lto = "thin"
