@@ -90,6 +90,19 @@ pub enum Alvo {
     SomBarra(u16),
     SomMudo,
     SomPainel,
+    /// Ícone de rede na bandeja e o painel dele.
+    Rede,
+    RedePainel,
+}
+
+/// Estado da rede (lido de /sys e /proc, a cada 5 s).
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Rede {
+    pub conectado: bool,
+    pub interface: String,
+    pub ip: String,
+    pub sem_fio: bool,
+    lido_em: u64,
 }
 
 /// Estado do som (lido com o wpctl, do WirePlumber).
@@ -101,7 +114,8 @@ pub struct Som {
     lido_em: u64,
 }
 
-const BANDEJA_L: i32 = 40;
+const ICONE_BANDEJA: i32 = 38;
+const BANDEJA_L: i32 = 2 * ICONE_BANDEJA;
 const SOM_L: i32 = 280;
 const SOM_A: i32 = 104;
 const SOM_BARRA_X0: f32 = 64.0;
@@ -133,6 +147,9 @@ pub struct Painel {
     pub som: Som,
     pub som_aberto: bool,
     painel_som: Option<(String, MemoryRenderBuffer)>,
+    pub rede: Rede,
+    pub rede_aberta: bool,
+    painel_rede: Option<(String, MemoryRenderBuffer)>,
     pub apps: Option<Vec<App>>,
     relogio: (u64, String, String),
     barra: Option<(String, MemoryRenderBuffer)>,
@@ -163,6 +180,9 @@ impl Default for Painel {
             som: Som::default(),
             som_aberto: false,
             painel_som: None,
+            rede: Rede::default(),
+            rede_aberta: false,
+            painel_rede: None,
             apps: None,
             relogio: (0, String::new(), String::new()),
             barra: None,
@@ -239,6 +259,12 @@ impl Painel {
     /// O que está em `p` (coordenadas da tela), se for a interface.
     pub fn alvo(&self, p: Point<f64, Logical>, tela: Size<i32, Logical>) -> Option<Alvo> {
         let (x, y) = (p.x as i32, p.y as i32);
+        if self.rede_aberta {
+            let o = Self::som_origem(tela);
+            if x >= o.x && y >= o.y && x < o.x + SOM_L && y < o.y + SOM_A {
+                return Some(Alvo::RedePainel);
+            }
+        }
         if self.som_aberto {
             let o = Self::som_origem(tela);
             let (sx, sy) = ((x - o.x) as f32, (y - o.y) as f32);
@@ -282,7 +308,10 @@ impl Painel {
             return Some(Alvo::Iniciar);
         }
         let bx = tela.w - RELOGIO_L - BANDEJA_L;
-        if (bx..bx + BANDEJA_L).contains(&x) {
+        if (bx..bx + ICONE_BANDEJA).contains(&x) {
+            return Some(Alvo::Rede);
+        }
+        if (bx + ICONE_BANDEJA..bx + BANDEJA_L).contains(&x) {
             return Some(Alvo::Som);
         }
         let lt = self.largura_tarefa(tela.w);
@@ -324,6 +353,73 @@ impl Painel {
                 self.som.mudo = false;
             }
         }
+    }
+
+    /// Lê o estado da rede: interface com rota padrão, IP e se é sem fio.
+    pub fn ler_rede(&mut self) {
+        let seg = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+        if seg < self.rede.lido_em + 5 {
+            return;
+        }
+        let mut r = Rede { lido_em: seg, ..Default::default() };
+        // Rota padrão: destino 00000000 em /proc/net/route.
+        let rotas = std::fs::read_to_string("/proc/net/route").unwrap_or_default();
+        if let Some(iface) = rotas
+            .lines()
+            .skip(1)
+            .map(|l| l.split_whitespace().collect::<Vec<_>>())
+            .find(|c| c.len() > 2 && c[1] == "00000000")
+            .map(|c| c[0].to_string())
+        {
+            r.conectado = true;
+            r.sem_fio = std::path::Path::new(&format!("/sys/class/net/{iface}/wireless")).exists();
+            r.ip = std::process::Command::new("ip")
+                .args(["-4", "-o", "addr", "show", "dev", &iface])
+                .output()
+                .ok()
+                .and_then(|o| String::from_utf8(o.stdout).ok())
+                .and_then(|s| {
+                    s.split_whitespace()
+                        .skip_while(|p| *p != "inet")
+                        .nth(1)
+                        .map(|ip| ip.split('/').next().unwrap_or(ip).to_string())
+                })
+                .unwrap_or_default();
+            r.interface = iface;
+        } else if let Ok(dir) = std::fs::read_dir("/sys/class/net") {
+            // Sem rota: mostra a primeira interface que não seja a lo.
+            r.interface = dir
+                .flatten()
+                .map(|e| e.file_name().to_string_lossy().to_string())
+                .find(|n| n != "lo")
+                .unwrap_or_default();
+            r.sem_fio = std::path::Path::new(&format!("/sys/class/net/{}/wireless", r.interface)).exists();
+        }
+        self.rede = r;
+    }
+
+    fn desenhar_rede(&self, origem: Point<i32, Logical>) -> Tela {
+        let mut t = Tela::nova(SOM_L, SOM_A);
+        let (l, a) = (SOM_L as f32, SOM_A as f32);
+        t.vidro(0.0, 0.0, l, a, 12.0, (origem.x, origem.y), tema::FUNDO.com_alfa(175));
+        let tipo = if self.rede.sem_fio { "Wi-Fi" } else { "Rede cabeada" };
+        t.texto(16.0, 28.0, 13.0, tema::TEXTO, tipo);
+        icone_rede(&mut t, 16.0, 44.0, 32.0, &self.rede, tema::TEXTO);
+        if self.rede.conectado {
+            t.texto(60.0, 60.0, 14.0, tema::TEXTO, "Conectado");
+            let det = format!("{} · {}", self.rede.interface, self.rede.ip);
+            let det = desenho::encurtar(12.0, &det, l - 76.0);
+            t.texto(60.0, 80.0, 12.0, tema::TEXTO_SECUNDARIO, &det);
+        } else {
+            t.texto(60.0, 60.0, 14.0, tema::TEXTO, "Sem conexão");
+            let det = if self.rede.interface.is_empty() {
+                "Nenhuma placa de rede encontrada.".to_string()
+            } else {
+                format!("Verifique o cabo ({}).", self.rede.interface)
+            };
+            t.texto(60.0, 80.0, 12.0, tema::TEXTO_SECUNDARIO, &desenho::encurtar(12.0, &det, l - 76.0));
+        }
+        t
     }
 
     pub fn definir_volume(&mut self, f: f32) {
@@ -481,7 +577,30 @@ impl Painel {
             .collect();
 
         self.ler_som(false);
+        self.ler_rede();
         let mut elementos = Vec::new();
+
+        if self.rede_aberta {
+            let o = Self::som_origem(tela);
+            let chave = format!("{:?}|{o:?}", self.rede);
+            if self.painel_rede.as_ref().map(|(c, _)| c != &chave).unwrap_or(true) {
+                let t = self.desenhar_rede(o);
+                self.painel_rede = Some((chave, t.em_buffer()));
+            }
+            if let Some((_, buf)) = &self.painel_rede {
+                if let Ok(e) = MemoryRenderBufferRenderElement::from_buffer(
+                    renderer,
+                    o.to_f64().to_physical(escala),
+                    buf,
+                    None,
+                    None,
+                    None,
+                    Kind::Unspecified,
+                ) {
+                    elementos.push(e);
+                }
+            }
+        }
 
         if self.som_aberto {
             let o = Self::som_origem(tela);
@@ -530,7 +649,7 @@ impl Painel {
         let chave = format!(
             "{}|{hover:?}|{}|{}|{}|{janelas:?}|{:?}|{}",
             tela.w, self.menu_aberto, self.relogio.1, self.relogio.2, self.som, self.som_aberto
-        );
+        ) + &format!("|{:?}|{}", self.rede, self.rede_aberta);
         if self.barra.as_ref().map(|(c, _)| c != &chave).unwrap_or(true) {
             let t = self.desenhar_barra(tela.w, tela.h, hover, &janelas);
             self.barra = Some((chave, t.em_buffer()));
@@ -639,15 +758,21 @@ impl Painel {
             }
         }
 
-        // Bandeja: ícone de som.
+        // Bandeja: rede e som.
+        let ib = ICONE_BANDEJA as f32;
         let bx = l - (RELOGIO_L + BANDEJA_L) as f32;
-        if self.som_aberto || hover == Some(Alvo::Som) {
-            t.retangulo(bx + 2.0, 4.0, BANDEJA_L as f32 - 4.0, bh, 6.0, tema::BRANCO.com_alfa(150));
-        }
         let lado = (hf * 0.45).clamp(16.0, 24.0);
+        if self.rede_aberta || hover == Some(Alvo::Rede) {
+            t.retangulo(bx + 2.0, 4.0, ib - 4.0, bh, 6.0, tema::BRANCO.com_alfa(150));
+        }
+        icone_rede(&mut t, bx + (ib - lado) / 2.0, meio - lado / 2.0, lado, &self.rede, tema::TEXTO);
+        let bx = bx + ib;
+        if self.som_aberto || hover == Some(Alvo::Som) {
+            t.retangulo(bx + 2.0, 4.0, ib - 4.0, bh, 6.0, tema::BRANCO.com_alfa(150));
+        }
         alto_falante(
             &mut t,
-            bx + (BANDEJA_L as f32 - lado) / 2.0,
+            bx + (ib - lado) / 2.0,
             meio - lado / 2.0,
             lado,
             self.som.volume.unwrap_or(0.0),
@@ -826,5 +951,37 @@ fn alto_falante(t: &mut Tela, x: f32, y: f32, s: f32, volume: f32, mudo: bool, c
             }
             ant = Some(p);
         }
+    }
+}
+
+/// Ícone de rede: monitor com cabo (cabeada) ou leque (Wi-Fi); apagado e
+/// com X quando sem conexão.
+fn icone_rede(t: &mut Tela, x: f32, y: f32, s: f32, rede: &Rede, cor: desenho::Cor) {
+    let c = if rede.conectado { cor } else { cor.com_alfa(120) };
+    if rede.sem_fio {
+        let (cx, cy) = (x + 0.5 * s, y + 0.86 * s);
+        t.retangulo(cx - 0.07 * s, cy - 0.07 * s, 0.14 * s, 0.14 * s, 0.07 * s, c);
+        for k in 1..=3 {
+            let r = 0.24 * s * k as f32;
+            let mut ant: Option<(f32, f32)> = None;
+            for i in 0..=12 {
+                let ang = (-135.0 + 90.0 * i as f32 / 12.0).to_radians();
+                let p = (cx + r * ang.cos(), cy + r * ang.sin());
+                if let Some(a) = ant {
+                    t.linha(a.0, a.1, p.0, p.1, 0.08 * s, c);
+                }
+                ant = Some(p);
+            }
+        }
+    } else {
+        // Monitor com pé (rede cabeada).
+        t.contorno(x + 0.1 * s, y + 0.16 * s, 0.8 * s, 0.52 * s, 0.08 * s, c);
+        t.linha(x + 0.5 * s, y + 0.68 * s, x + 0.5 * s, y + 0.84 * s, 0.08 * s, c);
+        t.linha(x + 0.3 * s, y + 0.86 * s, x + 0.7 * s, y + 0.86 * s, 0.08 * s, c);
+    }
+    if !rede.conectado {
+        let (a, b) = (x + 0.62 * s, x + 0.92 * s);
+        t.linha(a, y + 0.02 * s, b, y + 0.32 * s, 0.08 * s, cor);
+        t.linha(a, y + 0.32 * s, b, y + 0.02 * s, 0.08 * s, cor);
     }
 }

@@ -173,10 +173,14 @@ impl<B: Backend> AnvilState<B> {
             // Clique fora: fecha o menu e o painel de som e segue para a janela.
             self.painel.menu_aberto = false;
             self.painel.som_aberto = false;
+            self.painel.rede_aberta = false;
             return false;
         };
         if !matches!(alvo, Alvo::Som | Alvo::SomBarra(_) | Alvo::SomMudo | Alvo::SomPainel) {
             self.painel.som_aberto = false;
+        }
+        if !matches!(alvo, Alvo::Rede | Alvo::RedePainel) {
+            self.painel.rede_aberta = false;
         }
         self.painel.segurando = true;
 
@@ -206,6 +210,11 @@ impl<B: Backend> AnvilState<B> {
             }
             Alvo::Reiniciar => self.executar_programa("systemctl reboot"),
             Alvo::Desligar => self.executar_programa("systemctl poweroff"),
+            Alvo::Rede => {
+                self.painel.menu_aberto = false;
+                self.painel.rede_aberta = !self.painel.rede_aberta;
+            }
+            Alvo::RedePainel => {}
             Alvo::Som => {
                 self.painel.menu_aberto = false;
                 self.painel.som_aberto = !self.painel.som_aberto;
