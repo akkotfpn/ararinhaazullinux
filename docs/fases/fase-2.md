@@ -17,3 +17,18 @@
 
 Referência: *Beyond Linux From Scratch*, versão systemd
 ([linuxfromscratch.org/blfs](https://www.linuxfromscratch.org/blfs/)).
+
+## Apps (adiantado da Fase 3)
+
+Em `apps/` (ADR 0015), feitos do zero com o kit **Penas** (janela Wayland
+pelo smithay-client-toolkit e o mesmo desenho da Plumagem):
+
+- **Explorador de Arquivos**: Este Computador (pastas do usuário, Disco
+  Local C: e unidades D:, E:... com espaço livre), navegação com Voltar,
+  Avançar e Subir, barra de endereço clicável, menu do botão direito (Nova
+  pasta, Renomear, Excluir para a Lixeira, Copiar, Recortar, Colar) e
+  atalhos (F2, Delete, Ctrl+C/X/V, F5, Ctrl+H). Fixado na barra de tarefas
+  e nos ícones da área de trabalho (Este Computador, Pasta pessoal,
+  Lixeira).
+- **Visualizador de Imagens** e **Bloco de Notas**, abertos pelo Explorador.
+
