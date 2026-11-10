@@ -90,6 +90,10 @@ pub enum Alvo {
 pub struct App {
     pub nome: String,
     pub exec: String,
+    /// Ícone (PNG) do aplicativo, se encontrado.
+    pub icone: Option<image::RgbaImage>,
+    /// Nomes pelos quais as janelas dele se identificam (app_id), em minúsculas.
+    pub ids: Vec<String>,
 }
 
 pub struct Painel {
@@ -274,7 +278,8 @@ impl Painel {
                 if caminho.extension().and_then(|e| e.to_str()) != Some("desktop") {
                     continue;
                 }
-                if let Some(app) = std::fs::read_to_string(&caminho).ok().and_then(|t| ler_desktop(&t)) {
+                let id = caminho.file_stem().and_then(|n| n.to_str()).unwrap_or("").to_string();
+                if let Some(app) = std::fs::read_to_string(&caminho).ok().and_then(|t| ler_desktop(&t, &id)) {
                     apps.push(app);
                 }
             }
@@ -343,10 +348,13 @@ impl Painel {
         desenho::preparar_vidro(tela.w, tela.h);
 
         let ativa = space.elements().last().cloned();
-        let janelas: Vec<(String, bool, bool)> = self
+        if self.apps.is_none() {
+            self.carregar_apps();
+        }
+        let janelas: Vec<(String, bool, bool, Option<usize>)> = self
             .ordem
             .iter()
-            .map(|w| (titulo(w), Some(w) == ativa.as_ref(), self.esta_minimizada(w)))
+            .map(|w| (titulo(w), Some(w) == ativa.as_ref(), self.esta_minimizada(w), self.app_da_janela(w)))
             .collect();
 
         let mut elementos = Vec::new();
@@ -398,7 +406,41 @@ impl Painel {
         elementos
     }
 
-    fn desenhar_barra(&self, largura: i32, altura_tela: i32, hover: Option<Alvo>, janelas: &[(String, bool, bool)]) -> Tela {
+    /// Índice do aplicativo (em `apps`) dono da janela, pelo app_id.
+    fn app_da_janela(&self, w: &WindowElement) -> Option<usize> {
+        let id = w.0.toplevel().and_then(|t| {
+            compositor::with_states(t.wl_surface(), |s| {
+                s.data_map
+                    .get::<XdgToplevelSurfaceData>()
+                    .and_then(|d| d.lock().unwrap().app_id.clone())
+            })
+        })?;
+        let id = id.to_lowercase();
+        self.apps.as_ref()?.iter().position(|a| a.ids.contains(&id))
+    }
+
+    /// Desenha o ícone do app ou, sem ícone, a inicial num quadrado azul.
+    fn desenhar_icone(&self, t: &mut Tela, app: Option<&App>, nome: &str, x: f32, y: f32, lado: f32) {
+        if let Some(img) = app.and_then(|a| a.icone.as_ref()) {
+            let l = lado.round() as u32;
+            let r = image::imageops::resize(img, l, l, image::imageops::FilterType::Triangle);
+            t.imagem(x.round() as i32, y.round() as i32, &r);
+            return;
+        }
+        t.retangulo(x, y, lado, lado, lado * 0.25, tema::DESTAQUE);
+        let ini = letra(nome);
+        let ti = lado * 0.56;
+        let li = desenho::medir(ti, &ini);
+        t.texto(x + lado / 2.0 - li / 2.0, y + lado / 2.0 + ti * 0.36, ti, tema::BRANCO, &ini);
+    }
+
+    fn desenhar_barra(
+        &self,
+        largura: i32,
+        altura_tela: i32,
+        hover: Option<Alvo>,
+        janelas: &[(String, bool, bool, Option<usize>)],
+    ) -> Tela {
         let h = altura();
         let hf = h as f32;
         let mut t = Tela::nova(largura, h);
@@ -426,7 +468,7 @@ impl Painel {
         let lt = self.largura_tarefa(largura);
         let icone = (hf * 0.5).round().clamp(18.0, 28.0);
         let tam_txt = if h < 42 { 12.0 } else { 13.0 };
-        for (i, (nome, ativa, minimizada)) in janelas.iter().enumerate() {
+        for (i, (nome, ativa, minimizada, app)) in janelas.iter().enumerate() {
             let x = (Self::tarefas_x() + i as i32 * (lt + 4)) as f32;
             if *ativa && !*minimizada {
                 t.retangulo(x, 4.0, lt as f32, bh, 6.0, tema::BRANCO.com_alfa(170));
@@ -442,12 +484,8 @@ impl Painel {
             };
             t.retangulo(x + lt as f32 / 2.0 - il / 2.0, hf - 6.0, il, 3.0, 1.5, cor);
 
-            // Ícone provisório: a inicial do programa num quadrado azul.
-            t.retangulo(x + 8.0, meio - icone / 2.0, icone, icone, 6.0, tema::DESTAQUE);
-            let ini = letra(nome);
-            let ti = icone * 0.58;
-            let li = desenho::medir(ti, &ini);
-            t.texto(x + 8.0 + icone / 2.0 - li / 2.0, meio + ti * 0.36, ti, tema::BRANCO, &ini);
+            let app = (*app).and_then(|i| self.apps.as_ref()?.get(i));
+            self.desenhar_icone(&mut t, app, nome, x + 8.0, meio - icone / 2.0, icone);
             if lt > 60 {
                 let txt = desenho::encurtar(tam_txt, nome, lt as f32 - icone - 24.0);
                 let cor = if *minimizada { tema::TEXTO_SECUNDARIO } else { tema::TEXTO };
@@ -494,10 +532,7 @@ impl Painel {
             if hover == Some(Alvo::App(i)) {
                 t.retangulo(8.0, y, l - 16.0, (APP_A - 4) as f32, 8.0, tema::DESTAQUE_SUAVE);
             }
-            t.retangulo(16.0, y + 6.0, 28.0, 28.0, 7.0, tema::DESTAQUE);
-            let ini = letra(&app.nome);
-            let li = desenho::medir(15.0, &ini);
-            t.texto(30.0 - li / 2.0, y + 26.0, 15.0, tema::BRANCO, &ini);
+            self.desenhar_icone(&mut t, Some(app), &app.nome, 16.0, y + 6.0, 28.0);
             let nome = desenho::encurtar(14.0, &app.nome, l - 80.0);
             t.texto(56.0, y + 26.0, 14.0, tema::TEXTO, &nome);
         }
@@ -528,10 +563,11 @@ impl Painel {
     }
 }
 
-/// Lê Name e Exec de um arquivo .desktop (preferindo o nome em pt_BR).
-fn ler_desktop(texto: &str) -> Option<App> {
+/// Lê Name, Exec, Icon e StartupWMClass de um arquivo .desktop
+/// (preferindo o nome em pt_BR). `id` é o nome do arquivo sem extensão.
+fn ler_desktop(texto: &str, id: &str) -> Option<App> {
     let mut na_secao = false;
-    let (mut nome, mut nome_br, mut exec) = (None, None, None);
+    let (mut nome, mut nome_br, mut exec, mut icone, mut classe) = (None, None, None, None, None);
     for linha in texto.lines() {
         let linha = linha.trim();
         if linha.starts_with('[') {
@@ -542,12 +578,15 @@ fn ler_desktop(texto: &str) -> Option<App> {
             continue;
         }
         let Some((k, v)) = linha.split_once('=') else { continue };
+        let v = v.trim();
         match k.trim() {
-            "Name" => nome = Some(v.trim().to_string()),
-            "Name[pt_BR]" => nome_br = Some(v.trim().to_string()),
-            "Exec" => exec = Some(v.trim().to_string()),
-            "NoDisplay" | "Hidden" if v.trim() == "true" => return None,
-            "Type" if v.trim() != "Application" => return None,
+            "Name" => nome = Some(v.to_string()),
+            "Name[pt_BR]" => nome_br = Some(v.to_string()),
+            "Exec" => exec = Some(v.to_string()),
+            "Icon" => icone = Some(v.to_string()),
+            "StartupWMClass" => classe = Some(v.to_lowercase()),
+            "NoDisplay" | "Hidden" if v == "true" => return None,
+            "Type" if v != "Application" => return None,
             _ => {}
         }
     }
@@ -556,5 +595,38 @@ fn ler_desktop(texto: &str) -> Option<App> {
         .filter(|p| !(p.len() == 2 && p.starts_with('%')))
         .collect::<Vec<_>>()
         .join(" ");
-    Some(App { nome: nome_br.or(nome)?, exec })
+    let mut ids = vec![id.to_lowercase()];
+    ids.extend(classe);
+    if let Some(prog) = exec.split_whitespace().next().and_then(|p| p.rsplit('/').next()) {
+        ids.push(prog.to_lowercase());
+    }
+    Some(App {
+        nome: nome_br.or(nome)?,
+        exec,
+        icone: icone.as_deref().and_then(achar_icone),
+        ids,
+    })
+}
+
+/// Procura o ícone (PNG) pelo nome do tema hicolor ou em /usr/share/pixmaps.
+fn achar_icone(nome: &str) -> Option<image::RgbaImage> {
+    let mut caminhos = Vec::new();
+    if nome.starts_with('/') {
+        caminhos.push(nome.to_string());
+    } else {
+        for t in ["256x256", "128x128", "96x96", "64x64", "48x48", "32x32"] {
+            caminhos.push(format!("/usr/share/icons/hicolor/{t}/apps/{nome}.png"));
+        }
+        caminhos.push(format!("/usr/share/pixmaps/{nome}.png"));
+    }
+    caminhos.into_iter().find_map(|c| {
+        let bytes = std::fs::read(&c).ok()?;
+        let img = image::load_from_memory_with_format(&bytes, image::ImageFormat::Png).ok()?.to_rgba8();
+        // Guarda em 64 px: suficiente para a barra e o menu.
+        Some(if img.width() > 64 {
+            image::imageops::resize(&img, 64, 64, image::imageops::FilterType::Triangle)
+        } else {
+            img
+        })
+    })
 }
