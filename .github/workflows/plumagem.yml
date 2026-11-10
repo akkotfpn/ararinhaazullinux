@@ -35,7 +35,8 @@ jobs:
 
       - name: Erros (resumo)
         if: failure()
-        run: grep -E "^(error|warning: unused)" -A12 compilacao.log | head -300
+        run: |
+          grep -E "^error" -A14 compilacao.log | head -400
 
       - name: Cargo.lock (para commit)
         if: always()
