@@ -23,7 +23,8 @@ use smithay::{
     utils::{Buffer, Logical, Rectangle, Size, Transform},
 };
 
-pub static CLEAR_COLOR: Color32F = Color32F::new(0.8, 0.8, 0.9, 1.0);
+// Azul-noite do tema Spix (#0B2A4F), visto só se o papel de parede faltar.
+pub static CLEAR_COLOR: Color32F = Color32F::new(0.043, 0.165, 0.310, 1.0);
 pub static CLEAR_COLOR_FULLSCREEN: Color32F = Color32F::new(0.0, 0.0, 0.0, 0.0);
 
 pub struct PointerElement {

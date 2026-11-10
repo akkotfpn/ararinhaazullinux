@@ -133,6 +133,7 @@ pub struct UdevData {
     backends: HashMap<DrmNode, BackendData>,
     pointer_images: Vec<(xcursor::parser::Image, MemoryRenderBuffer)>,
     pointer_element: PointerElement,
+    fundo: Option<crate::fundo::Fundo>,
     #[cfg(feature = "debug")]
     fps_texture: Option<MultiTexture>,
     pointer_image: crate::cursor::Cursor,
@@ -259,6 +260,7 @@ pub fn run_udev() {
         pointer_image: crate::cursor::Cursor::load(),
         pointer_images: Vec::new(),
         pointer_element: PointerElement::default(),
+        fundo: crate::fundo::Fundo::spix(),
         #[cfg(feature = "debug")]
         fps_texture: None,
         debug_flags: DebugFlags::empty(),
@@ -1457,6 +1459,7 @@ impl AnvilState<UdevData> {
             &self.dnd_icon,
             &mut self.cursor_status,
             self.show_window_preview,
+            self.backend_data.fundo.as_ref(),
         );
         let reschedule = match result {
             Ok((has_rendered, states)) => {
@@ -1539,6 +1542,7 @@ fn render_surface<'a>(
     dnd_icon: &Option<DndIcon>,
     cursor_status: &mut CursorImageStatus,
     show_window_preview: bool,
+    fundo: Option<&crate::fundo::Fundo>,
 ) -> Result<(bool, RenderElementStates), SwapBuffersError> {
     let output_geometry = space.output_geometry(output).unwrap();
     let scale = Scale::from(output.current_scale().fractional_scale());
@@ -1616,7 +1620,7 @@ fn render_surface<'a>(
     }
 
     let (elements, clear_color) =
-        output_elements(output, space, custom_elements, renderer, show_window_preview);
+        output_elements(output, space, custom_elements, renderer, show_window_preview, fundo);
 
     let frame_mode = if surface.disable_direct_scanout {
         FrameFlags::empty()

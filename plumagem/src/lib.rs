@@ -10,6 +10,7 @@
 pub mod cursor;
 pub mod drawing;
 pub mod focus;
+pub mod fundo;
 pub mod input_handler;
 pub mod render;
 pub mod shell;

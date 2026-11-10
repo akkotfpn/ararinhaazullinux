@@ -7,6 +7,7 @@ use smithay::{
                 ConstrainAlign, ConstrainScaleBehavior, CropRenderElement, RelocateRenderElement,
                 RescaleRenderElement,
             },
+            memory::MemoryRenderBufferRenderElement,
             AsRenderElements, RenderElement, Wrap,
         },
         Color32F, ImportAll, ImportMem, Renderer,
@@ -56,6 +57,7 @@ smithay::backend::renderer::element::render_elements! {
     Window=Wrap<E>,
     Custom=CustomRenderElements<R>,
     Preview=CropRenderElement<RelocateRenderElement<RescaleRenderElement<WindowRenderElement<R>>>>,
+    Fundo=MemoryRenderBufferRenderElement<R>,
 }
 
 impl<R: Renderer + ImportAll + ImportMem, E: RenderElement<R> + std::fmt::Debug> std::fmt::Debug
@@ -67,6 +69,7 @@ impl<R: Renderer + ImportAll + ImportMem, E: RenderElement<R> + std::fmt::Debug>
             Self::Window(arg0) => f.debug_tuple("Window").field(arg0).finish(),
             Self::Custom(arg0) => f.debug_tuple("Custom").field(arg0).finish(),
             Self::Preview(arg0) => f.debug_tuple("Preview").field(arg0).finish(),
+            Self::Fundo(arg0) => f.debug_tuple("Fundo").field(arg0).finish(),
             Self::_GenericCatcher(arg0) => f.debug_tuple("_GenericCatcher").field(arg0).finish(),
         }
     }
@@ -142,10 +145,11 @@ pub fn output_elements<R>(
     custom_elements: impl IntoIterator<Item = CustomRenderElements<R>>,
     renderer: &mut R,
     show_window_preview: bool,
+    fundo: Option<&crate::fundo::Fundo>,
 ) -> (Vec<OutputRenderElements<R, WindowRenderElement<R>>>, Color32F)
 where
     R: Renderer + ImportAll + ImportMem,
-    R::TextureId: Clone + 'static,
+    R::TextureId: Send + Clone + 'static,
 {
     if let Some(window) = output
         .user_data()
@@ -185,6 +189,11 @@ where
         .expect("output without mode?");
         output_render_elements.extend(space_elements.into_iter().map(OutputRenderElements::Space));
 
+        // O papel de parede fica por último: é a camada mais funda.
+        if let Some(elemento) = fundo.and_then(|f| f.elemento(renderer, output)) {
+            output_render_elements.push(OutputRenderElements::Fundo(elemento));
+        }
+
         (output_render_elements, CLEAR_COLOR)
     }
 }
@@ -202,9 +211,9 @@ pub fn render_output<'a, 'd, R>(
 ) -> Result<RenderOutputResult<'d>, OutputDamageTrackerError<R::Error>>
 where
     R: Renderer + ImportAll + ImportMem,
-    R::TextureId: Clone + 'static,
+    R::TextureId: Send + Clone + 'static,
 {
     let (elements, clear_color) =
-        output_elements(output, space, custom_elements, renderer, show_window_preview);
+        output_elements(output, space, custom_elements, renderer, show_window_preview, None);
     damage_tracker.render_output(renderer, framebuffer, age, &elements, clear_color)
 }
