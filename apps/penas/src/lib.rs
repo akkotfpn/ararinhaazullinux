@@ -12,6 +12,7 @@ pub mod desenho;
 use std::time::{Duration, Instant};
 
 pub use desenho::{tema, Cor, Tela};
+pub use smithay_client_toolkit::seat::keyboard::Keysym;
 
 use smithay_client_toolkit::{
     compositor::{CompositorHandler, CompositorState},
