@@ -71,6 +71,22 @@ const TAREFA_MAX: i32 = 220;
 const RELOGIO_L: i32 = 120;
 
 static LOGO_PNG: &[u8] = include_bytes!("../resources/logo-64.png");
+static ESTE_PC_PNG: &[u8] = include_bytes!("../resources/este-computador-48.png");
+static LIXEIRA_PNG: &[u8] = include_bytes!("../resources/lixeira-48.png");
+
+/// Ícones da área de trabalho: nome e comando ao abrir (clique duplo).
+const ICONES_AREA: [(&str, &str); 3] = [
+    ("Este Computador", "explorador"),
+    ("Pasta pessoal", "sh -c 'exec explorador \"$HOME\"'"),
+    (
+        "Lixeira",
+        "sh -c 'mkdir -p \"$HOME/.local/share/Trash/files\" && exec explorador \"$HOME/.local/share/Trash/files\"'",
+    ),
+];
+const ICONE_L: i32 = 92;
+const ICONE_A: i32 = 92;
+const AREA_X: i32 = 10;
+const AREA_Y: i32 = 12;
 static MINGAU_PNG: &[u8] = include_bytes!("../resources/mingau-128.png");
 
 /// O que está sob o ponteiro na interface.
@@ -150,6 +166,11 @@ pub struct Painel {
     pub rede: Rede,
     pub rede_aberta: bool,
     painel_rede: Option<(String, MemoryRenderBuffer)>,
+    /// Ícone selecionado na área de trabalho e o último clique (clique duplo).
+    pub icone_sel: Option<usize>,
+    ultimo_clique_icone: Option<(usize, std::time::Instant)>,
+    area_buf: Option<(String, MemoryRenderBuffer)>,
+    imagens_area: Vec<Option<image::RgbaImage>>,
     pub apps: Option<Vec<App>>,
     relogio: (u64, String, String),
     barra: Option<(String, MemoryRenderBuffer)>,
@@ -183,6 +204,14 @@ impl Default for Painel {
             rede: Rede::default(),
             rede_aberta: false,
             painel_rede: None,
+            icone_sel: None,
+            ultimo_clique_icone: None,
+            area_buf: None,
+            imagens_area: vec![
+                desenho::icone(ESTE_PC_PNG, 48, 48),
+                desenho::icone(include_bytes!("../resources/logo-64.png"), 48, 48),
+                desenho::icone(LIXEIRA_PNG, 48, 48),
+            ],
             apps: None,
             relogio: (0, String::new(), String::new()),
             barra: None,
@@ -542,6 +571,88 @@ impl Painel {
         // A borda vem antes (fica por cima do preenchimento).
         v.rotate_left(1);
         v
+    }
+
+    /// Ícone da área de trabalho em `p` (coordenadas da tela).
+    pub fn icone_em(&self, p: Point<f64, Logical>) -> Option<usize> {
+        let (x, y) = (p.x as i32 - AREA_X, p.y as i32 - AREA_Y);
+        if x < 0 || y < 0 || x >= ICONE_L {
+            return None;
+        }
+        let i = (y / (ICONE_A + 6)) as usize;
+        (i < ICONES_AREA.len() && y % (ICONE_A + 6) < ICONE_A).then_some(i)
+    }
+
+    /// Clique num ícone da área de trabalho: seleciona; no segundo clique
+    /// rápido devolve o comando para abrir.
+    pub fn clicar_icone(&mut self, i: usize) -> Option<&'static str> {
+        let agora = std::time::Instant::now();
+        let duplo = self
+            .ultimo_clique_icone
+            .map(|(j, t)| j == i && agora.duration_since(t).as_millis() < 450)
+            .unwrap_or(false);
+        self.icone_sel = Some(i);
+        self.ultimo_clique_icone = if duplo { None } else { Some((i, agora)) };
+        duplo.then(|| ICONES_AREA[i].1)
+    }
+
+    /// Ícones da área de trabalho (ficam por baixo das janelas).
+    pub fn elementos_area<R>(
+        &mut self,
+        renderer: &mut R,
+        output: &Output,
+        space: &Space<WindowElement>,
+        ponteiro: Point<f64, Logical>,
+    ) -> Vec<MemoryRenderBufferRenderElement<R>>
+    where
+        R: Renderer + ImportMem,
+        R::TextureId: Send + Clone + 'static,
+    {
+        let Some(geo) = space.output_geometry(output) else { return Vec::new() };
+        let escala = output.current_scale().fractional_scale();
+        // Hover só quando não há janela por cima do ponteiro.
+        let sobre = if space.element_under(ponteiro).is_none() {
+            self.icone_em(ponteiro - geo.loc.to_f64())
+        } else {
+            None
+        };
+        let chave = format!("{sobre:?}|{:?}", self.icone_sel);
+        if self.area_buf.as_ref().map(|(c, _)| c != &chave).unwrap_or(true) {
+            let n = ICONES_AREA.len() as i32;
+            let mut t = Tela::nova(ICONE_L, n * (ICONE_A + 6));
+            for (i, (nome, _)) in ICONES_AREA.iter().enumerate() {
+                let y = (i as i32 * (ICONE_A + 6)) as f32;
+                if self.icone_sel == Some(i) {
+                    t.retangulo(0.0, y, ICONE_L as f32, ICONE_A as f32, 6.0, tema::DESTAQUE.com_alfa(110));
+                    t.retangulo(1.0, y + 1.0, ICONE_L as f32 - 2.0, ICONE_A as f32 - 2.0, 5.0, tema::BRANCO.com_alfa(40));
+                } else if sobre == Some(i) {
+                    t.retangulo(0.0, y, ICONE_L as f32, ICONE_A as f32, 6.0, tema::BRANCO.com_alfa(55));
+                }
+                if let Some(img) = self.imagens_area.get(i).and_then(|o| o.as_ref()) {
+                    t.imagem((ICONE_L - 48) / 2, y as i32 + 8, img);
+                }
+                // Nome em branco com sombra, legível sobre o papel de parede.
+                let nome = desenho::encurtar(12.0, nome, ICONE_L as f32 - 6.0);
+                let ln = desenho::medir(12.0, &nome);
+                let x = ICONE_L as f32 / 2.0 - ln / 2.0;
+                t.texto(x + 1.0, y + 75.0, 12.0, desenho::Cor(0, 0, 0, 170), &nome);
+                t.texto(x, y + 74.0, 12.0, tema::BRANCO, &nome);
+            }
+            self.area_buf = Some((chave, t.em_buffer()));
+        }
+        let Some((_, buf)) = &self.area_buf else { return Vec::new() };
+        let pos = geo.loc + Point::<i32, Logical>::from((AREA_X, AREA_Y));
+        MemoryRenderBufferRenderElement::from_buffer(
+            renderer,
+            (pos - geo.loc).to_f64().to_physical(escala),
+            buf,
+            None,
+            None,
+            None,
+            Kind::Unspecified,
+        )
+        .map(|e| vec![e])
+        .unwrap_or_default()
     }
 
     /// Elementos de desenho da interface para esta saída (menu por cima).

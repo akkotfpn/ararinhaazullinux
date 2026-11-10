@@ -276,6 +276,22 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             }
         }
 
+        // Ícones da área de trabalho: clique seleciona, clique duplo abre.
+        if wl_pointer::ButtonState::Pressed == state
+            && button == 0x110
+            && !self.pointer.is_grabbed()
+            && self.surface_under(pos).is_none()
+        {
+            let geo = self.space.outputs().next().and_then(|o| self.space.output_geometry(o));
+            if let Some(i) = geo.and_then(|g| self.painel.icone_em(pos - g.loc.to_f64())) {
+                if let Some(cmd) = self.painel.clicar_icone(i) {
+                    self.executar_programa(cmd);
+                }
+                return;
+            }
+            self.painel.icone_sel = None;
+        }
+
         // Arrastar com o botão esquerdo na área de trabalho: seleção azul.
         if wl_pointer::ButtonState::Pressed == state
             && button == 0x110

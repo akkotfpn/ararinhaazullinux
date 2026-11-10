@@ -151,6 +151,7 @@ pub fn output_elements<R>(
     fundo: Option<&crate::fundo::Fundo>,
     interface: Vec<MemoryRenderBufferRenderElement<R>>,
     selecao: Vec<SolidColorRenderElement>,
+    area: Vec<MemoryRenderBufferRenderElement<R>>,
 ) -> (Vec<OutputRenderElements<R, WindowRenderElement<R>>>, Color32F)
 where
     R: Renderer + ImportAll + ImportMem,
@@ -199,6 +200,8 @@ where
 
         // Seleção na área de trabalho: abaixo das janelas, acima do fundo.
         output_render_elements.extend(selecao.into_iter().map(OutputRenderElements::Solido));
+        // Ícones da área de trabalho, logo acima do papel de parede.
+        output_render_elements.extend(area.into_iter().map(OutputRenderElements::Fundo));
 
         // O papel de parede fica por último: é a camada mais funda.
         if let Some(elemento) = fundo.and_then(|f| f.elemento(renderer, output)) {
@@ -225,6 +228,6 @@ where
     R::TextureId: Send + Clone + 'static,
 {
     let (elements, clear_color) =
-        output_elements(output, space, custom_elements, renderer, show_window_preview, None, Vec::new(), Vec::new());
+        output_elements(output, space, custom_elements, renderer, show_window_preview, None, Vec::new(), Vec::new(), Vec::new());
     damage_tracker.render_output(renderer, framebuffer, age, &elements, clear_color)
 }
