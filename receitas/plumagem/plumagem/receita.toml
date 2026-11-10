@@ -74,6 +74,13 @@ chmod 755 /usr/bin/plumagem-sessao
   # touch /etc/plumagem/sem-interface
   '''
 install -vdm755 /etc/profile.d /etc/plumagem
+cat > /etc/plumagem/plumagem.conf << 'FIM'
+# Configuração da Plumagem (vale para todos os usuários; cada um pode ter a
+# sua em ~/.config/plumagem/plumagem.conf). Mudanças valem ao reabrir a sessão.
+
+# Tamanho da barra de tarefas: pequena, media ou grande (ou a altura em pixels).
+barra = media
+FIM
 cat > /etc/profile.d/plumagem.sh << 'FIM'
 # Plumagem: interface gráfica automática no tty1.
 if [ -z "$WAYLAND_DISPLAY" ] && [ "$(tty)" = /dev/tty1 ] && [ ! -e /etc/plumagem/sem-interface ]; then
