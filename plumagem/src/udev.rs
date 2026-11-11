@@ -343,6 +343,15 @@ pub fn run_udev() {
                 for pedido in crate::controle::ler(&mut leitor) {
                     match pedido.as_str() {
                         "bloquear" => data.bloquear(),
+                        "bandeja" => data.painel.ler_bandeja(),
+                        o if o.starts_with("bandeja-menu ") => {
+                            if let Ok(n) = o["bandeja-menu ".len()..].trim().parse::<usize>() {
+                                let tela = data.space.outputs().next().and_then(|out| data.space.output_geometry(out)).map(|g| g.size);
+                                if let Some(tela) = tela {
+                                    data.painel.abrir_menu_bandeja(n, tela);
+                                }
+                            }
+                        }
                         outro => warn!("plumagem-ctl: pedido desconhecido {outro:?}"),
                     }
                 }

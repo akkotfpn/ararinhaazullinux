@@ -247,6 +247,8 @@ pub enum Alvo {
     Contexto(usize),
     /// O cantinho depois do relógio: mostra a área de trabalho.
     CantoArea,
+    /// Ícone de app na bandeja.
+    ItemBandeja(usize),
 }
 
 /// Largura do cantinho "Mostrar área de trabalho", como no Windows.
@@ -311,6 +313,48 @@ pub struct Som {
 
 const ICONE_BANDEJA: i32 = 38;
 const BANDEJA_L: i32 = 2 * ICONE_BANDEJA;
+/// Ícones dos apps na bandeja (Steam, Discord...), à esquerda de rede e som.
+const ITEM_BANDEJA: i32 = 30;
+
+/// Um ícone de app na bandeja (vem do ararinha-bandeja).
+#[derive(Debug, Clone)]
+pub struct ItemBandeja {
+    pub n: usize,
+    pub titulo: String,
+    pub icone: Option<image::RgbaImage>,
+}
+
+fn pasta_bandeja() -> std::path::PathBuf {
+    std::path::PathBuf::from(std::env::var("XDG_RUNTIME_DIR").unwrap_or_default()).join("ararinha-bandeja")
+}
+
+/// Manda um pedido ao ararinha-bandeja (sem travar se ele não estiver lá).
+pub fn pedir_bandeja(pedido: &str) {
+    use std::io::Write;
+    use std::os::unix::fs::OpenOptionsExt;
+    if let Ok(mut f) = std::fs::OpenOptions::new().write(true).custom_flags(0o4000).open(pasta_bandeja().join("ctl")) {
+        let _ = f.write_all(format!("{pedido}\n").as_bytes());
+    }
+}
+
+/// Ícone da bandeja: PNG pelo nome ou os pixels ARGB que o app mandou.
+fn ler_icone_bandeja(caminho: &str, lado: u32) -> Option<image::RgbaImage> {
+    let bytes = std::fs::read(caminho).ok()?;
+    let img = if caminho.ends_with(".argb") {
+        let l = u32::from_le_bytes(bytes.get(0..4)?.try_into().ok()?);
+        let a = u32::from_le_bytes(bytes.get(4..8)?.try_into().ok()?);
+        let px = bytes.get(8..8 + (l * a * 4) as usize)?;
+        let mut rgba = Vec::with_capacity(px.len());
+        for c in px.chunks_exact(4) {
+            // ARGB em ordem de rede.
+            rgba.extend_from_slice(&[c[1], c[2], c[3], c[0]]);
+        }
+        image::RgbaImage::from_raw(l, a, rgba)?
+    } else {
+        image::load_from_memory_with_format(&bytes, image::ImageFormat::Png).ok()?.to_rgba8()
+    };
+    Some(image::imageops::resize(&img, lado, lado, image::imageops::FilterType::Triangle))
+}
 const SOM_L: i32 = 280;
 const SOM_A: i32 = 104;
 const REDE_A: i32 = 150;
@@ -372,6 +416,11 @@ pub struct Painel {
     pub menu_sel: usize,
     /// Foto da conta (~/.face), relida ao abrir o menu.
     foto: Option<image::RgbaImage>,
+    /// Ícones dos apps na bandeja e quantas vezes a lista mudou.
+    pub bandeja: Vec<ItemBandeja>,
+    bandeja_versao: u32,
+    /// Onde foi o clique direito que pediu o menu de um ícone da bandeja.
+    pub bandeja_clique: Point<i32, Logical>,
     relogio: (u64, String, String),
     barra: Option<(String, MemoryRenderBuffer)>,
     menu: Option<(String, MemoryRenderBuffer)>,
@@ -423,6 +472,9 @@ impl Default for Painel {
             menu_rolagem: 0,
             menu_sel: 0,
             foto: None,
+            bandeja: Vec::new(),
+            bandeja_versao: 0,
+            bandeja_clique: (0, 0).into(),
             relogio: (0, String::new(), String::new()),
             barra: None,
             menu: None,
@@ -493,7 +545,7 @@ impl Painel {
 
     fn largura_tarefa(&self, largura_tela: i32) -> i32 {
         let n = self.ordem.len().max(1) as i32;
-        let livre = largura_tela - Self::tarefas_x() - RELOGIO_L - BANDEJA_L - 8;
+        let livre = largura_tela - Self::tarefas_x() - RELOGIO_L - BANDEJA_L - self.bandeja_l() - 8;
         ((livre / n) - 4).clamp(48, TAREFA_MAX)
     }
 
@@ -540,6 +592,54 @@ impl Painel {
         self.foto = std::env::var("HOME").ok().and_then(|h| desenho::foto_da_conta(&h, 32));
         self.menu = None;
         self.carregar_apps();
+    }
+
+    /// Relê os ícones da bandeja (o ararinha-bandeja avisa quando mudam).
+    pub fn ler_bandeja(&mut self) {
+        let texto = std::fs::read_to_string(pasta_bandeja().join("itens")).unwrap_or_default();
+        let lado = 20;
+        self.bandeja = texto
+            .lines()
+            .filter_map(|l| {
+                let c: Vec<&str> = l.split('\t').collect();
+                let n = c.first()?.parse().ok()?;
+                let icone = c.get(2).filter(|p| !p.is_empty()).and_then(|p| ler_icone_bandeja(p, lado));
+                Some(ItemBandeja { n, titulo: c.get(1).unwrap_or(&"").to_string(), icone })
+            })
+            .take(12)
+            .collect();
+        self.bandeja_versao = self.bandeja_versao.wrapping_add(1);
+        self.barra = None;
+    }
+
+    /// O menu de um ícone da bandeja chegou: abre onde foi o clique.
+    pub fn abrir_menu_bandeja(&mut self, n: usize, tela: Size<i32, Logical>) {
+        let texto = std::fs::read_to_string(pasta_bandeja().join(format!("menu-{n}"))).unwrap_or_default();
+        let mut itens: Vec<(String, String)> = Vec::new();
+        for l in texto.lines() {
+            let c: Vec<&str> = l.split('\t').collect();
+            let (id, rotulo, flags) = (c.first().copied().unwrap_or(""), c.get(1).copied().unwrap_or(""), c.get(2).copied().unwrap_or(""));
+            if flags.contains('s') && rotulo.is_empty() {
+                continue;
+            }
+            let acao = if flags.contains('d') { "#nada".to_string() } else { format!("#bandeja:{n}:{id}") };
+            let rotulo = if flags.contains('m') { format!("✓ {rotulo}") } else { rotulo.to_string() };
+            itens.push((rotulo, acao));
+        }
+        if itens.is_empty() {
+            return;
+        }
+        let refs: Vec<(&str, &str)> = itens.iter().map(|(a, b)| (a.as_str(), b.as_str())).collect();
+        let p = self.bandeja_clique;
+        self.abrir_contexto(p, tela, refs);
+    }
+
+    fn bandeja_l(&self) -> i32 {
+        if self.bandeja.is_empty() {
+            0
+        } else {
+            self.bandeja.len() as i32 * ITEM_BANDEJA + 6
+        }
     }
 
     /// Rola a lista do menu (positivo = para baixo).
@@ -686,6 +786,13 @@ impl Painel {
             return Some(Alvo::CantoArea);
         }
         let bx = tela.w - RELOGIO_L - BANDEJA_L;
+        let ix = bx - self.bandeja_l();
+        if x >= ix && x < bx - 6 {
+            let i = ((x - ix) / ITEM_BANDEJA) as usize;
+            if i < self.bandeja.len() {
+                return Some(Alvo::ItemBandeja(i));
+            }
+        }
         if (bx..bx + ICONE_BANDEJA).contains(&x) {
             return Some(Alvo::Rede);
         }
@@ -1411,7 +1518,7 @@ impl Painel {
             "{}|{}|{hover:?}|{}|{}|{}|{janelas:?}|{:?}|{}",
             tela.w,
             altura(), self.menu_aberto, self.relogio.1, self.relogio.2, self.som, self.som_aberto
-        ) + &format!("|{:?}|{}", self.rede, self.rede_aberta);
+        ) + &format!("|{:?}|{}|{}", self.rede, self.rede_aberta, self.bandeja_versao);
         if self.barra.as_ref().map(|(c, _)| c != &chave).unwrap_or(true) {
             let t = self.desenhar_barra(tela.w, tela.h, hover, &janelas);
             self.barra = Some((chave, t.em_buffer()));
@@ -1540,9 +1647,25 @@ impl Painel {
             }
         }
 
-        // Bandeja: rede e som.
+        // Bandeja: ícones dos apps, depois rede e som.
         let ib = ICONE_BANDEJA as f32;
         let bx = l - (RELOGIO_L + BANDEJA_L) as f32;
+        let mut ix = bx - self.bandeja_l() as f32;
+        for (i, item) in self.bandeja.iter().enumerate() {
+            let il = ITEM_BANDEJA as f32;
+            if hover == Some(Alvo::ItemBandeja(i)) {
+                t.retangulo(ix + 1.0, 4.0, il - 2.0, bh, 6.0, tema::BRANCO().com_alfa(150));
+            }
+            if let Some(img) = &item.icone {
+                t.imagem((ix + (il - img.width() as f32) / 2.0) as i32, (meio - img.height() as f32 / 2.0) as i32, img);
+            } else {
+                let ini = letra(&item.titulo);
+                t.retangulo(ix + il / 2.0 - 9.0, meio - 9.0, 18.0, 18.0, 5.0, tema::DESTAQUE());
+                let li = desenho::medir(11.0, &ini);
+                t.texto(ix + il / 2.0 - li / 2.0, meio + 4.0, 11.0, tema::BRANCO(), &ini);
+            }
+            ix += il;
+        }
         let lado = (hf * 0.45).clamp(16.0, 24.0);
         if self.rede_aberta || hover == Some(Alvo::Rede) {
             t.retangulo(bx + 2.0, 4.0, ib - 4.0, bh, 6.0, tema::BRANCO().com_alfa(150));

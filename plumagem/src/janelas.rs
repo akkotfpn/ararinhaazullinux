@@ -290,7 +290,13 @@ impl<B: Backend> AnvilState<B> {
             if let Some(m) = self.painel.menu_contexto.take() {
                 if let Some((_, acao)) = m.itens.get(i) {
                     match acao.as_str() {
-                        "#atualizar" => {}
+                        "#atualizar" | "#nada" => {}
+                        a if a.starts_with("#bandeja:") => {
+                            let resto = &a["#bandeja:".len()..];
+                            if let Some((n, id)) = resto.split_once(':') {
+                                painel::pedir_bandeja(&format!("clicar {n} {id}"));
+                            }
+                        }
                         "#papel" => self.painel.proximo_papel(),
                         "#area" => self.mostrar_area_de_trabalho(),
                         a if a.starts_with("#apagar:") => {
@@ -313,6 +319,18 @@ impl<B: Backend> AnvilState<B> {
             return true;
         }
         self.painel.menu_contexto = None;
+        // Botão direito num ícone da bandeja: o menu do próprio app.
+        if direito {
+            if let Alvo::ItemBandeja(i) = alvo {
+                if let Some(item) = self.painel.bandeja.get(i) {
+                    let p = (pos - geo.loc.to_f64()).to_i32_round();
+                    self.painel.bandeja_clique = p;
+                    painel::pedir_bandeja(&format!("menu {}", item.n));
+                }
+                self.painel.segurando = true;
+                return true;
+            }
+        }
         // Botão direito na barra de tarefas: menu da barra.
         if direito {
             if matches!(alvo, Alvo::Barra | Alvo::Tarefa(_) | Alvo::Iniciar | Alvo::Fixado(_)) {
@@ -403,6 +421,13 @@ impl<B: Backend> AnvilState<B> {
             Alvo::SomMudo => self.painel.alternar_mudo(),
             Alvo::Barra | Alvo::Menu | Alvo::SomPainel | Alvo::Contexto(_) => {}
             Alvo::CantoArea => self.mostrar_area_de_trabalho(),
+            Alvo::ItemBandeja(i) => {
+                self.painel.menu_aberto = false;
+                if let Some(item) = self.painel.bandeja.get(i) {
+                    let p = pos.to_i32_round();
+                    painel::pedir_bandeja(&format!("ativar {} {} {}", item.n, p.x, p.y));
+                }
+            }
         }
         true
     }
