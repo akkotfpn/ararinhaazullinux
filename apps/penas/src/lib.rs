@@ -313,7 +313,13 @@ impl Janela {
             clique_direito: std::mem::take(&mut self.clique_direito),
             pressionado: self.pressionado,
             soltou: std::mem::take(&mut self.soltou),
-            rolagem: std::mem::take(&mut self.rolagem),
+            rolagem: {
+                // Rolagem suave: entrega uma parte do que falta a cada quadro.
+                let falta = self.rolagem;
+                let parte = if falta.abs() <= 2.0 { falta } else { falta * 0.4 };
+                self.rolagem -= parte;
+                parte
+            },
             teclas: std::mem::take(&mut self.teclas),
             ctrl: self.mods.ctrl,
             shift: self.mods.shift,
@@ -325,6 +331,11 @@ impl Janela {
         };
         self.app.desenhar(&mut ui);
         let (fechar, redesenhar, titulo) = (ui.fechar, ui.redesenhar, ui.titulo.take());
+        // Ainda há rolagem a entregar: outro quadro logo.
+        let redesenhar = redesenhar || self.rolagem.abs() > 0.0;
+        if self.rolagem.abs() > 0.0 && ui.acordar_em.is_none() {
+            ui.acordar_em = Some(Duration::from_millis(16));
+        }
         if let Some(d) = ui.acordar_em {
             self.acordar = Some(Instant::now() + d);
         }
