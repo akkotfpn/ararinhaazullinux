@@ -78,6 +78,24 @@ if command -v flatpak >/dev/null; then
   if [ ! -f "$HOME/.local/share/flatpak/overrides/global" ] || ! grep -q OZONE "$HOME/.local/share/flatpak/overrides/global" 2>/dev/null; then
     flatpak override --user --env=ELECTRON_OZONE_PLATFORM_HINT=auto >/dev/null 2>&1 &
   fi
+  # Primeiro login: atalho da Central de Apps na área de trabalho e o
+  # Chromium instalado sozinho (em segundo plano, com prioridade baixa).
+  marca="$HOME/.config/ararinha/primeiro-login"
+  if [ ! -f "$marca" ]; then
+    mkdir -p "$HOME/.config/ararinha" "$HOME/Área de Trabalho"
+    cp /usr/share/applications/central.desktop "$HOME/Área de Trabalho/" 2>/dev/null
+    touch "$marca"
+    (
+      sleep 8
+      ararinha-notificar "Instalando o Chromium" "O navegador chega em alguns minutos; ele aparece no menu Iniciar."
+      if nice -n 15 flatpak install --user -y --noninteractive flathub org.chromium.Chromium >/dev/null 2>&1; then
+        cp "$HOME/.local/share/flatpak/exports/share/applications/org.chromium.Chromium.desktop" "$HOME/Área de Trabalho/" 2>/dev/null
+        ararinha-notificar "Chromium pronto" "O navegador já está no menu Iniciar e na área de trabalho."
+      else
+        ararinha-notificar "Chromium não foi instalado" "Sem internet? Instale depois pela Central de Apps."
+      fi
+    ) &
+  fi
   for app in org.chromium.Chromium com.google.Chrome com.brave.Browser; do
     f="$HOME/.var/app/$app/config/chromium-flags.conf"
     [ "$app" = com.google.Chrome ] && f="$HOME/.var/app/$app/config/chrome-flags.conf"

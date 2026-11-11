@@ -79,6 +79,20 @@ install -vDm755 target/release/xdg-desktop-portal-ararinha /usr/libexec/xdg-desk
 install -vDm644 portal/recursos/ararinha.portal /usr/share/xdg-desktop-portal/portals/ararinha.portal
 install -vDm644 portal/recursos/org.freedesktop.impl.portal.desktop.ararinha.service /usr/share/dbus-1/services/org.freedesktop.impl.portal.desktop.ararinha.service
 install -vDm644 portal/recursos/org.freedesktop.Notifications.service /usr/share/dbus-1/services/org.freedesktop.Notifications.service
+install -vDm644 portal/recursos/org.freedesktop.FileManager1.service /usr/share/dbus-1/services/org.freedesktop.FileManager1.service
+# Apps padrão (pastas no Explorador, imagens, textos e músicas nos nossos).
+cat > /usr/share/applications/mimeapps.list << 'FIM'
+[Default Applications]
+inode/directory=explorador.desktop
+image/png=imagens.desktop
+image/jpeg=imagens.desktop
+image/gif=imagens.desktop
+image/webp=imagens.desktop
+text/plain=notas.desktop
+audio/mpeg=musicas.desktop
+audio/flac=musicas.desktop
+audio/ogg=musicas.desktop
+FIM
 # Instalador: o ajudante é setuid root e só obedece ao grupo wheel.
 install -vDm4750 -g wheel target/release/ararinha-instalar /usr/bin/ararinha-instalar 2>/dev/null \
   || install -vDm4755 target/release/ararinha-instalar /usr/bin/ararinha-instalar
