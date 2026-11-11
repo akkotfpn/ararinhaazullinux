@@ -74,6 +74,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             KeyAction::ProximaJanela => self.alt_tab(),
             KeyAction::FecharJanela => self.fechar_janela_ativa(),
             KeyAction::MostrarAreaDeTrabalho => self.mostrar_area_de_trabalho(),
+            KeyAction::Captura => crate::captura::pedir(),
 
             KeyAction::Quit => {
                 info!("Quitting.");
@@ -589,6 +590,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                     | KeyAction::ProximaJanela
                     | KeyAction::FecharJanela
                     | KeyAction::MostrarAreaDeTrabalho
+                    | KeyAction::Captura
                     | KeyAction::TogglePreview
                     | KeyAction::ToggleDecorations => self.process_common_key_action(action),
 
@@ -808,6 +810,7 @@ impl AnvilState<UdevData> {
                     | KeyAction::ProximaJanela
                     | KeyAction::FecharJanela
                     | KeyAction::MostrarAreaDeTrabalho
+                    | KeyAction::Captura
                     | KeyAction::TogglePreview
                     | KeyAction::ToggleDecorations => self.process_common_key_action(action),
 
@@ -1379,6 +1382,8 @@ enum KeyAction {
     FecharJanela,
     /// Mostra a área de trabalho (minimiza tudo; de novo, restaura)
     MostrarAreaDeTrabalho,
+    /// Print Screen: captura de tela
+    Captura,
     /// Switch the current screen
     Screen(usize),
     ScaleUp,
@@ -1397,6 +1402,9 @@ fn process_keyboard_shortcut(modifiers: ModifiersState, keysym: Keysym) -> Optio
         Some(KeyAction::Quit)
     } else if modifiers.alt && !modifiers.ctrl && (keysym == Keysym::Tab || keysym == Keysym::ISO_Left_Tab) {
         Some(KeyAction::ProximaJanela)
+    } else if keysym == Keysym::Print {
+        // Print Screen: salva a tela em Imagens/Capturas de Tela
+        Some(KeyAction::Captura)
     } else if modifiers.alt && keysym == Keysym::F4 {
         Some(KeyAction::FecharJanela)
     } else if (modifiers.logo || modifiers.ctrl && modifiers.alt) && (keysym == Keysym::d || keysym == Keysym::D) {

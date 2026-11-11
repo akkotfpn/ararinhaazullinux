@@ -1519,6 +1519,12 @@ impl AnvilState<UdevData> {
             selecao,
             area,
         );
+        // Abre a captura recém-salva no Visualizador de Imagens.
+        let salva = crate::captura::SALVA.lock().unwrap().take();
+        if let Some(caminho) = salva {
+            let c = caminho.to_string_lossy().replace('\'', "'\\''");
+            self.executar_programa(&format!("imagens '{c}'"));
+        }
         let reschedule = match result {
             Ok((has_rendered, states)) => {
                 let dmabuf_feedback = surface.dmabuf_feedback.clone();
@@ -1683,6 +1689,16 @@ fn render_surface<'a>(
 
     let (elements, clear_color) =
         output_elements(output, space, custom_elements, renderer, show_window_preview, fundo, interface, selecao, area);
+
+    if crate::captura::pedida() {
+        match crate::captura::capturar(renderer, output, &elements, clear_color) {
+            Ok(caminho) => {
+                info!(?caminho, "captura de tela salva");
+                *crate::captura::SALVA.lock().unwrap() = Some(caminho);
+            }
+            Err(e) => warn!("não deu para capturar a tela: {e}"),
+        }
+    }
 
     let frame_mode = if surface.disable_direct_scanout {
         FrameFlags::empty()
