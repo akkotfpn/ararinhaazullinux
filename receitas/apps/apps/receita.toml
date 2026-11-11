@@ -12,7 +12,7 @@ categoria = "apps"
 tipo      = "toolchain"
 
 [dependencias]
-construcao = ["rust", "libxkbcommon", "wayland", "fonte-inter", "cifs-utils"]
+construcao = ["rust", "libxkbcommon", "wayland", "fonte-inter", "cifs-utils", "systemd"]
 
 [construcao]
 ambiente = "isolado"
@@ -52,10 +52,26 @@ install -vDm644 explorador/recursos/explorador.desktop /usr/share/applications/e
 install -vDm644 explorador/recursos/explorador.png /usr/share/icons/hicolor/64x64/apps/explorador.png
 # Ajudante das unidades de rede: setuid root (ver apps/unidade).
 install -vDm4755 target/release/ararinha-unidade /usr/bin/ararinha-unidade
+# Planos de energia: setuid root, só escreve em arquivos fixos do /sys.
+install -vDm4755 target/release/ararinha-energia /usr/bin/ararinha-energia
+install -vdm755 /usr/lib/systemd/system
+cat > /usr/lib/systemd/system/ararinha-energia.service << 'FIM'
+[Unit]
+Description=Aplica o plano de energia escolhido nas Configurações
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/ararinha-energia aplicar
+
+[Install]
+WantedBy=multi-user.target
+FIM
+systemctl enable ararinha-energia.service
 for app in imagens notas configuracoes central calculadora tarefas; do
   install -vDm755 target/release/$app /usr/bin/$app
   install -vDm644 $app/recursos/$app.desktop /usr/share/applications/$app.desktop
   install -vDm644 $app/recursos/$app.png /usr/share/icons/hicolor/64x64/apps/$app.png
 done
+install -vDm644 configuracoes/recursos/sobre.desktop /usr/share/applications/sobre.desktop
 ''',
 ]

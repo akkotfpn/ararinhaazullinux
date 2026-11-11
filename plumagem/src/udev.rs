@@ -260,7 +260,7 @@ pub fn run_udev() {
         pointer_image: crate::cursor::Cursor::load(),
         pointer_images: Vec::new(),
         pointer_element: PointerElement::default(),
-        fundo: crate::fundo::Fundo::spix(),
+        fundo: crate::fundo::Fundo::atual(),
         #[cfg(feature = "debug")]
         fps_texture: None,
         debug_flags: DebugFlags::empty(),
@@ -1474,6 +1474,10 @@ impl AnvilState<UdevData> {
                 buffer
             });
 
+        // O papel de parede mudou nas Configurações?
+        if self.backend_data.fundo.as_ref().map(|f| f.versao) != Some(crate::fundo::versao()) {
+            self.backend_data.fundo = crate::fundo::Fundo::atual();
+        }
         let interface = if let Some(ninho) = self.ninho.as_mut() {
             ninho.elementos(&mut renderer, &output, &self.space, self.pointer.current_location())
         } else {

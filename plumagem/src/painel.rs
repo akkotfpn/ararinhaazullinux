@@ -41,6 +41,20 @@ fn caminhos_config() -> [String; 2] {
     ]
 }
 
+/// Valor de `chave = valor` na configuração do usuário (ou na do sistema).
+pub fn ler_chave(chave: &str) -> Option<String> {
+    for caminho in caminhos_config() {
+        let Ok(texto) = std::fs::read_to_string(&caminho) else { continue };
+        for linha in texto.lines() {
+            let Some((k, v)) = linha.split_once('=') else { continue };
+            if k.trim() == chave && !linha.trim_start().starts_with('#') {
+                return Some(v.trim().trim_matches('"').to_string());
+            }
+        }
+    }
+    None
+}
+
 fn ler_altura() -> i32 {
     for caminho in caminhos_config() {
         let Ok(texto) = std::fs::read_to_string(&caminho) else { continue };
@@ -441,6 +455,8 @@ impl Painel {
             self.logo = desenho::icone(LOGO_PNG, lado, lado);
             self.barra = None;
             self.menu = None;
+            // Papel de parede (e o vidro feito dele) podem ter mudado.
+            crate::fundo::VERSAO.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         }
         self.config_visto = (seg, v);
     }

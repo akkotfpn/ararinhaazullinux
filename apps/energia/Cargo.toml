@@ -1,0 +1,11 @@
+[package]
+name = "energia"
+version = "0.1.0"
+description = "Ajudante do Ararinha para as opções de energia"
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "ararinha-energia"
+path = "src/main.rs"

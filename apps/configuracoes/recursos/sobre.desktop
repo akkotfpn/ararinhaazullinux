@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Sobre o Ararinha
+Name[en]=About Ararinha
+Comment=Versão do sistema, créditos e informações do computador
+Exec=configuracoes sobre
+Icon=configuracoes
+Categories=System;

@@ -402,6 +402,7 @@ pub fn icone(png: &[u8], largura: u32, altura: u32) -> Option<image::RgbaImage> 
 struct Vidro {
     l: i32,
     a: i32,
+    versao: u32,
     px: Vec<u8>,
 }
 
@@ -415,16 +416,15 @@ pub fn preparar_vidro(l: i32, a: i32) {
     if l <= 0 || a <= 0 {
         return;
     }
-    let pronto = VIDRO.with(|v| v.borrow().as_ref().map(|v| v.l == l && v.a == a).unwrap_or(false));
+    let versao = crate::fundo::versao();
+    let pronto = VIDRO.with(|v| {
+        v.borrow().as_ref().map(|v| v.l == l && v.a == a && v.versao == versao).unwrap_or(false)
+    });
     if pronto {
         return;
     }
     let inicio = std::time::Instant::now();
-    let Ok(img) = image::load_from_memory_with_format(crate::fundo::FUNDO_SPIX_PNG, image::ImageFormat::Png)
-    else {
-        return;
-    };
-    let img = img.to_rgb8();
+    let img = crate::fundo::imagem_escolhida().to_rgb8();
     // O desfoque é feito em 1/4 da resolução (mais rápido e mais suave).
     const Q: f64 = 4.0;
     let (iw, ih) = (img.width() as f64, img.height() as f64);
@@ -439,7 +439,7 @@ pub fn preparar_vidro(l: i32, a: i32) {
         desfocar(&mut recorte, 5);
     }
     let cheia = image::imageops::resize(&recorte, l as u32, a as u32, image::imageops::FilterType::Triangle);
-    VIDRO.with(|v| *v.borrow_mut() = Some(Vidro { l, a, px: cheia.into_raw() }));
+    VIDRO.with(|v| *v.borrow_mut() = Some(Vidro { l, a, versao, px: cheia.into_raw() }));
     tracing::info!(l, a, tempo = ?inicio.elapsed(), "vidro preparado");
 }
 

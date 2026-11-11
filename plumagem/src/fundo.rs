@@ -20,18 +20,48 @@ use smithay::{
 /// PNG gerado de `arte/papeis-de-parede/spix.svg` (1920x1080).
 pub static FUNDO_SPIX_PNG: &[u8] = include_bytes!("../resources/fundo-spix.png");
 
+/// Pasta dos papéis de parede que vêm com o sistema.
+pub const PASTA_PAPEIS: &str = "/usr/share/backgrounds/ararinha";
+
+/// Muda quando a configuração muda; quem guarda uma cópia do papel de
+/// parede (o fundo e o vidro) compara para saber se precisa recarregar.
+pub static VERSAO: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
+pub fn versao() -> u32 {
+    VERSAO.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// O papel de parede escolhido em `papel = ...` na configuração: um nome
+/// da pasta do sistema (sem ".png") ou o caminho de uma imagem PNG.
+/// Sem escolha, ou se a imagem não abrir, fica o Spix.
+pub fn imagem_escolhida() -> image::DynamicImage {
+    if let Some(v) = crate::painel::ler_chave("papel") {
+        let caminho = if v.contains('/') { v.clone() } else { format!("{PASTA_PAPEIS}/{v}.png") };
+        if v != "spix" {
+            match std::fs::read(&caminho).map_err(|e| e.to_string()).and_then(|b| {
+                image::load_from_memory_with_format(&b, image::ImageFormat::Png).map_err(|e| e.to_string())
+            }) {
+                Ok(img) => return img,
+                Err(e) => tracing::warn!("papel de parede {caminho}: {e}; fica o Spix"),
+            }
+        }
+    }
+    image::load_from_memory_with_format(FUNDO_SPIX_PNG, image::ImageFormat::Png)
+        .unwrap_or_else(|_| image::DynamicImage::new_rgba8(1, 1))
+}
+
 #[derive(Debug, Clone)]
 pub struct Fundo {
     buffer: MemoryRenderBuffer,
     tamanho: Size<f64, Logical>,
+    pub versao: u32,
 }
 
 impl Fundo {
-    pub fn spix() -> Option<Fundo> {
-        let imagem = image::load_from_memory_with_format(FUNDO_SPIX_PNG, image::ImageFormat::Png)
-            .map_err(|e| tracing::warn!("papel de parede inválido: {e}"))
-            .ok()?
-            .to_rgba8();
+    /// O papel de parede da configuração atual.
+    pub fn atual() -> Option<Fundo> {
+        let versao = versao();
+        let imagem = imagem_escolhida().to_rgba8();
         let (l, a) = (imagem.width() as i32, imagem.height() as i32);
         let buffer = MemoryRenderBuffer::from_slice(
             imagem.as_raw(),
@@ -42,7 +72,7 @@ impl Fundo {
             smithay::utils::Transform::Normal,
             Some(vec![Rectangle::from_size((l, a).into())]),
         );
-        Some(Fundo { buffer, tamanho: (l as f64, a as f64).into() })
+        Some(Fundo { buffer, tamanho: (l as f64, a as f64).into(), versao })
     }
 
     /// Elemento que cobre a saída inteira, mantendo a proporção da imagem

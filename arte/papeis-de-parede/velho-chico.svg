@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->
+<!-- Papel de parede "Velho Chico": fim de tarde no rio São Francisco, que
+     passa por Curaçá (BA). Arte original do projeto. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080" width="1920" height="1080">
+  <title>Velho Chico</title>
+  <defs>
+    <linearGradient id="ceu" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2A3F78"/>
+      <stop offset="0.4" stop-color="#7A5FA0"/>
+      <stop offset="0.7" stop-color="#E58E73"/>
+      <stop offset="1" stop-color="#FFD39A"/>
+    </linearGradient>
+    <linearGradient id="rio" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#F3B27F"/>
+      <stop offset="0.35" stop-color="#7C6CA0"/>
+      <stop offset="1" stop-color="#253C70"/>
+    </linearGradient>
+    <radialGradient id="sol" cx="0.5" cy="0.62" r="0.3">
+      <stop offset="0" stop-color="#FFF0C8" stop-opacity="0.9"/>
+      <stop offset="1" stop-color="#FFB46A" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1920" height="1080" fill="url(#ceu)"/>
+  <rect width="1920" height="1080" fill="url(#sol)"/>
+  <circle cx="960" cy="664" r="70" fill="#FFF2CF"/>
+  <path d="M0 640 C 240 610, 420 630, 620 600 S 860 620, 900 650 L0 700 Z" fill="#5B4A80"/>
+  <path d="M1920 630 C 1700 600, 1500 626, 1300 604 S 1080 630, 1020 652 L1920 700 Z" fill="#5B4A80"/>
+  <rect y="666" width="1920" height="414" fill="url(#rio)"/>
+  <g fill="#FFF2CF">
+    <rect x="900" y="690" width="120" height="4" rx="2" opacity="0.8"/>
+    <rect x="870" y="720" width="180" height="4" rx="2" opacity="0.6"/>
+    <rect x="840" y="760" width="240" height="5" rx="2.5" opacity="0.45"/>
+    <rect x="800" y="810" width="320" height="5" rx="2.5" opacity="0.3"/>
+    <rect x="760" y="870" width="400" height="6" rx="3" opacity="0.2"/>
+  </g>
+  <path d="M0 700 C 200 680, 340 700, 520 690 L520 1080 L0 1080 Z" fill="#2B2350" opacity="0.85"/>
+  <path d="M1920 700 C 1720 690, 1560 712, 1400 700 L1400 1080 L1920 1080 Z" fill="#2B2350" opacity="0.85"/>
+  <g fill="#1A1638">
+    <path d="M1180 760 l 140 0 l -20 22 l -100 0 z"/>
+    <rect x="1246" y="660" width="4" height="100"/>
+    <path d="M1252 664 L1252 752 L1314 752 Z"/>
+    <path d="M140 700 q 30 -70 64 -6 q 20 -40 44 4 z"/>
+    <path d="M1640 704 q 26 -60 58 -6 q 18 -36 38 4 z"/>
+  </g>
+  <g stroke="#1A1638" stroke-width="4" fill="none" stroke-linecap="round">
+    <path d="M620 300 q 14 -12 28 0 q 14 -12 28 0"/>
+    <path d="M700 260 q 10 -9 20 0 q 10 -9 20 0"/>
+    <path d="M560 250 q 9 -8 18 0 q 9 -8 18 0"/>
+  </g>
+</svg>

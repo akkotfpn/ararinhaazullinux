@@ -98,12 +98,20 @@ chmod 755 /usr/bin/plumagem-sessao
   # Configuração da Plumagem.
   '''
 install -vdm755 /etc/plumagem
+# Papéis de parede (o Spix vem embutido na Plumagem e também fica aqui).
+install -vdm755 /usr/share/backgrounds/ararinha
+install -vm644 ../plumagem/resources/fundo-spix.png /usr/share/backgrounds/ararinha/spix.png
+install -vm644 ../plumagem/resources/papeis/*.png /usr/share/backgrounds/ararinha/
 cat > /etc/plumagem/plumagem.conf << 'FIM'
 # Configuração da Plumagem (vale para todos os usuários; cada um pode ter a
 # sua em ~/.config/plumagem/plumagem.conf). Mudanças valem ao reabrir a sessão.
 
 # Tamanho da barra de tarefas: pequena, media ou grande (ou a altura em pixels).
 barra = media
+
+# Papel de parede: spix, noite-no-sertao, velho-chico, aero-azul,
+# caatinga-em-flor (de /usr/share/backgrounds/ararinha) ou o caminho de um PNG.
+papel = spix
 FIM
 rm -f /etc/profile.d/plumagem.sh
 ''',

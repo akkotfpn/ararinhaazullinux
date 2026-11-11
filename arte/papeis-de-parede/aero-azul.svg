@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->
+<!-- Papel de parede "Aero Azul": faixas de luz e vidro, para quem gosta do
+     visual clássico. Arte original do projeto. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080" width="1920" height="1080">
+  <title>Aero Azul</title>
+  <defs>
+    <radialGradient id="fundo" cx="0.35" cy="0.3" r="1">
+      <stop offset="0" stop-color="#3FA2E8"/>
+      <stop offset="0.45" stop-color="#1767B5"/>
+      <stop offset="1" stop-color="#061F44"/>
+    </radialGradient>
+    <linearGradient id="faixa" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0"/>
+      <stop offset="0.5" stop-color="#FFFFFF" stop-opacity="0.35"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="faixa2" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#9FE3FF" stop-opacity="0"/>
+      <stop offset="0.6" stop-color="#9FE3FF" stop-opacity="0.4"/>
+      <stop offset="1" stop-color="#9FE3FF" stop-opacity="0"/>
+    </linearGradient>
+    <radialGradient id="bolha" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.18"/>
+      <stop offset="0.8" stop-color="#FFFFFF" stop-opacity="0.04"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0.25"/>
+    </radialGradient>
+  </defs>
+  <rect width="1920" height="1080" fill="url(#fundo)"/>
+  <path d="M-100 760 C 400 560, 900 900, 1400 640 S 1900 520, 2040 600 L2040 680 C 1800 610, 1500 760, 1200 800 S 300 700, -100 860 Z" fill="url(#faixa)"/>
+  <path d="M-100 820 C 500 640, 1000 960, 1500 720 S 1900 640, 2040 700 L2040 730 C 1800 690, 1400 860, 1000 880 S 200 760, -100 850 Z" fill="url(#faixa2)"/>
+  <path d="M-100 600 C 500 420, 1100 700, 2040 380 L2040 410 C 1200 720, 500 470, -100 640 Z" fill="url(#faixa)" opacity="0.6"/>
+  <circle cx="1500" cy="260" r="150" fill="url(#bolha)"/>
+  <circle cx="1700" cy="420" r="80" fill="url(#bolha)"/>
+  <circle cx="320" cy="300" r="110" fill="url(#bolha)"/>
+  <circle cx="460" cy="900" r="60" fill="url(#bolha)"/>
+  <circle cx="1120" cy="180" r="44" fill="url(#bolha)"/>
+</svg>

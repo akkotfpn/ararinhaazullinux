@@ -326,6 +326,9 @@ fn com_fonte(f: impl FnOnce(&mut Fonte)) {
     });
 }
 
+/// Imagem RGBA pronta para desenhar com [`Tela::imagem`].
+pub type Imagem = image::RgbaImage;
+
 /// Imagem PNG embutida, redimensionada para `largura` x `altura`.
 pub fn icone(png: &[u8], largura: u32, altura: u32) -> Option<image::RgbaImage> {
     let img = image::load_from_memory_with_format(png, image::ImageFormat::Png).ok()?.to_rgba8();

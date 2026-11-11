@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->
+<!-- Papel de parede "Caatinga em Flor": a caatinga verde depois da chuva,
+     com ipês floridos. Arte original do projeto. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080" width="1920" height="1080">
+  <title>Caatinga em Flor</title>
+  <defs>
+    <linearGradient id="ceu" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#5DA9E9"/>
+      <stop offset="0.6" stop-color="#A8D6F5"/>
+      <stop offset="1" stop-color="#E6F4FB"/>
+    </linearGradient>
+    <linearGradient id="morro1" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#7DB46A"/><stop offset="1" stop-color="#5E9650"/>
+    </linearGradient>
+    <linearGradient id="morro2" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#4C8A45"/><stop offset="1" stop-color="#3A6F38"/>
+    </linearGradient>
+    <linearGradient id="chao" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3F7A3A"/><stop offset="1" stop-color="#2A5528"/>
+    </linearGradient>
+  </defs>
+  <rect width="1920" height="1080" fill="url(#ceu)"/>
+  <g fill="#FFFFFF" opacity="0.9">
+    <ellipse cx="380" cy="220" rx="120" ry="36"/><ellipse cx="460" cy="200" rx="80" ry="40"/>
+    <ellipse cx="1380" cy="160" rx="150" ry="40"/><ellipse cx="1300" cy="140" rx="90" ry="44"/>
+    <ellipse cx="1700" cy="300" rx="90" ry="26"/>
+  </g>
+  <path d="M0 700 C 240 640, 420 670, 640 630 S 1000 600, 1220 660 S 1600 690, 1920 640 L1920 1080 L0 1080 Z" fill="url(#morro1)"/>
+  <path d="M0 800 C 300 760, 560 790, 820 760 S 1340 740, 1600 780 S 1840 800, 1920 790 L1920 1080 L0 1080 Z" fill="url(#morro2)"/>
+  <path d="M0 900 C 400 870, 800 890, 1200 876 S 1700 866, 1920 884 L1920 1080 L0 1080 Z" fill="url(#chao)"/>
+  <g stroke="#4A3320" stroke-linecap="round" fill="none">
+    <path d="M1460 900 C 1456 820, 1470 760, 1462 690" stroke-width="14"/>
+    <path d="M1462 760 q -50 -30 -90 -80" stroke-width="7"/>
+    <path d="M1464 730 q 60 -24 100 -78" stroke-width="7"/>
+    <path d="M420 910 C 418 850, 428 810, 422 760" stroke-width="10"/>
+    <path d="M422 810 q -36 -20 -62 -60" stroke-width="5"/>
+    <path d="M424 790 q 40 -16 70 -56" stroke-width="5"/>
+  </g>
+  <g fill="#F2C33A">
+    <circle cx="1462" cy="660" r="62"/><circle cx="1380" cy="670" r="46"/><circle cx="1560" cy="640" r="48"/>
+    <circle cx="1420" cy="620" r="40"/><circle cx="1520" cy="600" r="38"/>
+  </g>
+  <g fill="#E3A92A">
+    <circle cx="1440" cy="690" r="22"/><circle cx="1530" cy="660" r="18"/><circle cx="1400" cy="640" r="16"/>
+  </g>
+  <g fill="#E07BB0">
+    <circle cx="422" cy="740" r="44"/><circle cx="364" cy="744" r="32"/><circle cx="490" cy="722" r="34"/>
+    <circle cx="420" cy="700" r="30"/>
+  </g>
+  <g fill="#C95C97"><circle cx="400" cy="760" r="14"/><circle cx="470" cy="740" r="12"/></g>
+  <g fill="#2F6A2C">
+    <path d="M100 900 q 24 -60 52 -8 q 16 -36 36 2 q 12 -20 26 6 z"/>
+    <path d="M820 890 q 22 -54 48 -6 q 16 -32 34 2 z"/>
+    <path d="M1100 892 q 20 -48 44 -6 q 14 -30 30 2 z"/>
+    <path d="M1780 896 q 22 -56 50 -8 q 14 -32 32 2 z"/>
+  </g>
+</svg>
