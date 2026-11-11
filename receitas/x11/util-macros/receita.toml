@@ -1,0 +1,32 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# XWayland (apps X11, como a Steam): BLFS, util-macros
+
+[pacote]
+nome      = "util-macros"
+versao    = "1.20.2"
+resumo    = "Macros do autoconf do Xorg"
+licenca   = "MIT"
+categoria = "x11"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://www.x.org/pub/individual/util/util-macros-1.20.2.tar.xz"
+
+[dependencias]
+construcao = []
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+./configure --prefix=/usr --sysconfdir=/etc --localstatedir=/var --disable-static
+''',
+  '''
+make -j$NUCLEOS
+''',
+]
+instalar = [
+  '''
+make install
+''',
+]

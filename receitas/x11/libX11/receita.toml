@@ -1,0 +1,32 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# XWayland (apps X11, como a Steam): BLFS, libX11
+
+[pacote]
+nome      = "libX11"
+versao    = "1.8.14"
+resumo    = "Biblioteca do X11"
+licenca   = "MIT"
+categoria = "x11"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://www.x.org/pub/individual/lib/libX11-1.8.14.tar.xz"
+
+[dependencias]
+construcao = ["libxcb", "xtrans", "xorgproto"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+./configure --prefix=/usr --sysconfdir=/etc --localstatedir=/var --disable-static
+''',
+  '''
+make -j$NUCLEOS
+''',
+]
+instalar = [
+  '''
+make install
+''',
+]

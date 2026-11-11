@@ -1,0 +1,32 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# XWayland (apps X11, como a Steam): BLFS, libepoxy
+
+[pacote]
+nome      = "libepoxy"
+versao    = "1.5.10"
+resumo    = "Ponteiros de função OpenGL"
+licenca   = "MIT"
+categoria = "x11"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://download.gnome.org/sources/libepoxy/1.5/libepoxy-1.5.10.tar.xz"
+
+[dependencias]
+construcao = ["meson", "mesa"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+mkdir -p build && cd build && meson setup --prefix=/usr --buildtype=release --wrap-mode=nofallback -D docs=false -D tests=false -D glx=no -D x11=false ..
+''',
+  '''
+cd build && ninja
+''',
+]
+instalar = [
+  '''
+cd build && ninja install
+''',
+]

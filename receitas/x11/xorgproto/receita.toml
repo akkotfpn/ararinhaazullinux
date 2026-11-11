@@ -1,0 +1,32 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# XWayland (apps X11, como a Steam): BLFS, xorgproto
+
+[pacote]
+nome      = "xorgproto"
+versao    = "2026.1"
+resumo    = "Cabeçalhos dos protocolos do X"
+licenca   = "MIT"
+categoria = "x11"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://xorg.freedesktop.org/archive/individual/proto/xorgproto-2026.1.tar.xz"
+
+[dependencias]
+construcao = ["meson", "util-macros"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+mkdir -p build && cd build && meson setup --prefix=/usr --buildtype=release --wrap-mode=nofallback ..
+''',
+  '''
+cd build && ninja
+''',
+]
+instalar = [
+  '''
+cd build && ninja install
+''',
+]

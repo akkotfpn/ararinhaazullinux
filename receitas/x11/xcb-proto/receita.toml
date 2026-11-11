@@ -1,0 +1,32 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# XWayland (apps X11, como a Steam): BLFS, xcb-proto
+
+[pacote]
+nome      = "xcb-proto"
+versao    = "1.17.0"
+resumo    = "Descrições do protocolo XCB"
+licenca   = "MIT"
+categoria = "x11"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://xorg.freedesktop.org/archive/individual/proto/xcb-proto-1.17.0.tar.xz"
+
+[dependencias]
+construcao = ["python"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+PYTHON=python3 ./configure --prefix=/usr --sysconfdir=/etc --localstatedir=/var --disable-static
+''',
+  '''
+make -j$NUCLEOS
+''',
+]
+instalar = [
+  '''
+make install
+''',
+]

@@ -1,0 +1,32 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# XWayland (apps X11, como a Steam): BLFS, libxshmfence
+
+[pacote]
+nome      = "libxshmfence"
+versao    = "1.3.3"
+resumo    = "Sincronização por memória compartilhada"
+licenca   = "MIT"
+categoria = "x11"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://www.x.org/pub/individual/lib/libxshmfence-1.3.3.tar.xz"
+
+[dependencias]
+construcao = ["xorgproto"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+./configure --prefix=/usr --sysconfdir=/etc --localstatedir=/var --disable-static
+''',
+  '''
+make -j$NUCLEOS
+''',
+]
+instalar = [
+  '''
+make install
+''',
+]

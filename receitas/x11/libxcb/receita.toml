@@ -1,0 +1,32 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# XWayland (apps X11, como a Steam): BLFS, libxcb
+
+[pacote]
+nome      = "libxcb"
+versao    = "1.17.0"
+resumo    = "Biblioteca XCB"
+licenca   = "MIT"
+categoria = "x11"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://xorg.freedesktop.org/archive/individual/lib/libxcb-1.17.0.tar.xz"
+
+[dependencias]
+construcao = ["xcb-proto", "libXau", "libXdmcp", "python"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+./configure --prefix=/usr --sysconfdir=/etc --localstatedir=/var --disable-static --without-doxygen
+''',
+  '''
+make -j$NUCLEOS
+''',
+]
+instalar = [
+  '''
+make install
+''',
+]

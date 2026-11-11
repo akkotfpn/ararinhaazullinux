@@ -1,0 +1,32 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# XWayland (apps X11, como a Steam): BLFS, libXdmcp
+
+[pacote]
+nome      = "libXdmcp"
+versao    = "1.1.5"
+resumo    = "Protocolo XDMCP"
+licenca   = "MIT"
+categoria = "x11"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://www.x.org/pub/individual/lib/libXdmcp-1.1.5.tar.xz"
+
+[dependencias]
+construcao = ["xorgproto", "util-macros"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+./configure --prefix=/usr --sysconfdir=/etc --localstatedir=/var --disable-static
+''',
+  '''
+make -j$NUCLEOS
+''',
+]
+instalar = [
+  '''
+make install
+''',
+]

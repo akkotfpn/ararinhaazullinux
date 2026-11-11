@@ -1,0 +1,37 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# XWayland (apps X11, como a Steam): BLFS, Xwayland
+# A Plumagem inicia o Xwayland sob demanda e cuida das janelas X11 (xwm).
+
+[pacote]
+nome      = "xwayland"
+versao    = "24.1.15"
+resumo    = "Servidor X dentro do Wayland, para apps antigos"
+licenca   = "MIT"
+categoria = "x11"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://www.x.org/pub/individual/xserver/xwayland-24.1.15.tar.xz"
+
+[dependencias]
+construcao = ["meson", "xorgproto", "libxcvt", "pixman", "wayland", "wayland-protocols", "font-util",
+              "libepoxy", "mesa", "libdrm", "libxkbfile", "libXfont2", "libxshmfence", "libXau",
+              "libXdmcp", "xtrans", "xkbcomp", "openssl"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+sed -i '/install_man/,$d' meson.build
+mkdir -p build && cd build && meson setup --prefix=/usr --buildtype=release --wrap-mode=nofallback \
+  -D xkb_output_dir=/var/lib/xkb -D secure-rpc=false ..
+''',
+  '''
+cd build && ninja
+''',
+]
+instalar = [
+  '''
+cd build && ninja install
+''',
+]
