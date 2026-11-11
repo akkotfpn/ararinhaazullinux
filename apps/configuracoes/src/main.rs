@@ -9,6 +9,8 @@ mod contas;
 mod firewall;
 mod hora;
 mod som;
+mod tela;
+mod armazenamento;
 mod rede;
 
 use std::{
@@ -38,8 +40,10 @@ enum Pagina {
     Personalizacao,
     Rede,
     Firewall,
+    Tela,
     Som,
     Energia,
+    Armazenamento,
     Hora,
     Conta,
     Contas,
@@ -70,6 +74,8 @@ struct Configuracoes {
     hora: hora::PaginaHora,
     contas: contas::PaginaContas,
     som: som::PaginaSom,
+    tela: tela::PaginaTela,
+    armazenamento: armazenamento::PaginaArmazenamento,
     mingau: Option<penas::desenho::Imagem>,
 }
 
@@ -265,6 +271,8 @@ impl Configuracoes {
             hora: Default::default(),
             contas: Default::default(),
             som: Default::default(),
+            tela: Default::default(),
+            armazenamento: Default::default(),
             mingau: desenho::icone(MINGAU_PNG, 120, 141),
         }
     }
@@ -575,6 +583,13 @@ impl App for Configuracoes {
             }
             Pagina::Energia => self.energia(ui, LATERAL_L, l - LATERAL_L),
             Pagina::Som => self.som.desenhar(ui, LATERAL_L, l - LATERAL_L),
+            Pagina::Tela => self.tela.desenhar(ui, LATERAL_L, l - LATERAL_L),
+            Pagina::Armazenamento => {
+                self.armazenamento.desenhar(ui, LATERAL_L, l - LATERAL_L);
+                if let Some(av) = self.armazenamento.aviso.take() {
+                    self.aviso = Some(av);
+                }
+            }
             Pagina::Hora => {
                 self.hora.desenhar(ui, LATERAL_L, l - LATERAL_L);
                 if let Some(av) = self.hora.aviso.take() {
@@ -603,8 +618,10 @@ impl App for Configuracoes {
             (Pagina::Personalizacao, "Personalização"),
             (Pagina::Rede, "Rede e Internet"),
             (Pagina::Firewall, "Firewall"),
+            (Pagina::Tela, "Tela"),
             (Pagina::Som, "Som"),
             (Pagina::Energia, "Energia"),
+            (Pagina::Armazenamento, "Armazenamento"),
             (Pagina::Hora, "Data e hora"),
             (Pagina::Conta, "Sua conta"),
             (Pagina::Contas, "Outros usuários"),
@@ -643,6 +660,8 @@ fn main() {
         Some("conta") => app.pagina = Pagina::Conta,
         Some("firewall") => app.pagina = Pagina::Firewall,
         Some("som") => app.pagina = Pagina::Som,
+        Some("tela") => app.pagina = Pagina::Tela,
+        Some("armazenamento") => app.pagina = Pagina::Armazenamento,
         Some("hora") => app.pagina = Pagina::Hora,
         Some("contas") => app.pagina = Pagina::Contas,
         Some("rede") => {

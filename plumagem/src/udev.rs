@@ -310,6 +310,15 @@ pub fn run_udev() {
         })
         .unwrap();
 
+    // Escala da tela (Configurações → Tela): confere a cada 2 s.
+    event_loop
+        .handle()
+        .insert_source(Timer::from_duration(std::time::Duration::from_secs(2)), |_, _, data| {
+            data.aplicar_escala();
+            TimeoutAction::ToDuration(std::time::Duration::from_secs(2))
+        })
+        .unwrap();
+
     // Bloqueio automático: a cada 15 s confere há quanto tempo ninguém mexe
     // no teclado nem no mouse ("bloquear_apos" em minutos; 0 = nunca).
     event_loop
@@ -1002,7 +1011,11 @@ impl AnvilState<UdevData> {
             let position = (x, 0).into();
 
             output.set_preferred(wl_mode);
-            output.change_current_state(Some(wl_mode), None, None, Some(position));
+            let escala = crate::painel::ler_chave("escala")
+                .and_then(|v| v.trim_end_matches('%').parse::<u32>().ok())
+                .filter(|p| (100..=300).contains(p))
+                .map(|p| smithay::output::Scale::Fractional(p as f64 / 100.0));
+            output.change_current_state(Some(wl_mode), None, escala, Some(position));
             self.space.map_output(&output, position);
 
             output.user_data().insert_if_missing(|| UdevOutputId {
@@ -1428,6 +1441,27 @@ impl AnvilState<UdevData> {
                 self.render_surface(node, crtc, frame_target);
             }
         };
+    }
+
+    /// Aplica a chave "escala" (100, 125, 150, 175, 200 %) em todas as telas.
+    pub fn aplicar_escala(&mut self) {
+        let pct: u32 = crate::painel::ler_chave("escala")
+            .and_then(|v| v.trim_end_matches('%').parse().ok())
+            .filter(|p| (100..=300).contains(p))
+            .unwrap_or(100);
+        let nova = pct as f64 / 100.0;
+        let telas: Vec<Output> = self.space.outputs().cloned().collect();
+        let mut mudou = false;
+        for output in telas {
+            if (output.current_scale().fractional_scale() - nova).abs() > 0.001 {
+                output.change_current_state(None, None, Some(smithay::output::Scale::Fractional(nova)), None);
+                self.backend_data.reset_buffers(&output);
+                mudou = true;
+            }
+        }
+        if mudou {
+            crate::shell::fixup_positions(&mut self.space, self.pointer.current_location());
+        }
     }
 
     fn render_surface(&mut self, node: DrmNode, crtc: crtc::Handle, frame_target: Time<Monotonic>) {
