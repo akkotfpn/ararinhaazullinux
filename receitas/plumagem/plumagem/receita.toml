@@ -122,6 +122,10 @@ if command -v pipewire >/dev/null; then
     (sleep 1.5; ararinha-som /usr/share/sounds/ararinha/sessao-iniciada.wav) >/dev/null 2>&1 &
   fi
 fi
+# Bandeja do sistema (ícones da Steam, Discord...), antes dos apps.
+if [ -x /usr/libexec/ararinha-bandeja ]; then
+  /usr/libexec/ararinha-bandeja 2>>"$XDG_RUNTIME_DIR/bandeja.log" & pids="$pids $!"
+fi
 plumagem "$@" 2>>"$XDG_RUNTIME_DIR/plumagem.log"
 estado=$?
 [ -n "$pids" ] && kill $pids 2>/dev/null

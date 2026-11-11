@@ -154,6 +154,10 @@ install -vDm644 portal/recursos/ararinha.portal /usr/share/xdg-desktop-portal/po
 install -vDm644 portal/recursos/org.freedesktop.impl.portal.desktop.ararinha.service /usr/share/dbus-1/services/org.freedesktop.impl.portal.desktop.ararinha.service
 install -vDm644 portal/recursos/org.freedesktop.Notifications.service /usr/share/dbus-1/services/org.freedesktop.Notifications.service
 install -vDm644 portal/recursos/org.freedesktop.FileManager1.service /usr/share/dbus-1/services/org.freedesktop.FileManager1.service
+# Bandeja do sistema (StatusNotifierWatcher): a sessão inicia; o D-Bus
+# religa se alguém procurar e ela não estiver lá.
+install -vDm755 target/release/ararinha-bandeja /usr/libexec/ararinha-bandeja
+printf '[D-BUS Service]\nName=org.kde.StatusNotifierWatcher\nExec=/usr/libexec/ararinha-bandeja\n' > /usr/share/dbus-1/services/org.kde.StatusNotifierWatcher.service
 # Apps padrão (pastas no Explorador, imagens, textos e músicas nos nossos).
 cat > /usr/share/applications/mimeapps.list << 'FIM'
 [Default Applications]
