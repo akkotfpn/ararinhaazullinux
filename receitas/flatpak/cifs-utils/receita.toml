@@ -1,0 +1,34 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Unidades de rede (SMB/CIFS): BLFS, cifs-utils
+# Só o mount.cifs: sem cifs.upcall, idmap, ACL, PAM e scripts Python (que
+# pedem talloc, Kerberos e Samba).
+
+[pacote]
+nome      = "cifs-utils"
+versao    = "7.8"
+resumo    = "mount.cifs: conectar pastas compartilhadas do Windows/Samba"
+licenca   = "GPL-3.0-or-later"
+categoria = "rede"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://www.samba.org/ftp/linux-cifs/cifs-utils/cifs-utils-7.8.tar.bz2"
+
+[dependencias]
+construcao = ["libcap"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+./configure --prefix=/usr --disable-pam --disable-systemd --disable-cifsupcall --disable-cifscreds --disable-cifsidmap --disable-cifsacl --disable-smbinfo --disable-pythontools --disable-man
+''',
+  '''
+make
+''',
+]
+instalar = [
+  '''
+make install
+''',
+]

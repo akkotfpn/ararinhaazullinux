@@ -75,6 +75,10 @@ if command -v flatpak >/dev/null; then
   export XDG_DATA_DIRS="$HOME/.local/share/flatpak/exports/share:/var/lib/flatpak/exports/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
   flatpak remote-add --user --if-not-exists flathub /usr/share/flatpak/flathub.flatpakrepo >/dev/null 2>&1 &
 fi
+# Unidades de rede marcadas para reconectar ao entrar.
+if [ -s "$HOME/.config/ararinha/unidades" ] && command -v explorador >/dev/null; then
+  explorador --reconectar >>"$XDG_RUNTIME_DIR/unidades.log" 2>&1 &
+fi
 # Som: PipeWire, WirePlumber e o servidor compatível com PulseAudio.
 pids=
 if command -v pipewire >/dev/null; then
