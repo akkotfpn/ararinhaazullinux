@@ -1,0 +1,10 @@
+[package]
+name = "paciencia"
+version = "0.1.0"
+description = "Paciência dos Pássaros, jogo do Ararinha Azul Linux"
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+penas = { path = "../penas" }

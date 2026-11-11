@@ -400,6 +400,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "paciencia"
+version = "0.1.0"
+dependencies = [
+ "penas",
+]
+
+[[package]]
 name = "penas"
 version = "0.1.0"
 dependencies = [

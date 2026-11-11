@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Paciência dos Pássaros
+Name[en]=Bird Solitaire
+Comment=O jogo de cartas Paciência, com pássaros do Brasil nas figuras
+Exec=paciencia
+Icon=paciencia
+StartupWMClass=paciencia
+Categories=Game;CardGame;
