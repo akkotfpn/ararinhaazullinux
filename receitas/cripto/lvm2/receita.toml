@@ -1,0 +1,33 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Criptografia do disco: BLFS, LVM2. Só a libdevmapper e o dmsetup: o
+# cryptsetup precisa deles; o resto do LVM não vai para o Ararinha.
+
+[pacote]
+nome      = "lvm2"
+versao    = "2.03.42"
+resumo    = "Device mapper (libdevmapper e dmsetup)"
+licenca   = "GPL-2.0-only"
+categoria = "cripto"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://sourceware.org/ftp/lvm2/LVM2.2.03.42.tgz"
+
+[dependencias]
+construcao = ["libaio", "systemd"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+PATH+=:/usr/sbin ./configure --prefix=/usr --enable-pkgconfig --enable-udev_sync
+''',
+  '''
+make -j$NUCLEOS device-mapper
+''',
+]
+instalar = [
+  '''
+make install_device-mapper
+''',
+]

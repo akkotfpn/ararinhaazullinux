@@ -1,0 +1,27 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Criptografia do disco: BLFS, libaio (pedida pelo LVM2)
+
+[pacote]
+nome      = "libaio"
+versao    = "0.3.113"
+resumo    = "E/S assíncrona do Linux"
+licenca   = "LGPL-2.1-or-later"
+categoria = "cripto"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://pagure.io/libaio/archive/libaio-0.3.113/libaio-0.3.113.tar.gz"
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+sed -i '/install.*libaio.a/s/^/#/' src/Makefile
+make -j$NUCLEOS
+''',
+]
+instalar = [
+  '''
+make install
+''',
+]

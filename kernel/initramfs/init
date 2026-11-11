@@ -1,0 +1,71 @@
+#!/bin/bash
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Ararinha Azul Linux: init da initramfs embutida no kernel "cripto".
+# Acha a raiz criptografada (partição GPT "ararinha-cripto"), pede a senha,
+# abre com o cryptsetup (LUKS2), monta e passa o controle ao systemd.
+# Sem rede, sem shell de emergência: se algo falhar, espera e reinicia.
+
+export PATH=/usr/bin
+# Sem udev aqui: a libdevmapper cria /dev/mapper/raiz sozinha.
+export DM_DISABLE_UDEV=1
+clear() { printf '\033[2J\033[H'; }
+mount -t proc proc /proc
+mount -t sysfs sysfs /sys
+mount -t devtmpfs devtmpfs /dev
+mkdir -p /run /root
+mount -t tmpfs -o mode=0755,nosuid,nodev tmpfs /run
+loadkeys -q br-abnt2 2>/dev/null
+echo 0 > /proc/sys/kernel/printk 2>/dev/null
+
+fim() {
+  echo
+  echo "  $1"
+  echo "  O computador vai reiniciar em 10 segundos."
+  sleep 10
+  echo b > /proc/sysrq-trigger
+  exit 1
+}
+
+# O disco pode demorar a aparecer (USB, NVMe).
+for _ in $(seq 1 100); do
+  cripto=$(blkid -t PARTLABEL=ararinha-cripto -o device 2>/dev/null | head -n1)
+  raiz=$(blkid -t PARTLABEL=ararinha-raiz -o device 2>/dev/null | head -n1)
+  [ -n "$cripto$raiz" ] && break
+  sleep 0.1
+done
+
+if [ -n "$cripto" ]; then
+  clear
+  tentativas=0
+  while :; do
+    printf '\n\n\n          Ararinha Azul Linux\n\n'
+    printf '          Este disco é criptografado.\n\n'
+    printf '          Senha do disco: '
+    IFS= read -rs senha
+    echo
+    if printf '%s' "$senha" | cryptsetup open --key-file=- --allow-discards "$cripto" raiz 2>/dev/null; then
+      unset senha
+      break
+    fi
+    unset senha
+    tentativas=$((tentativas + 1))
+    clear
+    printf '\n          Senha incorreta.\n'
+    # Atraso que cresce a cada erro (o Argon2id já custa ~1 s por tentativa).
+    sleep $(( tentativas < 10 ? tentativas : 10 ))
+  done
+  clear
+  dispositivo=/dev/mapper/raiz
+elif [ -n "$raiz" ]; then
+  dispositivo=$raiz
+else
+  fim "Não achei o disco do sistema."
+fi
+
+mount -o rw "$dispositivo" /root || fim "Não consegui montar o disco do sistema."
+for alvo in /usr/lib/systemd/systemd /sbin/init; do
+  if [ -x "/root$alvo" ] || [ -L "/root$alvo" ]; then
+    exec switch_root /root "$alvo"
+  fi
+done
+fim "O disco não tem um sistema para iniciar."

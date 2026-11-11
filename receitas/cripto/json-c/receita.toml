@@ -1,0 +1,32 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Criptografia do disco: BLFS, json-c (cabeçalho LUKS2 é JSON)
+
+[pacote]
+nome      = "json-c"
+versao    = "0.19"
+resumo    = "JSON em C"
+licenca   = "MIT"
+categoria = "cripto"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://s3.amazonaws.com/json-c_releases/releases/json-c-0.19.tar.gz"
+
+[dependencias]
+construcao = ["cmake"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+mkdir -p build && cd build && cmake -D CMAKE_INSTALL_PREFIX=/usr -D CMAKE_BUILD_TYPE=Release -D BUILD_STATIC_LIBS=OFF ..
+''',
+  '''
+cd build && make -j$NUCLEOS
+''',
+]
+instalar = [
+  '''
+cd build && make install
+''',
+]

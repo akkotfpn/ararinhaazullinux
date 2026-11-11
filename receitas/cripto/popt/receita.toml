@@ -1,0 +1,29 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Criptografia do disco: BLFS, popt (opções de linha de comando do cryptsetup)
+
+[pacote]
+nome      = "popt"
+versao    = "1.19"
+resumo    = "Leitura de opções de linha de comando"
+licenca   = "MIT"
+categoria = "cripto"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://ftp.osuosl.org/pub/rpm/popt/releases/popt-1.x/popt-1.19.tar.gz"
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+./configure --prefix=/usr --disable-static
+''',
+  '''
+make -j$NUCLEOS
+''',
+]
+instalar = [
+  '''
+make install
+''',
+]

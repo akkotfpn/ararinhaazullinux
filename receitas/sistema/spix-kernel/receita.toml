@@ -15,11 +15,11 @@ tipo      = "toolchain"
 url = "https://cdn.kernel.org/pub/linux/kernel/v7.x/linux-7.1.8.tar.xz"
 
 [dependencias]
-construcao = ["e2fsprogs"]
+construcao = ["e2fsprogs", "cryptsetup", "kbd", "util-linux", "bash"]
 
 [construcao]
 ambiente = "isolado"
-copiar = ["kernel/config"]
+copiar = ["kernel/config", "kernel/initramfs"]
 passos = [
   '''
 make mrproper
@@ -48,6 +48,38 @@ case $(uname -m) in
   aarch64) cp -v arch/arm64/boot/Image  /boot/vmlinuz-spix ;;
 esac
 cp -v .config /boot/config-spix
+''',
+  # Segunda variante, para discos criptografados: o mesmo kernel com uma
+  # initramfs embutida (cryptsetup + init próprio). Só muda o que depende de
+  # CONFIG_INITRAMFS_SOURCE, então o segundo make é rápido. O instalador põe
+  # este .efi na ESP quando o usuário escolhe criptografar.
+  '''
+I=$PWD/../initramfs-raiz
+rm -rf $I && mkdir -p $I/usr/bin $I/usr/lib $I/usr/share/keymaps $I/dev $I/proc $I/sys $I/run $I/root
+ln -s usr/bin $I/bin; ln -s usr/bin $I/sbin; ln -s usr/lib $I/lib; ln -s usr/lib $I/lib64
+install -m755 ../initramfs/init $I/init
+for b in bash cryptsetup blkid mount umount switch_root loadkeys sleep seq head; do
+  f=$(command -v $b || ls /usr/sbin/$b /sbin/$b 2>/dev/null | head -n1)
+  [ -n "$f" ] || { echo "initramfs: faltou $b"; exit 1; }
+  cp -L "$f" $I/usr/bin/
+  ldd "$f" 2>/dev/null | grep -o '/[^ ]*' | while read -r l; do cp -Ln "$l" $I/usr/lib/ 2>/dev/null || true; done
+done
+strip --strip-unneeded $I/usr/bin/* $I/usr/lib/*.so* 2>/dev/null || true
+# mapa br-abnt2 e os "include" de que ele precisa, nos mesmos caminhos
+k=$(find /usr/share/keymaps -name 'br-abnt2.map*' | head -n1)
+[ -n "$k" ] || { echo "initramfs: faltou o mapa br-abnt2"; exit 1; }
+mkdir -p $I$(dirname $k) && cp $k $I$k
+find /usr/share/keymaps -type d -name include | while read -r d; do mkdir -p $I$d && cp -a $d/. $I$d/; done
+scripts/config --set-str INITRAMFS_SOURCE "$I" --set-val INITRAMFS_ROOT_UID 0 --set-val INITRAMFS_ROOT_GID 0 \
+               --enable INITRAMFS_COMPRESSION_ZSTD
+make olddefconfig
+make
+mkdir -p /usr/lib/ararinha
+case $(uname -m) in
+  x86_64)  cp -v arch/x86/boot/bzImage /usr/lib/ararinha/vmlinuz-spix-cripto ;;
+  aarch64) cp -v arch/arm64/boot/Image  /usr/lib/ararinha/vmlinuz-spix-cripto ;;
+esac
+du -h /usr/lib/ararinha/vmlinuz-spix-cripto
 ''',
   '''
 for op in CONFIG_EFI_STUB CONFIG_EXT4_FS CONFIG_SCSI_VIRTIO CONFIG_VIRTIO_BLK CONFIG_DEVTMPFS \

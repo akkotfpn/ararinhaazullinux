@@ -1,0 +1,35 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Criptografia do disco: BLFS, cryptsetup (LUKS2 com Argon2id).
+# Usa a criptografia do próprio kernel (AF_ALG) em vez do OpenSSL, para a
+# initramfs ficar pequena.
+
+[pacote]
+nome      = "cryptsetup"
+versao    = "2.8.8"
+resumo    = "Criptografia de disco (LUKS2)"
+licenca   = "GPL-2.0-or-later"
+categoria = "cripto"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://www.kernel.org/pub/linux/utils/cryptsetup/v2.8/cryptsetup-2.8.8.tar.xz"
+
+[dependencias]
+construcao = ["popt", "json-c", "lvm2", "util-linux"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+./configure --prefix=/usr --disable-ssh-token --disable-asciidoc --disable-static \
+            --with-crypto_backend=kernel --enable-internal-argon2 --disable-nls
+''',
+  '''
+make -j$NUCLEOS
+''',
+]
+instalar = [
+  '''
+make install
+''',
+]
