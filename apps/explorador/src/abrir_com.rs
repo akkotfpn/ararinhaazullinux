@@ -12,7 +12,7 @@ use std::{
 
 #[derive(Clone, Debug)]
 pub struct AppDesktop {
-    /// Nome do arquivo (org.videolan.VLC.desktop) ou do nosso app ("imagens").
+    /// Nome do arquivo .desktop (org.videolan.VLC.desktop, imagens.desktop).
     pub id: String,
     pub nome: String,
     exec: String,
@@ -86,7 +86,12 @@ pub fn tipo_mime(nome: &str) -> String {
 
 /// Nossos apps (sem .desktop com MimeType ainda).
 fn nossos() -> Vec<AppDesktop> {
-    let a = |id: &str, nome: &str, tipos: &[&str]| AppDesktop { id: id.into(), nome: nome.into(), exec: format!("{id} %f"), tipos: tipos.iter().map(|s| s.to_string()).collect() };
+    let a = |id: &str, nome: &str, tipos: &[&str]| AppDesktop {
+        id: format!("{id}.desktop"),
+        nome: nome.into(),
+        exec: format!("{id} %f"),
+        tipos: tipos.iter().map(|s| s.to_string()).collect(),
+    };
     vec![
         a("imagens", "Imagens", &["image/png", "image/jpeg", "image/gif", "image/webp", "image/bmp", "image/vnd.microsoft.icon"]),
         a("musicas", "Músicas", &["audio/mpeg", "audio/flac", "audio/ogg", "audio/x-wav", "audio/mp4", "audio/aac", "video/mp4"]),

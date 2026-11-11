@@ -29,7 +29,7 @@ impl PaginaFirewall {
     fn pedir(&mut self, pedido: String) {
         let (tx, rx) = channel();
         std::thread::spawn(move || {
-            let _ = tx.send(penas::sistema::pedir(&pedido));
+            let _ = tx.send(penas::sistema::pedir_admin(&pedido));
         });
         self.rx = Some(rx);
     }

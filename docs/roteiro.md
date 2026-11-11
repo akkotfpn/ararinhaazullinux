@@ -36,8 +36,9 @@ Imagem: ~630 MB (qcow2). Boot até a tela de entrada: ~3,4 s.
 
 ### Base que os apps esperam
 - [em teste] Chaveiro de senhas (Secret Service): ararinha-chaveiro, arquivo 0600 na pasta da conta (ainda sem cifra própria; o disco criptografado protege)
-- [a fazer] Pedido de administrador no estilo UAC (ararinha-sistema)
-- [a fazer] Apps padrão e "Abrir com…"
+- [em teste] Pedido de administrador no estilo UAC (ararinha-admin + ararinha-sistema)
+- [em teste] "Abrir com…" e app padrão por tipo de arquivo (mimeapps.list)
+- [a fazer] Página Apps padrão nas Configurações
 - [a fazer] Impressoras (CUPS) e scanner
 - [a fazer] Bluetooth (BlueZ)
 
@@ -46,7 +47,7 @@ Imagem: ~630 MB (qcow2). Boot até a tela de entrada: ~3,4 s.
 - [a fazer] Tela: escolher resolução, posição dos monitores, luz noturna
 - [em teste] Som: saída/entrada padrão, volume de cada uma e de cada app, mudo, testar
 - [em teste] Data e hora: fuso, hora pela internet (NTP), relógio de 24 h
-- [a fazer] Idioma e teclado
+- [em teste] Idioma e teclado: teclado por conta (na hora), idioma do sistema (próximo login)
 - [em teste] Outros usuários: criar, administrador/padrão, apagar (pelo ararinha-sistema + systemd-run)
 - [a fazer] Conta de convidado
 - [a fazer] Atualizações (sistema e Flatpak) com histórico e volta
@@ -57,7 +58,8 @@ Imagem: ~630 MB (qcow2). Boot até a tela de entrada: ~3,4 s.
 ### Área de trabalho e produtividade
 - [em teste] Alt+Tab com alternador na tela (ícones, ordem de uso, inclui minimizadas)
 - [a fazer] Miniaturas no Alt+Tab, Visão de Tarefas, várias áreas de trabalho
-- [a fazer] Layouts de encaixe
+- [em teste] Encaixe em metades e quartos (Win+setas, arrastar para bordas e cantos)
+- [a fazer] Menu de layouts ao passar o mouse no maximizar
 - [em teste] Central de notificações (clique no relógio): histórico, Não perturbe, ações rápidas
 - [em teste] Captura com recorte (Win+Shift+S ou Shift+Print)
 - [a fazer] Gravação de tela

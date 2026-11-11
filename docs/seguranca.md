@@ -141,6 +141,13 @@ some do log), do fuso e da hora pela internet, e de abrir e ejetar
 pendrives (`/run/media/<usuário>`, `nosuid,nodev`, arquivos FAT/exFAT/NTFS
 só do dono; o disco do sistema nunca aparece como removível).
 
+Conta padrão pedindo algo de administrador: abre a janela "Permitir esta
+alteração?" (`ararinha-admin`, como o UAC), que mostra a ação e os
+administradores e pede a senha de um deles. Quem confere é o serviço
+(`/etc/shadow`, por isso `CAP_DAC_READ_SEARCH`), e cada senha errada
+atrasa a resposta (2 s, dobrando até 30 s). O journal registra
+`[como <login>]` junto do pedido, nunca a senha.
+
 O que precisa escrever fora de `/etc/ararinha` (useradd, timedatectl,
 mount, blkid) o serviço não faz: ele confere o pedido e entrega o comando
 exato ao systemd numa unidade passageira (`systemd-run --wait --pipe`,

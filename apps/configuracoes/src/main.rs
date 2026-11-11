@@ -468,7 +468,7 @@ impl Configuracoes {
             }
         }
         if let Some(id) = escolhido {
-            match penas::sistema::pedir(&format!("energia {id}")) {
+            match penas::sistema::pedir_admin(&format!("energia {id}")) {
                 Ok(msg) => {
                     self.energia = id.to_string();
                     self.aviso = Some(msg);

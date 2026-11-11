@@ -58,7 +58,7 @@ impl PaginaContas {
     fn pedir(&mut self, p: String) {
         let (tx, rx) = channel();
         std::thread::spawn(move || {
-            let _ = tx.send(penas::sistema::pedir(&p));
+            let _ = tx.send(penas::sistema::pedir_admin(&p));
         });
         self.rx = Some(rx);
     }

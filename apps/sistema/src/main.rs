@@ -15,6 +15,7 @@ mod contas;
 mod firewall;
 mod hardware;
 mod usb;
+mod senha;
 
 use std::{
     io::{BufRead, BufReader, Read, Write},
@@ -80,7 +81,7 @@ fn nome_do_usuario(uid: u32) -> Option<String> {
     })
 }
 
-fn no_grupo(usuario: &str, grupo: &str) -> bool {
+pub(crate) fn no_grupo(usuario: &str, grupo: &str) -> bool {
     let grupos = std::fs::read_to_string("/etc/group").unwrap_or_default();
     grupos.lines().any(|l| {
         let c: Vec<&str> = l.split(':').collect();
@@ -229,13 +230,34 @@ fn servir(mut s: UnixStream) {
         return;
     }
     let pedido: String = linha.trim().chars().filter(|c| !c.is_control()).collect();
+    // Pedido de administrador (UAC): "como <login> <senha_hex> <pedido>".
+    let (quem, pedido, como) = match pedido.strip_prefix("como ").map(|r| r.splitn(3, ' ').collect::<Vec<_>>()) {
+        Some(p) if p.len() == 3 => {
+            let senha = contas::de_hex(p[1]).unwrap_or_default();
+            match senha::admin_valido(p[0], &senha) {
+                Ok(()) => (Quem { admin: true, ..quem }, p[2].to_string(), Some(Ok(p[0].to_string()))),
+                Err(e) => (quem, p[2].to_string(), Some(Err((p[0].to_string(), e)))),
+            }
+        }
+        _ => (quem, pedido, None),
+    };
     // No journal, a senha da conta nova não aparece.
-    let registro = if pedido.starts_with("contas criar ") {
+    let mut registro = if pedido.starts_with("contas criar ") {
         pedido.split_whitespace().take(4).collect::<Vec<_>>().join(" ") + " …"
     } else {
         pedido.clone()
     };
-    let resposta = atender(&quem, &pedido);
+    let resposta = match &como {
+        Some(Err((login, e))) => {
+            registro = format!("[como {login}] {registro}");
+            Err(e.clone())
+        }
+        Some(Ok(login)) => {
+            registro = format!("[como {login}] {registro}");
+            atender(&quem, &pedido)
+        }
+        None => atender(&quem, &pedido),
+    };
     // Registro no journal (a saída de erro do serviço vai para ele).
     eprintln!(
         "{} (uid {}, pid {}) pediu \"{}\": {}",

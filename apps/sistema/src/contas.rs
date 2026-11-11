@@ -44,7 +44,7 @@ pub(crate) fn rodar_fora_saida(args: &[&str]) -> String {
         .unwrap_or_default()
 }
 
-fn de_hex(s: &str) -> Option<String> {
+pub(crate) fn de_hex(s: &str) -> Option<String> {
     if s.len() % 2 != 0 {
         return None;
     }
