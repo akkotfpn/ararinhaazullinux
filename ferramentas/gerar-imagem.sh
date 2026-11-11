@@ -41,9 +41,10 @@ shopt -s nullglob
   while IFS= read -r padrao; do
     [[ -z "$padrao" || "$padrao" == \#* ]] && continue
     for p in $padrao; do
-      [[ -e "$p" || -L "$p" ]] && printf '%s\n' "$p"
+      if [[ -e "$p" || -L "$p" ]]; then printf '%s\n' "$p"; fi
     done
-  done < "$REPO/imagem/pacote-dev.txt" ) | sort -u > "$LISTA"
+  done < "$REPO/imagem/pacote-dev.txt"
+  true ) | sort -u > "$LISTA"
 shopt -u nullglob
 if [[ -s "$LISTA" ]]; then
   if command -v zstd >/dev/null; then
@@ -75,7 +76,9 @@ if command -v strip >/dev/null; then
     cab="$(head -c 4 "$f" 2>/dev/null | od -An -c | tr -d ' ')"
     [[ "$cab" == '177ELF' ]] || continue
     case "$f" in
-      *.ko) modo=--strip-debug ;;
+      # Módulos do kernel não: a assinatura fica no fim do arquivo e o
+      # strip a apagaria (com Secure Boot, o módulo não carregaria).
+      *.ko) continue ;;
       *.so|*.so.*) modo=--strip-unneeded ;;
       *) modo=--strip-all ;;
     esac
