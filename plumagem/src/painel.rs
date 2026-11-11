@@ -457,6 +457,9 @@ pub struct Painel {
     pub historico: Vec<(String, String, String, Option<String>)>,
     pub nao_perturbe: bool,
     central_buf: Option<(String, MemoryRenderBuffer)>,
+    /// Alt+Tab: janelas (título e índice do app) e a escolhida.
+    pub alternador: Option<(Vec<(String, Option<usize>)>, usize)>,
+    alternador_buf: Option<(String, MemoryRenderBuffer)>,
     /// Ícones dos apps na bandeja e quantas vezes a lista mudou.
     pub bandeja: Vec<ItemBandeja>,
     bandeja_versao: u32,
@@ -520,6 +523,8 @@ impl Default for Painel {
             historico: Vec::new(),
             nao_perturbe: ler_chave("nao_perturbe").as_deref() == Some("sim"),
             central_buf: None,
+            alternador: None,
+            alternador_buf: None,
             bandeja: Vec::new(),
             bandeja_versao: 0,
             bandeja_clique: (0, 0).into(),
@@ -1071,6 +1076,32 @@ impl Painel {
             let cor = if hover == Some(Alvo::Aviso(i)) { tema::TEXTO() } else { tema::TEXTO_SECUNDARIO().com_alfa(140) };
             t.linha(l - 24.0, y + 14.0, l - 16.0, y + 22.0, 1.4, cor);
             t.linha(l - 24.0, y + 22.0, l - 16.0, y + 14.0, 1.4, cor);
+        }
+        t
+    }
+
+    /// Alt+Tab: cartões com ícone e título, a escolhida em destaque.
+    fn desenhar_alternador(&self, lista: &[(String, Option<usize>)], sel: usize, origem: Point<i32, Logical>) -> Tela {
+        let n = lista.len().min(7);
+        let (cw, ch) = (132.0, 120.0);
+        let l = (n as f32 * cw + 24.0) as i32;
+        let a = (ch + 24.0) as i32;
+        let mut t = Tela::nova(l, a);
+        t.vidro(0.0, 0.0, l as f32, a as f32, 14.0, (origem.x, origem.y), tema::FUNDO().com_alfa(200));
+        t.contorno(0.5, 0.5, l as f32 - 1.0, a as f32 - 1.0, 1.0, tema::BORDA().com_alfa(160));
+        // Janela da escolhida sempre visível (rola se tiver mais de 7).
+        let ini = sel.saturating_sub(6);
+        for (k, (titulo, app)) in lista.iter().enumerate().skip(ini).take(7) {
+            let x = 12.0 + (k - ini) as f32 * cw;
+            if k == sel {
+                t.retangulo(x + 2.0, 12.0, cw - 4.0, ch, 10.0, tema::DESTAQUE_SUAVE());
+                t.contorno(x + 2.0, 12.0, cw - 4.0, ch, 2.0, tema::DESTAQUE());
+            }
+            let app_ref = app.and_then(|i| self.apps.as_ref().and_then(|v| v.get(i)));
+            self.desenhar_icone(&mut t, app_ref, titulo, x + cw / 2.0 - 24.0, 26.0, 48.0);
+            let nome = desenho::encurtar(12.5, titulo, cw - 16.0);
+            let ln = desenho::medir(12.5, &nome);
+            t.texto(x + cw / 2.0 - ln / 2.0, 104.0, 12.5, tema::TEXTO(), &nome);
         }
         t
     }
@@ -1645,6 +1676,30 @@ impl Painel {
             }
         }
 
+        if let Some((lista, sel)) = self.alternador.clone() {
+            let n = lista.len().min(7) as i32;
+            let (l, a) = (n * 132 + 24, 144);
+            let o: Point<i32, Logical> = ((tela.w - l) / 2, (tela.h - a) / 2).into();
+            let chave = format!("{lista:?}|{sel}|{o:?}|{}", desenho::tema::escuro());
+            if self.alternador_buf.as_ref().map(|(c, _)| c != &chave).unwrap_or(true) {
+                let t = self.desenhar_alternador(&lista, sel, o);
+                self.alternador_buf = Some((chave, t.em_buffer()));
+            }
+            if let Some((_, buf)) = &self.alternador_buf {
+                if let Ok(e) = MemoryRenderBufferRenderElement::from_buffer(
+                    renderer,
+                    o.to_f64().to_physical(escala),
+                    buf,
+                    None,
+                    None,
+                    None,
+                    Kind::Unspecified,
+                ) {
+                    elementos.insert(0, e);
+                }
+            }
+        }
+
         if self.central_aberta {
             let o = Self::central_origem(tela);
             let chave = format!(
@@ -1800,6 +1855,10 @@ impl Painel {
     }
 
     /// Índice do aplicativo (em `apps`) dono da janela, pelo app_id.
+    pub fn app_de(&self, w: &WindowElement) -> Option<usize> {
+        self.app_da_janela(w)
+    }
+
     fn app_da_janela(&self, w: &WindowElement) -> Option<usize> {
         let id = w.0.toplevel().and_then(|t| {
             compositor::with_states(t.wl_surface(), |s| {

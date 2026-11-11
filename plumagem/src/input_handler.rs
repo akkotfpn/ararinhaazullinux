@@ -71,7 +71,8 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             KeyAction::None => (),
 
             KeyAction::Menu => self.alternar_menu(),
-            KeyAction::ProximaJanela => self.alt_tab(),
+            KeyAction::ProximaJanela => self.alt_tab(false),
+            KeyAction::JanelaAnterior => self.alt_tab(true),
             KeyAction::FecharJanela => self.fechar_janela_ativa(),
             KeyAction::MostrarAreaDeTrabalho => self.mostrar_area_de_trabalho(),
             KeyAction::Captura => crate::captura::pedir(),
@@ -251,6 +252,34 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             })
             .map(|inhibitor| inhibitor.is_active())
             .unwrap_or(false);
+
+        // Alternador aberto: Esc cancela; soltar o Alt troca de janela.
+        if self.painel.alternador.is_some() {
+            let mut esc = false;
+            let mut soltou_alt = false;
+            let mut tab = None;
+            keyboard.input::<(), _>(self, keycode, state, serial, time, |_, mods, h| {
+                let k = h.modified_sym();
+                if state == KeyState::Pressed {
+                    if k == Keysym::Escape {
+                        esc = true;
+                    } else if k == Keysym::Tab || k == Keysym::ISO_Left_Tab {
+                        tab = Some(mods.shift || k == Keysym::ISO_Left_Tab);
+                    }
+                } else if !mods.alt {
+                    soltou_alt = true;
+                }
+                FilterResult::Intercept(())
+            });
+            if esc {
+                self.alt_tab_soltar(true);
+            } else if let Some(voltar) = tab {
+                self.alt_tab(voltar);
+            } else if soltou_alt {
+                self.alt_tab_soltar(false);
+            }
+            return KeyAction::None;
+        }
 
         let action = keyboard
             .input(self, keycode, state, serial, time, |_, modifiers, handle| {
@@ -711,6 +740,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                     | KeyAction::MostrarAreaDeTrabalho
                     | KeyAction::Captura
                     | KeyAction::Recorte
+                    | KeyAction::JanelaAnterior
                     | KeyAction::Encaixar(_)
                     | KeyAction::Bloquear
                     | KeyAction::TogglePreview
@@ -937,6 +967,7 @@ impl AnvilState<UdevData> {
                     | KeyAction::MostrarAreaDeTrabalho
                     | KeyAction::Captura
                     | KeyAction::Recorte
+                    | KeyAction::JanelaAnterior
                     | KeyAction::Encaixar(_)
                     | KeyAction::Bloquear
                     | KeyAction::TogglePreview
@@ -1521,6 +1552,8 @@ enum KeyAction {
     ScaleUp,
     ScaleDown,
     TogglePreview,
+    /// Alt+Shift+Tab: volta no alternador.
+    JanelaAnterior,
     /// Win+Shift+S: captura de uma área escolhida com o mouse.
     Recorte,
     RotateOutput,
@@ -1534,7 +1567,9 @@ fn process_keyboard_shortcut(modifiers: ModifiersState, keysym: Keysym) -> Optio
     if modifiers.ctrl && modifiers.alt && keysym == Keysym::BackSpace {
         // Ctrl+Alt+Backspace: encerra a sessão
         Some(KeyAction::Quit)
-    } else if modifiers.alt && !modifiers.ctrl && (keysym == Keysym::Tab || keysym == Keysym::ISO_Left_Tab) {
+    } else if modifiers.alt && !modifiers.ctrl && (keysym == Keysym::ISO_Left_Tab || modifiers.shift && keysym == Keysym::Tab) {
+        Some(KeyAction::JanelaAnterior)
+    } else if modifiers.alt && !modifiers.ctrl && keysym == Keysym::Tab {
         Some(KeyAction::ProximaJanela)
     } else if modifiers.logo && (keysym == Keysym::l || keysym == Keysym::L) {
         Some(KeyAction::Bloquear)

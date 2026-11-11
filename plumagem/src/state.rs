@@ -185,6 +185,8 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     pub bloqueio: Option<crate::bloqueio::Bloqueio>,
     /// Hora do último evento de teclado ou mouse (bloqueio automático).
     pub ultima_entrada: std::time::Instant,
+    /// Janelas do alternador Alt+Tab, na ordem mostrada.
+    pub alternador_janelas: Vec<crate::shell::WindowElement>,
 }
 
 #[derive(Debug)]
@@ -761,6 +763,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             ninho: std::env::var_os("PLUMAGEM_NINHO").map(|_| crate::ninho::Ninho::novo()),
             bloqueio: None,
             ultima_entrada: std::time::Instant::now(),
+            alternador_janelas: Vec::new(),
         }
     }
 

@@ -595,13 +595,44 @@ impl<B: Backend> AnvilState<B> {
 
     /// Alt+Tab: traz a janela que estava logo atrás (ou restaura uma
     /// minimizada, se só houver ela).
-    pub fn alt_tab(&mut self) {
-        let janelas: Vec<WindowElement> = self.space.elements().cloned().collect();
-        if janelas.len() >= 2 {
-            let w = janelas[janelas.len() - 2].clone();
-            self.focar_janela(&w);
-        } else if let Some((w, _)) = self.painel.minimizadas.last().cloned() {
-            self.desminimizar(&w);
+    /// Alt+Tab: abre o alternador (ou anda para a próxima janela nele).
+    /// A troca acontece quando o Alt é solto (`alt_tab_soltar`).
+    pub fn alt_tab(&mut self, voltar: bool) {
+        if self.alternador_janelas.is_empty() || self.painel.alternador.is_none() {
+            // Da mais recente para a mais antiga; minimizadas no fim.
+            let mut v: Vec<WindowElement> = self.space.elements().rev().cloned().collect();
+            v.extend(self.painel.minimizadas.iter().rev().map(|(w, _)| w.clone()));
+            if v.is_empty() {
+                return;
+            }
+            let lista: Vec<(String, Option<usize>)> = v
+                .iter()
+                .map(|w| (crate::painel::titulo(w), self.painel.app_de(w)))
+                .collect();
+            let sel = if v.len() > 1 { 1 } else { 0 };
+            self.alternador_janelas = v;
+            self.painel.alternador = Some((lista, sel));
+            return;
+        }
+        if let Some((lista, sel)) = self.painel.alternador.as_mut() {
+            let n = lista.len();
+            *sel = if voltar { (*sel + n - 1) % n } else { (*sel + 1) % n };
+        }
+    }
+
+    /// Alt solto: vai para a janela escolhida.
+    pub fn alt_tab_soltar(&mut self, cancelar: bool) {
+        let Some((_, sel)) = self.painel.alternador.take() else { return };
+        let janelas = std::mem::take(&mut self.alternador_janelas);
+        if cancelar {
+            return;
+        }
+        if let Some(w) = janelas.get(sel).cloned() {
+            if self.painel.minimizadas.iter().any(|(m, _)| m == &w) {
+                self.desminimizar(&w);
+            } else {
+                self.focar_janela(&w);
+            }
         }
     }
 
