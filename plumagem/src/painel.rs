@@ -459,6 +459,9 @@ pub struct Painel {
     pub historico: Vec<(String, String, String, Option<String>)>,
     pub nao_perturbe: bool,
     central_buf: Option<(String, MemoryRenderBuffer)>,
+    /// Indicador na tela (teclas de volume/brilho): rótulo, nível 0..1 e até quando.
+    pub indicador: Option<(&'static str, f32, std::time::Instant)>,
+    indicador_buf: Option<(String, MemoryRenderBuffer)>,
     /// Alt+Tab: janelas (título e índice do app) e a escolhida.
     pub alternador: Option<(Vec<(String, Option<usize>)>, usize)>,
     alternador_buf: Option<(String, MemoryRenderBuffer)>,
@@ -527,6 +530,8 @@ impl Default for Painel {
             nao_perturbe: ler_chave("nao_perturbe").as_deref() == Some("sim"),
             central_buf: None,
             alternador: None,
+            indicador: None,
+            indicador_buf: None,
             alternador_buf: None,
             bandeja: Vec::new(),
             bandeja_versao: 0,
@@ -1417,6 +1422,53 @@ impl Painel {
         self.ler_som(true);
     }
 
+    /// Tecla de volume: +/− 5% (ou mudo) e o indicador na tela.
+    pub fn tecla_volume(&mut self, delta: f32, mudo: bool) {
+        self.ler_som(true);
+        if mudo {
+            self.alternar_mudo();
+        } else {
+            let v = (self.som.volume.unwrap_or(0.5) + delta).clamp(0.0, 1.0);
+            self.definir_volume(v);
+        }
+        let v = if self.som.mudo { 0.0 } else { self.som.volume.unwrap_or(0.0) };
+        self.indicador = Some(("Volume", v.min(1.0), std::time::Instant::now() + std::time::Duration::from_millis(1500)));
+    }
+
+    /// Tecla de brilho (notebook): o ararinha-sistema muda o /sys.
+    pub fn tecla_brilho(&mut self, delta: f32) {
+        let base = std::fs::read_dir("/sys/class/backlight").ok().and_then(|mut r| r.next()).and_then(|e| e.ok()).map(|e| e.path());
+        let Some(base) = base else { return };
+        let ler = |n: &str| std::fs::read_to_string(base.join(n)).ok().and_then(|s| s.trim().parse::<f32>().ok());
+        let (Some(atual), Some(max)) = (ler("brightness"), ler("max_brightness")) else { return };
+        let novo = ((atual / max) + delta).clamp(0.05, 1.0);
+        let pedido = format!("brilho {}", (novo * 100.0).round() as u32);
+        std::thread::spawn(move || {
+            use std::io::{Read, Write};
+            if let Ok(mut c) = std::os::unix::net::UnixStream::connect("/run/ararinha/sistema.sock") {
+                let _ = c.write_all(format!("{pedido}\n").as_bytes());
+                let _ = c.shutdown(std::net::Shutdown::Write);
+                let mut r = String::new();
+                let _ = c.read_to_string(&mut r);
+            }
+        });
+        self.indicador = Some(("Brilho", novo, std::time::Instant::now() + std::time::Duration::from_millis(1500)));
+    }
+
+    fn desenhar_indicador(&self, rotulo: &str, nivel: f32, origem: Point<i32, Logical>) -> Tela {
+        let (l, a) = (260, 64);
+        let mut t = Tela::nova(l, a);
+        t.vidro(0.0, 0.0, l as f32, a as f32, 14.0, (origem.x, origem.y), tema::FUNDO().com_alfa(205));
+        t.contorno(0.5, 0.5, l as f32 - 1.0, a as f32 - 1.0, 1.0, tema::BORDA().com_alfa(160));
+        t.texto(18.0, 26.0, 13.0, tema::TEXTO(), rotulo);
+        let pct = format!("{:.0}%", nivel * 100.0);
+        let lp = desenho::medir(13.0, &pct);
+        t.texto(l as f32 - 18.0 - lp, 26.0, 13.0, tema::TEXTO_SECUNDARIO(), &pct);
+        t.retangulo(18.0, 40.0, l as f32 - 36.0, 6.0, 3.0, tema::BORDA());
+        t.retangulo(18.0, 40.0, (l as f32 - 36.0) * nivel.clamp(0.0, 1.0), 6.0, 3.0, tema::DESTAQUE());
+        t
+    }
+
     pub fn alternar_mudo(&mut self) {
         let _ = std::process::Command::new("wpctl")
             .args(["set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"])
@@ -1762,6 +1814,32 @@ impl Painel {
                     Kind::Unspecified,
                 ) {
                     elementos.push(e);
+                }
+            }
+        }
+
+        if let Some((rot, nivel, ate)) = self.indicador {
+            if std::time::Instant::now() > ate {
+                self.indicador = None;
+            } else {
+                let o: Point<i32, Logical> = ((tela.w - 260) / 2, tela.h - altura() - 100).into();
+                let chave = format!("{rot}|{nivel}|{o:?}|{}", desenho::tema::escuro());
+                if self.indicador_buf.as_ref().map(|(c, _)| c != &chave).unwrap_or(true) {
+                    let t = self.desenhar_indicador(rot, nivel, o);
+                    self.indicador_buf = Some((chave, t.em_buffer()));
+                }
+                if let Some((_, buf)) = &self.indicador_buf {
+                    if let Ok(e) = MemoryRenderBufferRenderElement::from_buffer(
+                        renderer,
+                        o.to_f64().to_physical(escala),
+                        buf,
+                        None,
+                        None,
+                        None,
+                        Kind::Unspecified,
+                    ) {
+                        elementos.insert(0, e);
+                    }
                 }
             }
         }

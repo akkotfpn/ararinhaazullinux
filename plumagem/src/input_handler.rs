@@ -73,6 +73,13 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             KeyAction::Menu => self.alternar_menu(),
             KeyAction::ProximaJanela => self.alt_tab(false),
             KeyAction::JanelaAnterior => self.alt_tab(true),
+            KeyAction::Midia(k) => match k {
+                1 => self.painel.tecla_volume(0.05, false),
+                2 => self.painel.tecla_volume(-0.05, false),
+                3 => self.painel.tecla_volume(0.0, true),
+                4 => self.painel.tecla_brilho(0.1),
+                _ => self.painel.tecla_brilho(-0.1),
+            },
             KeyAction::FecharJanela => self.fechar_janela_ativa(),
             KeyAction::MostrarAreaDeTrabalho => self.mostrar_area_de_trabalho(),
             KeyAction::Captura => crate::captura::pedir(),
@@ -741,6 +748,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                     | KeyAction::Captura
                     | KeyAction::Recorte
                     | KeyAction::JanelaAnterior
+                    | KeyAction::Midia(_)
                     | KeyAction::Encaixar(_)
                     | KeyAction::Bloquear
                     | KeyAction::TogglePreview
@@ -968,6 +976,7 @@ impl AnvilState<UdevData> {
                     | KeyAction::Captura
                     | KeyAction::Recorte
                     | KeyAction::JanelaAnterior
+                    | KeyAction::Midia(_)
                     | KeyAction::Encaixar(_)
                     | KeyAction::Bloquear
                     | KeyAction::TogglePreview
@@ -1554,6 +1563,8 @@ enum KeyAction {
     TogglePreview,
     /// Alt+Shift+Tab: volta no alternador.
     JanelaAnterior,
+    /// Teclas de mídia: 1 volume+, 2 volume−, 3 mudo, 4 brilho+, 5 brilho−.
+    Midia(u8),
     /// Win+Shift+S: captura de uma área escolhida com o mouse.
     Recorte,
     RotateOutput,
@@ -1597,6 +1608,16 @@ fn process_keyboard_shortcut(modifiers: ModifiersState, keysym: Keysym) -> Optio
     } else if (modifiers.logo || modifiers.ctrl && modifiers.alt) && (keysym == Keysym::e || keysym == Keysym::E) {
         // Win+E (ou Ctrl+Alt+E): Explorador de Arquivos
         Some(KeyAction::Run("explorador".into()))
+    } else if keysym.raw() == xkb::KEY_XF86AudioRaiseVolume {
+        Some(KeyAction::Midia(1))
+    } else if keysym.raw() == xkb::KEY_XF86AudioLowerVolume {
+        Some(KeyAction::Midia(2))
+    } else if keysym.raw() == xkb::KEY_XF86AudioMute {
+        Some(KeyAction::Midia(3))
+    } else if keysym.raw() == xkb::KEY_XF86MonBrightnessUp {
+        Some(KeyAction::Midia(4))
+    } else if keysym.raw() == xkb::KEY_XF86MonBrightnessDown {
+        Some(KeyAction::Midia(5))
     } else if (xkb::KEY_XF86Switch_VT_1..=xkb::KEY_XF86Switch_VT_12).contains(&keysym.raw()) {
         // VTSwitch
         Some(KeyAction::VtSwitch(

@@ -107,6 +107,27 @@ fn atender(quem: &Quem, pedido: &str) -> Result<String, String> {
             admin()?;
             contas::tipo(login, *sim == "sim", &quem.usuario)
         }
+        // Brilho da tela (teclas do notebook): quem está logado pode.
+        ["brilho", pct] => {
+            let logado = quem.uid == 0 || std::path::Path::new(&format!("/run/user/{}", quem.uid)).is_dir();
+            if !logado {
+                return Err("só quem está usando o computador".into());
+            }
+            let pct: u32 = pct.parse().map_err(|_| "valor inválido".to_string())?;
+            let base = std::fs::read_dir("/sys/class/backlight")
+                .ok()
+                .and_then(|mut r| r.next())
+                .and_then(|e| e.ok())
+                .map(|e| e.path())
+                .ok_or("sem controle de brilho")?;
+            let max: u32 = std::fs::read_to_string(base.join("max_brightness"))
+                .ok()
+                .and_then(|s| s.trim().parse().ok())
+                .ok_or("sem controle de brilho")?;
+            let v = (max * pct.clamp(5, 100) / 100).max(1);
+            std::fs::write(base.join("brightness"), v.to_string()).map_err(|e| e.to_string())?;
+            Ok(format!("{pct}"))
+        }
         ["hora", "estado"] => Ok(contas::hora_estado()),
         ["hora", "fuso", z] => {
             admin()?;
