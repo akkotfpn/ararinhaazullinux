@@ -14,6 +14,7 @@
 mod contas;
 mod firewall;
 mod hardware;
+mod usb;
 
 use std::{
     io::{BufRead, BufReader, Read, Write},
@@ -52,6 +53,7 @@ const TEMPO_OCIOSO_MS: i32 = 60_000;
 /// Quem está do outro lado do socket, segundo o kernel.
 pub struct Quem {
     pub uid: u32,
+    pub gid: u32,
     pub pid: i32,
     pub usuario: String,
     pub admin: bool,
@@ -67,7 +69,7 @@ fn credenciais(s: &UnixStream) -> Option<Quem> {
     }
     let usuario = nome_do_usuario(c.uid).unwrap_or_else(|| format!("uid {}", c.uid));
     let admin = c.uid == 0 || no_grupo(&usuario, "wheel");
-    Some(Quem { uid: c.uid, pid: c.pid, usuario, admin })
+    Some(Quem { uid: c.uid, gid: c.gid, pid: c.pid, usuario, admin })
 }
 
 fn nome_do_usuario(uid: u32) -> Option<String> {
@@ -173,7 +175,20 @@ fn atender(quem: &Quem, pedido: &str) -> Result<String, String> {
         }
         // Desligar, reiniciar e dormir: quem está logado no computador pode
         // (como no Windows). "Logado" = tem sessão aberta (/run/user/<uid>).
-        [acao @ ("desligar" | "reiniciar" | "dormir")] => {
+        // Pendrives e HDs externos: quem está usando o computador pode.
+        ["usb", "listar"] => Ok(usb::listar_texto()),
+        ["usb", verbo @ ("montar" | "ejetar"), dev] => {
+            let logado = quem.uid == 0 || std::path::Path::new(&format!("/run/user/{}", quem.uid)).is_dir();
+            if !logado {
+                return Err("só quem está usando o computador pode fazer isso".into());
+            }
+            if *verbo == "montar" {
+                usb::montar(dev, &quem.usuario, quem.uid, quem.gid)
+            } else {
+                usb::ejetar(dev)
+            }
+        }
+        [acao @ ("desligar" | "reiniciar" | "dormir" | "hibernar")] => {
             let logado = quem.uid == 0 || std::path::Path::new(&format!("/run/user/{}", quem.uid)).is_dir();
             if !logado {
                 return Err("só quem está usando o computador pode fazer isso".into());
@@ -181,6 +196,7 @@ fn atender(quem: &Quem, pedido: &str) -> Result<String, String> {
             let verbo = match *acao {
                 "desligar" => "poweroff",
                 "reiniciar" => "reboot",
+                "hibernar" => "hibernate",
                 _ => "suspend",
             };
             let s = std::process::Command::new("/usr/bin/systemctl")

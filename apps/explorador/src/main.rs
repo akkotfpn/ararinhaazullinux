@@ -20,6 +20,8 @@ use tipos::Propriedades;
 
 const BARRA_A: f32 = 52.0;
 const LATERAL_L: f32 = 210.0;
+/// Largura do painel de visualização.
+const PREVIA_L: f32 = 280.0;
 const LINHA_A: f32 = 30.0;
 
 /// Pastas do usuário, com o nome em português que aparece no disco.
@@ -47,6 +49,8 @@ struct Unidade {
     livre: u64,
     /// Unidade de rede (SMB), conectada pelo ararinha-unidade.
     rede: bool,
+    /// Pendrive/HD externo: o dispositivo (sdb1) para abrir e ejetar.
+    usb: Option<String>,
 }
 
 /// Diálogo "Mapear unidade de rede".
@@ -182,6 +186,41 @@ struct Explorador {
     executar_app: Option<PathBuf>,
     /// Extração ou compactação em andamento (resposta para o aviso).
     tarefa: Option<std::sync::mpsc::Receiver<String>>,
+    /// Painel de visualização (à direita): o arquivo mostrado e a prévia.
+    previa: Option<(PathBuf, Previa)>,
+    previa_rx: Option<std::sync::mpsc::Receiver<(PathBuf, Previa)>>,
+    /// Quando as unidades foram lidas (pendrives entram e saem).
+    unidades_em: Option<std::time::Instant>,
+}
+
+/// O que o painel de visualização mostra de um arquivo.
+enum Previa {
+    Carregando,
+    Imagem(image::RgbaImage, (u32, u32)),
+    Texto(Vec<String>),
+    Nada,
+}
+
+/// Lê a prévia (roda numa thread: imagens grandes demoram).
+fn fazer_previa(c: &Path, cat: tipos::Categoria, lado: u32) -> Previa {
+    match cat {
+        tipos::Categoria::Imagem => match image::open(c) {
+            Ok(img) => {
+                let tam = (img.width(), img.height());
+                Previa::Imagem(img.thumbnail(lado, lado).to_rgba8(), tam)
+            }
+            Err(_) => Previa::Nada,
+        },
+        tipos::Categoria::Texto | tipos::Categoria::Codigo => {
+            use std::io::Read;
+            let mut b = vec![0u8; 4096];
+            let n = std::fs::File::open(c).and_then(|mut f| f.read(&mut b)).unwrap_or(0);
+            b.truncate(n);
+            let t = String::from_utf8_lossy(&b).replace('\t', "    ");
+            Previa::Texto(t.lines().take(40).map(str::to_string).collect())
+        }
+        _ => Previa::Nada,
+    }
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -282,6 +321,7 @@ fn ler_unidades() -> Vec<Unidade> {
                 total,
                 livre,
                 rede: true,
+                usb: None,
             });
         }
     }
@@ -310,11 +350,40 @@ fn ler_unidades() -> Vec<Unidade> {
         .filter_map(|(nome, ponto)| {
             let letra = livres.next()?;
             let (total, livre) = espaco(&ponto);
-            Some(Unidade { letra, nome, ponto, total, livre, rede: false })
+            Some(Unidade { letra, nome, ponto, total, livre, rede: false, usb: None })
         })
         .collect();
     v.extend(rede);
+    // Pendrives e HDs externos (montados ou não), pelo ararinha-sistema.
+    let lista = penas::sistema::pedir("usb listar").unwrap_or_default();
+    for item in lista.split(';').filter(|i| !i.is_empty()) {
+        let c: Vec<&str> = item.split('|').collect();
+        let (dev, bytes, ponto) = (c[0].to_string(), c.get(2).and_then(|b| b.parse::<u64>().ok()).unwrap_or(0), c.get(3).copied().unwrap_or(""));
+        let rotulo = rotulo_dispositivo(&dev).or_else(|| c.get(1).filter(|r| !r.is_empty()).map(|r| r.to_string()));
+        let nome = rotulo.unwrap_or_else(|| format!("Dispositivo removível ({})", tamanho_legivel(bytes)));
+        if !ponto.is_empty() {
+            if let Some(u) = v.iter_mut().find(|u| u.ponto == Path::new(ponto)) {
+                u.usb = Some(dev);
+                u.nome = nome;
+            }
+            continue;
+        }
+        let usadas: Vec<char> = v.iter().map(|u| u.letra).collect();
+        if let Some(letra) = ('D'..='Z').find(|l| !usadas.contains(l)) {
+            v.push(Unidade { letra, nome, ponto: PathBuf::new(), total: bytes, livre: 0, rede: false, usb: Some(dev) });
+        }
+    }
     v
+}
+
+/// Rótulo do dispositivo pelo /dev/disk/by-label.
+fn rotulo_dispositivo(dev: &str) -> Option<String> {
+    for e in fs::read_dir("/dev/disk/by-label").ok()?.flatten() {
+        if fs::read_link(e.path()).ok()?.file_name()?.to_str()? == dev {
+            return Some(e.file_name().to_string_lossy().replace("\\x20", " "));
+        }
+    }
+    None
 }
 
 /// Tamanho total e livre (em bytes) de uma unidade, pelo `df`.
@@ -422,6 +491,9 @@ impl Explorador {
             sair: false,
             executar_app: None,
             tarefa: None,
+            previa: None,
+            previa_rx: None,
+            unidades_em: None,
         };
         // Abre numa pasta passada como argumento (ou na pasta de um arquivo,
         // já selecionado: "Mostrar na pasta" do navegador). Aceita file://.
@@ -739,7 +811,7 @@ impl Explorador {
     fn unidade_de(&self, p: &Path) -> Option<&Unidade> {
         self.unidades
             .iter()
-            .filter(|u| p.starts_with(&u.ponto))
+            .filter(|u| !u.ponto.as_os_str().is_empty() && p.starts_with(&u.ponto))
             .max_by_key(|u| u.ponto.as_os_str().len())
     }
 
@@ -1697,6 +1769,12 @@ impl App for Explorador {
         let (cl, ca) = (l - LATERAL_L, a - BARRA_A - rodape);
         match self.local.clone() {
             Local::EsteComputador => self.desenhar_este_computador(ui, cx, cy, cl),
+            Local::Pasta(_) if cl >= 820.0 => {
+                // Janela larga: painel de visualização à direita.
+                let pl = PREVIA_L;
+                self.desenhar_pasta(ui, cx, cy, cl - pl, ca);
+                self.desenhar_previa(ui, cx + cl - pl, cy, pl, ca);
+            }
             Local::Pasta(_) => self.desenhar_pasta(ui, cx, cy, cl, ca),
         }
         if self.escolha.is_some() {
@@ -2014,6 +2092,13 @@ impl Explorador {
     }
 
     fn desenhar_este_computador(&mut self, ui: &mut Ui, x0: f32, y0: f32, l: f32) {
+        // Pendrives entram e saem: relê as unidades a cada 3 s.
+        if self.unidades_em.map(|t| t.elapsed().as_secs() >= 3).unwrap_or(true) {
+            self.unidades = ler_unidades();
+            self.unidades_em = Some(std::time::Instant::now());
+        }
+        ui.acordar_em = Some(std::time::Duration::from_secs(3));
+        let mut ejetar: Option<(String, PathBuf)> = None;
         let mut y = y0 + 34.0;
         ui.tela.texto(x0 + 24.0, y, 15.0, tema::TEXTO(), "Pastas");
         y += 14.0;
@@ -2048,11 +2133,27 @@ impl Explorador {
                 ui.tela.retangulo(x, uy, ul, 76.0, 8.0, tema::DESTAQUE_SUAVE());
             }
             icone_unidade(ui.tela, x + 8.0, uy + 12.0, 52.0, u.letra == 'C');
+            let montada = !u.ponto.as_os_str().is_empty();
             let nome = format!("{} ({}:)", u.nome, u.letra);
-            ui.tela.texto(x + 70.0, uy + 24.0, 13.5, tema::TEXTO(), &desenho::encurtar(13.5, &nome, ul - 80.0));
+            let ln = if u.usb.is_some() && montada { ul - 150.0 } else { ul - 80.0 };
+            ui.tela.texto(x + 70.0, uy + 24.0, 13.5, tema::TEXTO(), &desenho::encurtar(13.5, &nome, ln));
+            // Pendrive montado: botão "Ejetar" no canto.
+            if let (Some(dev), true) = (&u.usb, montada) {
+                let (ex, ey, el) = (x + ul - 72.0, uy + 8.0, 64.0);
+                let s = ui.sobre(ex, ey, el, 24.0);
+                ui.tela.retangulo(ex, ey, el, 24.0, 6.0, if s { tema::DESTAQUE() } else { tema::SUPERFICIE_ALTA() });
+                let lt = desenho::medir(12.0, "Ejetar");
+                ui.tela.texto(ex + (el - lt) / 2.0, ey + 16.5, 12.0, if s { tema::BRANCO() } else { tema::TEXTO() }, "Ejetar");
+                if ui.clicou(ex, ey, el, 24.0) {
+                    ejetar = Some((dev.clone(), u.ponto.clone()));
+                    ui.duplo = false;
+                }
+            }
             let bl = ul - 86.0;
             ui.tela.retangulo(x + 70.0, uy + 34.0, bl, 12.0, 2.0, tema::SUPERFICIE_ALTA());
-            if u.total > 0 {
+            if !montada {
+                ui.tela.texto(x + 70.0, uy + 64.0, 12.0, tema::TEXTO_SECUNDARIO(), &format!("{} · clique duas vezes para abrir", tamanho_legivel(u.total)));
+            } else if u.total > 0 {
                 let usado = 1.0 - u.livre as f32 / u.total as f32;
                 let cor = if usado > 0.9 { tema::ERRO() } else { tema::DESTAQUE() };
                 ui.tela.retangulo(x + 70.0, uy + 34.0, bl * usado, 12.0, 2.0, cor);
@@ -2060,8 +2161,30 @@ impl Explorador {
                 ui.tela.texto(x + 70.0, uy + 64.0, 12.0, tema::TEXTO_SECUNDARIO(), &txt);
             }
             if ui.clicou_duplo(x, uy, ul, 76.0) {
-                ir = Some(Local::Pasta(u.ponto.clone()));
+                if montada {
+                    ir = Some(Local::Pasta(u.ponto.clone()));
+                } else if let Some(dev) = &u.usb {
+                    match penas::sistema::pedir(&format!("usb montar {dev}")) {
+                        Ok(p) => {
+                            ir = Some(Local::Pasta(PathBuf::from(p)));
+                            self.unidades_em = None;
+                        }
+                        Err(e) => self.aviso = Some(format!("Não deu para abrir: {e}.")),
+                    }
+                }
             }
+        }
+        if let Some((dev, ponto)) = ejetar {
+            match penas::sistema::pedir(&format!("usb ejetar {dev}")) {
+                Ok(_) => {
+                    self.aviso = Some("Pode remover o dispositivo com segurança.".into());
+                    if matches!(&self.local, Local::Pasta(p) if p.starts_with(&ponto)) {
+                        self.local = Local::EsteComputador;
+                    }
+                }
+                Err(e) => self.aviso = Some(format!("Não deu para ejetar: {e}.")),
+            }
+            self.unidades_em = None;
         }
         let linhas = locais.len().div_ceil(por_linha);
         y += linhas as f32 * 84.0 + 30.0;
@@ -2122,6 +2245,102 @@ impl Explorador {
             t.texto(col_tam, y0 + 20.0, 12.0, tema::TEXTO_SECUNDARIO(), "Tamanho");
         }
         t.retangulo(x0 + 12.0, y0 + 29.0, l - 24.0, 1.0, 0.0, tema::BORDA());
+    }
+
+    fn desenhar_previa(&mut self, ui: &mut Ui, x0: f32, y0: f32, l: f32, a: f32) {
+        ui.tela.retangulo(x0, y0, l, a, 0.0, tema::FUNDO());
+        ui.tela.retangulo(x0, y0, 1.0, a, 0.0, tema::BORDA());
+        if let Some(rx) = &self.previa_rx {
+            match rx.try_recv() {
+                Ok(p) => {
+                    self.previa = Some(p);
+                    self.previa_rx = None;
+                }
+                Err(_) => ui.acordar_em = Some(std::time::Duration::from_millis(100)),
+            }
+        }
+        let x = x0 + 20.0;
+        let w = l - 40.0;
+        let sel = if self.selecionados.len() > 1 { None } else { self.selecionado.and_then(|i| self.entradas.get(i)) };
+        let Some(e) = sel else {
+            let msg = if self.selecionados.len() > 1 { format!("{} itens selecionados", self.selecionados.len()) } else { "Selecione um arquivo para ver a prévia.".to_string() };
+            penas::componentes::paragrafo(ui, x, y0 + 40.0, w, &msg);
+            return;
+        };
+        let (nome, caminho, pasta, tamanho, modificado) = (e.nome.clone(), e.caminho.clone(), e.pasta, e.tamanho, e.modificado);
+        let (cat, tipo) = if pasta { (None, "Pasta de arquivos".to_string()) } else {
+            let (c, t) = tipos::tipo_de(&nome);
+            (Some(c), t)
+        };
+        // Pede a prévia do arquivo novo.
+        if self.previa.as_ref().map(|p| p.0 != caminho).unwrap_or(true) && self.previa_rx.as_ref().is_none() {
+            if let Some(c) = cat.filter(|c| matches!(c, tipos::Categoria::Imagem | tipos::Categoria::Texto | tipos::Categoria::Codigo)).filter(|_| tamanho < 64_000_000) {
+                let (tx, rx) = std::sync::mpsc::channel();
+                let cam = caminho.clone();
+                let lado = w as u32;
+                std::thread::spawn(move || {
+                    let p = fazer_previa(&cam, c, lado);
+                    let _ = tx.send((cam, p));
+                });
+                self.previa = Some((caminho.clone(), Previa::Carregando));
+                self.previa_rx = Some(rx);
+            } else {
+                self.previa = Some((caminho.clone(), Previa::Nada));
+            }
+        }
+        let mut y = y0 + 24.0;
+        let mut extra: Option<String> = None;
+        match self.previa.as_ref().map(|p| &p.1) {
+            Some(Previa::Imagem(img, (iw, ih))) => {
+                let ix = x + (w - img.width() as f32) / 2.0;
+                ui.tela.imagem(ix.round() as i32, y.round() as i32, img);
+                y += img.height() as f32 + 16.0;
+                extra = Some(format!("{iw} × {ih} pixels"));
+            }
+            Some(Previa::Texto(linhas)) => {
+                let h = 220.0;
+                ui.tela.retangulo(x, y, w, h, 6.0, tema::SUPERFICIE());
+                let mut ty = y + 18.0;
+                for li in linhas {
+                    if ty > y + h - 6.0 {
+                        break;
+                    }
+                    ui.tela.texto(x + 10.0, ty, 11.0, tema::TEXTO_SECUNDARIO(), &desenho::encurtar(11.0, li, w - 20.0));
+                    ty += 15.0;
+                }
+                y += h + 16.0;
+            }
+            Some(Previa::Carregando) => {
+                ui.tela.texto(x, y + 20.0, 12.5, tema::TEXTO_SECUNDARIO(), "Carregando a prévia…");
+                y += 40.0;
+            }
+            _ => {
+                let s = 96.0;
+                match cat {
+                    None => icone_pasta(ui.tela, x + (w - s) / 2.0, y, s),
+                    Some(c) => tipos::icone_tipo(ui.tela, c, x + (w - s) / 2.0, y, s),
+                }
+                y += s + 16.0;
+            }
+        }
+        ui.tela.texto(x, y + 16.0, 14.5, tema::TEXTO(), &desenho::encurtar(14.5, &nome, w));
+        ui.tela.texto(x, y + 38.0, 12.0, tema::TEXTO_SECUNDARIO(), &tipo);
+        y += 56.0;
+        let mut linhas: Vec<(&str, String)> = Vec::new();
+        if !pasta {
+            linhas.push(("Tamanho", tamanho_legivel(tamanho)));
+        }
+        if let Some(m) = modificado {
+            linhas.push(("Modificado", data_legivel(m)));
+        }
+        if let Some(d) = extra {
+            linhas.push(("Dimensões", d));
+        }
+        for (k, v) in linhas {
+            ui.tela.texto(x, y + 16.0, 11.5, tema::TEXTO_SECUNDARIO(), k);
+            ui.tela.texto(x, y + 34.0, 12.5, tema::TEXTO(), &desenho::encurtar(12.5, &v, w));
+            y += 44.0;
+        }
     }
 
     fn desenhar_pasta(&mut self, ui: &mut Ui, x0: f32, y0: f32, l: f32, a: f32) {

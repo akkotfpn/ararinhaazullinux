@@ -13,7 +13,7 @@ use std::{
 
 /// Roda um comando como root, fora do confinamento, esperando o fim.
 /// `entrada` vai pela entrada padrão (senhas nunca na linha de comando).
-fn rodar_fora(args: &[&str], entrada: Option<&str>) -> Result<(), String> {
+pub(crate) fn rodar_fora(args: &[&str], entrada: Option<&str>) -> Result<(), String> {
     let mut c = Command::new("/usr/bin/systemd-run");
     c.args(["--quiet", "--wait", "--collect", "--pipe", "--property=PrivateNetwork=yes", "--"]);
     c.args(args);
@@ -29,6 +29,19 @@ fn rodar_fora(args: &[&str], entrada: Option<&str>) -> Result<(), String> {
     } else {
         Err(String::from_utf8_lossy(&s.stderr).trim().lines().last().unwrap_or("falhou").to_string())
     }
+}
+
+/// Como `rodar_fora`, mas devolve o que o comando escreveu (para ler
+/// dispositivos que o serviço confinado não enxerga).
+pub(crate) fn rodar_fora_saida(args: &[&str]) -> String {
+    Command::new("/usr/bin/systemd-run")
+        .args(["--quiet", "--wait", "--collect", "--pipe", "--property=PrivateNetwork=yes", "--"])
+        .args(args)
+        .stdin(Stdio::null())
+        .stderr(Stdio::null())
+        .output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .unwrap_or_default()
 }
 
 fn de_hex(s: &str) -> Option<String> {
