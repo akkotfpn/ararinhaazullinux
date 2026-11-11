@@ -31,6 +31,9 @@ gpg --quiet --batch --import "$TMP/gnu-keyring.gpg" 2>/dev/null || true
 # Kernel: chaves publicadas pelo próprio kernel.org (WKD).
 gpg --quiet --batch --auto-key-locate clear,wkd \
     --locate-keys torvalds@kernel.org gregkh@kernel.org >/dev/null 2>&1 || true
+# linux-firmware: assinado pelos mantenedores do firmware.
+gpg --quiet --batch --auto-key-locate clear,wkd \
+    --locate-keys jwboyer@kernel.org superm1@kernel.org >/dev/null 2>&1 || true
 
 # 0 = assinatura válida de uma chave do chaveiro.
 assinatura_ok() {  # $1 = assinatura, $2 = arquivo ("-" para stdin)
