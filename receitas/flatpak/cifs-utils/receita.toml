@@ -21,7 +21,8 @@ construcao = ["libcap"]
 ambiente = "isolado"
 passos = [
   '''
-./configure --prefix=/usr --disable-pam --disable-systemd --disable-cifsupcall --disable-cifscreds --disable-cifsidmap --disable-cifsacl --disable-smbinfo --disable-pythontools --disable-man
+# O teste de stdbool.h do configure antigo falha com o GCC 15 (C23).
+ac_cv_header_stdbool_h=yes CFLAGS="-O2 -std=gnu17" ./configure --prefix=/usr --disable-pam --disable-systemd --disable-cifsupcall --disable-cifscreds --disable-cifsidmap --disable-cifsacl --disable-smbinfo --disable-pythontools --disable-man
 ''',
   '''
 make
