@@ -580,7 +580,9 @@ impl Painel {
     /// Lê os aplicativos de /usr/share/applications (uma vez por abertura do menu).
     pub fn carregar_apps(&mut self) {
         let mut apps = Vec::new();
-        for pasta in ["/usr/share/applications", "/usr/local/share/applications"] {
+        let mut vistos = std::collections::HashSet::new();
+        for dados in pastas_de_dados() {
+            let pasta = format!("{dados}/applications");
             let Ok(dir) = std::fs::read_dir(pasta) else { continue };
             for entrada in dir.flatten() {
                 let caminho = entrada.path();
@@ -588,6 +590,10 @@ impl Painel {
                     continue;
                 }
                 let id = caminho.file_stem().and_then(|n| n.to_str()).unwrap_or("").to_string();
+                // O primeiro com o mesmo nome vence (como no XDG_DATA_DIRS).
+                if !vistos.insert(id.clone()) {
+                    continue;
+                }
                 if let Some(app) = std::fs::read_to_string(&caminho).ok().and_then(|t| ler_desktop(&t, &id)) {
                     apps.push(app);
                 }
@@ -1106,8 +1112,10 @@ fn achar_icone(nome: &str) -> Option<image::RgbaImage> {
     if nome.starts_with('/') {
         caminhos.push(nome.to_string());
     } else {
-        for t in ["256x256", "128x128", "96x96", "64x64", "48x48", "32x32"] {
-            caminhos.push(format!("/usr/share/icons/hicolor/{t}/apps/{nome}.png"));
+        for dados in pastas_de_dados() {
+            for t in ["128x128", "256x256", "96x96", "64x64", "512x512", "48x48", "32x32"] {
+                caminhos.push(format!("{dados}/icons/hicolor/{t}/apps/{nome}.png"));
+            }
         }
         caminhos.push(format!("/usr/share/pixmaps/{nome}.png"));
     }
@@ -1189,4 +1197,26 @@ fn icone_rede(t: &mut Tela, x: f32, y: f32, s: f32, rede: &Rede, cor: desenho::C
         t.linha(a, y + 0.02 * s, b, y + 0.32 * s, 0.08 * s, cor);
         t.linha(a, y + 0.32 * s, b, y + 0.02 * s, 0.08 * s, cor);
     }
+}
+
+/// Pastas de dados (XDG): a do usuário, as do Flatpak e as do sistema.
+fn pastas_de_dados() -> Vec<String> {
+    let casa = std::env::var("HOME").unwrap_or_default();
+    let mut v = vec![
+        format!("{casa}/.local/share"),
+        format!("{casa}/.local/share/flatpak/exports/share"),
+        "/var/lib/flatpak/exports/share".to_string(),
+    ];
+    let sistema = std::env::var("XDG_DATA_DIRS").unwrap_or_else(|_| "/usr/local/share:/usr/share".into());
+    for d in sistema.split(':').filter(|d| !d.is_empty()) {
+        if !v.iter().any(|x| x == d) {
+            v.push(d.to_string());
+        }
+    }
+    for d in ["/usr/local/share", "/usr/share"] {
+        if !v.iter().any(|x| x == d) {
+            v.push(d.to_string());
+        }
+    }
+    v
 }
