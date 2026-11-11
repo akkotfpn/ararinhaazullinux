@@ -89,6 +89,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "calculadora"
+version = "0.1.0"
+dependencies = [
+ "penas",
+]
+
+[[package]]
 name = "central"
 version = "0.1.0"
 dependencies = [

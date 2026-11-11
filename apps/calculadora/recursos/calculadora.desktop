@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Calculadora
+Name[en]=Calculator
+Comment=Faça contas rápidas, como na calculadora de bolso
+Exec=calculadora
+Icon=calculadora
+StartupWMClass=calculadora
+Categories=Utility;Calculator;
