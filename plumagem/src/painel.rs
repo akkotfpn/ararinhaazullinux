@@ -140,6 +140,12 @@ const POP_A: i32 = 4 * POP_ITEM + 12;
 const INICIAR_X: i32 = 6;
 const TAREFA_MAX: i32 = 220;
 const RELOGIO_L: i32 = 120;
+/// Central de notificações (clique no relógio).
+const CENTRAL_L: i32 = 380;
+const CENTRAL_A: i32 = 520;
+const CENTRAL_ITEM: i32 = 64;
+/// Ações rápidas no pé da central: (rótulo, ação).
+const ACOES_RAPIDAS: [&str; 4] = ["Não perturbe", "Modo escuro", "Recortar tela", "Configurações"];
 
 static LOGO_PNG: &[u8] = include_bytes!("../resources/logo-64.png");
 static ESTE_PC_PNG: &[u8] = include_bytes!("../resources/este-computador-48.png");
@@ -268,6 +274,12 @@ pub enum Alvo {
     CantoArea,
     /// Ícone de app na bandeja.
     ItemBandeja(usize),
+    /// Relógio: abre a central de notificações.
+    Relogio,
+    CentralPainel,
+    CentralItem(usize),
+    CentralLimpar,
+    CentralAcao(usize),
 }
 
 /// Largura do cantinho "Mostrar área de trabalho", como no Windows.
@@ -440,6 +452,11 @@ pub struct Painel {
     foto: Option<image::RgbaImage>,
     /// As opções do botão de energia estão abertas.
     pub energia_aberta: bool,
+    /// Central de notificações: aberta, histórico e "Não perturbe".
+    pub central_aberta: bool,
+    pub historico: Vec<(String, String, String, Option<String>)>,
+    pub nao_perturbe: bool,
+    central_buf: Option<(String, MemoryRenderBuffer)>,
     /// Ícones dos apps na bandeja e quantas vezes a lista mudou.
     pub bandeja: Vec<ItemBandeja>,
     bandeja_versao: u32,
@@ -499,6 +516,10 @@ impl Default for Painel {
             menu_sel: 0,
             foto: None,
             energia_aberta: false,
+            central_aberta: false,
+            historico: Vec::new(),
+            nao_perturbe: ler_chave("nao_perturbe").as_deref() == Some("sim"),
+            central_buf: None,
             bandeja: Vec::new(),
             bandeja_versao: 0,
             bandeja_clique: (0, 0).into(),
@@ -748,6 +769,32 @@ impl Painel {
                 }
             }
         }
+        if self.central_aberta {
+            let o = Self::central_origem(tela);
+            let (cx, cy) = (x - o.x, y - o.y);
+            if cx >= 0 && cy >= 0 && cx < CENTRAL_L && cy < CENTRAL_A {
+                if cy < 52 && cx >= CENTRAL_L - 100 {
+                    return Some(Alvo::CentralLimpar);
+                }
+                // Ações rápidas: 4 quadradinhos no pé.
+                let ay = CENTRAL_A - 96;
+                if cy >= ay && cy < CENTRAL_A - 12 {
+                    let w = (CENTRAL_L - 24 - 3 * 8) / 4;
+                    let i = ((cx - 12) / (w + 8)) as usize;
+                    if cx >= 12 && i < ACOES_RAPIDAS.len() && (cx - 12) % (w + 8) < w {
+                        return Some(Alvo::CentralAcao(i));
+                    }
+                    return Some(Alvo::CentralPainel);
+                }
+                if cy >= 52 && cy < ay - 8 {
+                    let i = ((cy - 52) / CENTRAL_ITEM) as usize;
+                    if i < self.historico.len() {
+                        return Some(Alvo::CentralItem(i));
+                    }
+                }
+                return Some(Alvo::CentralPainel);
+            }
+        }
         if self.rede_aberta {
             let o = Self::rede_origem(tela);
             if x >= o.x && y >= o.y && x < o.x + SOM_L && y < o.y + REDE_A {
@@ -833,6 +880,9 @@ impl Painel {
         }
         if (bx + ICONE_BANDEJA..bx + BANDEJA_L).contains(&x) {
             return Some(Alvo::Som);
+        }
+        if (bx + BANDEJA_L..tela.w - CANTO_L).contains(&x) {
+            return Some(Alvo::Relogio);
         }
         let lt = self.largura_tarefa(tela.w);
         let tx = Self::tarefas_x();
@@ -956,6 +1006,12 @@ impl Painel {
     }
 
     pub fn avisar_com(&mut self, titulo: &str, texto: &str, acao: Option<String>) {
+        // Tudo vai para o histórico da central; com "Não perturbe", só ele.
+        self.historico.insert(0, (titulo.to_string(), texto.to_string(), hora_local().0, acao.clone()));
+        self.historico.truncate(30);
+        if self.nao_perturbe {
+            return;
+        }
         self.avisos.push(Aviso {
             titulo: titulo.to_string(),
             texto: texto.to_string(),
@@ -1015,6 +1071,90 @@ impl Painel {
             let cor = if hover == Some(Alvo::Aviso(i)) { tema::TEXTO() } else { tema::TEXTO_SECUNDARIO().com_alfa(140) };
             t.linha(l - 24.0, y + 14.0, l - 16.0, y + 22.0, 1.4, cor);
             t.linha(l - 24.0, y + 22.0, l - 16.0, y + 14.0, 1.4, cor);
+        }
+        t
+    }
+
+    fn central_origem(tela: Size<i32, Logical>) -> Point<i32, Logical> {
+        (tela.w - CENTRAL_L - 8, tela.h - altura() - 8 - CENTRAL_A).into()
+    }
+
+    fn desenhar_central(&self, origem: Point<i32, Logical>, hover: Option<Alvo>) -> Tela {
+        let mut t = Tela::nova(CENTRAL_L, CENTRAL_A);
+        let (l, a) = (CENTRAL_L as f32, CENTRAL_A as f32);
+        t.vidro(0.0, 0.0, l, a, 12.0, (origem.x, origem.y), tema::FUNDO().com_alfa(200));
+        t.contorno(0.5, 0.5, l - 1.0, a - 1.0, 1.0, tema::BORDA().com_alfa(160));
+        t.texto(18.0, 34.0, 16.0, tema::TEXTO(), "Notificações");
+        if !self.historico.is_empty() {
+            let cor = if hover == Some(Alvo::CentralLimpar) { tema::DESTAQUE_FORTE() } else { tema::DESTAQUE() };
+            let lt = desenho::medir(13.0, "Limpar tudo");
+            t.texto(l - 18.0 - lt, 33.0, 13.0, cor, "Limpar tudo");
+        }
+        let ay = a - 96.0;
+        if self.historico.is_empty() {
+            let msg = if self.nao_perturbe { "Nenhuma notificação. Não perturbe está ligado." } else { "Nenhuma notificação nova." };
+            let lm = desenho::medir(13.0, msg);
+            t.texto(l / 2.0 - lm / 2.0, ay / 2.0 + 20.0, 13.0, tema::TEXTO_SECUNDARIO(), msg);
+        }
+        let max = ((ay - 8.0 - 52.0) / CENTRAL_ITEM as f32) as usize;
+        for (i, (titulo, texto, hora, _)) in self.historico.iter().take(max).enumerate() {
+            let y = 52.0 + i as f32 * CENTRAL_ITEM as f32;
+            let sobre = hover == Some(Alvo::CentralItem(i));
+            t.retangulo(10.0, y, l - 20.0, CENTRAL_ITEM as f32 - 6.0, 8.0, if sobre { tema::SUPERFICIE() } else { tema::SUPERFICIE().com_alfa(150) });
+            t.texto(22.0, y + 23.0, 13.5, tema::TEXTO(), &desenho::encurtar(13.5, titulo, l - 110.0));
+            let lh = desenho::medir(11.5, hora);
+            t.texto(l - 22.0 - lh, y + 22.0, 11.5, tema::TEXTO_SECUNDARIO(), hora);
+            t.texto(22.0, y + 43.0, 12.0, tema::TEXTO_SECUNDARIO(), &desenho::encurtar(12.0, texto, l - 44.0));
+        }
+        // Ações rápidas.
+        t.retangulo(0.0, ay - 4.0, l, 1.0, 0.0, tema::BORDA());
+        let w = (l - 24.0 - 3.0 * 8.0) / 4.0;
+        for (i, rot) in ACOES_RAPIDAS.iter().enumerate() {
+            let x = 12.0 + i as f32 * (w + 8.0);
+            let ligado = match i {
+                0 => self.nao_perturbe,
+                1 => desenho::tema::escuro(),
+                _ => false,
+            };
+            let sobre = hover == Some(Alvo::CentralAcao(i));
+            let fundo = if ligado { tema::DESTAQUE() } else if sobre { tema::SUPERFICIE() } else { tema::SUPERFICIE().com_alfa(170) };
+            t.retangulo(x, ay + 8.0, w, 72.0, 8.0, fundo);
+            let cor = if ligado { tema::BRANCO() } else { tema::TEXTO() };
+            // Ícones simples.
+            let (cx, cy) = (x + w / 2.0, ay + 34.0);
+            match i {
+                0 => {
+                    // Lua (não perturbe).
+                    arco(&mut t, cx, cy, 8.0, 0.18, 0.95, 1.8, cor);
+                    arco(&mut t, cx + 4.0, cy - 3.0, 6.0, 0.62, 1.12, 1.8, cor);
+                }
+                1 => {
+                    // Meio círculo cheio (tema escuro).
+                    arco(&mut t, cx, cy, 8.0, 0.0, 1.0, 1.8, cor);
+                    t.retangulo(cx - 1.0, cy - 8.0, 9.0, 16.0, 8.0, cor);
+                }
+                2 => {
+                    // Tesoura/recorte: retângulo tracejado.
+                    for k in 0..4 {
+                        let d = k as f32 * 5.0;
+                        t.linha(cx - 9.0 + d, cy - 7.0, cx - 6.5 + d, cy - 7.0, 1.6, cor);
+                        t.linha(cx - 9.0 + d, cy + 7.0, cx - 6.5 + d, cy + 7.0, 1.6, cor);
+                    }
+                    t.linha(cx - 10.0, cy - 7.0, cx - 10.0, cy + 7.0, 1.6, cor);
+                    t.linha(cx + 10.0, cy - 7.0, cx + 10.0, cy + 7.0, 1.6, cor);
+                }
+                _ => {
+                    // Engrenagem simples.
+                    arco(&mut t, cx, cy, 7.0, 0.0, 1.0, 2.2, cor);
+                    arco(&mut t, cx, cy, 2.5, 0.0, 1.0, 1.6, cor);
+                    for k in 0..6 {
+                        let ang = k as f32 * std::f32::consts::TAU / 6.0;
+                        t.linha(cx + 7.0 * ang.cos(), cy - 7.0 * ang.sin(), cx + 10.0 * ang.cos(), cy - 10.0 * ang.sin(), 2.2, cor);
+                    }
+                }
+            }
+            let lr = desenho::medir(11.5, rot);
+            t.texto(cx - lr / 2.0, ay + 66.0, 11.5, cor, &desenho::encurtar(11.5, rot, w - 6.0));
         }
         t
     }
@@ -1505,7 +1645,35 @@ impl Painel {
             }
         }
 
-        if !self.avisos.is_empty() {
+        if self.central_aberta {
+            let o = Self::central_origem(tela);
+            let chave = format!(
+                "{hover:?}|{o:?}|{:?}|{}|{}|{}",
+                self.historico,
+                self.nao_perturbe,
+                desenho::tema::escuro(),
+                desenho::tema::destaque_atual()
+            );
+            if self.central_buf.as_ref().map(|(c, _)| c != &chave).unwrap_or(true) {
+                let t = self.desenhar_central(o, hover);
+                self.central_buf = Some((chave, t.em_buffer()));
+            }
+            if let Some((_, buf)) = &self.central_buf {
+                if let Ok(e) = MemoryRenderBufferRenderElement::from_buffer(
+                    renderer,
+                    o.to_f64().to_physical(escala),
+                    buf,
+                    None,
+                    None,
+                    None,
+                    Kind::Unspecified,
+                ) {
+                    elementos.push(e);
+                }
+            }
+        }
+
+        if !self.avisos.is_empty() && !self.central_aberta {
             let o = Self::avisos_origem(tela, self.avisos.len());
             let chave = format!(
                 "{:?}|{o:?}|{hover:?}|{}",
@@ -1609,7 +1777,7 @@ impl Painel {
             "{}|{}|{hover:?}|{}|{}|{}|{janelas:?}|{:?}|{}",
             tela.w,
             altura(), self.menu_aberto, self.relogio.1, self.relogio.2, self.som, self.som_aberto
-        ) + &format!("|{:?}|{}|{}", self.rede, self.rede_aberta, self.bandeja_versao);
+        ) + &format!("|{:?}|{}|{}|{}", self.rede, self.rede_aberta, self.bandeja_versao, self.central_aberta);
         if self.barra.as_ref().map(|(c, _)| c != &chave).unwrap_or(true) {
             let t = self.desenhar_barra(tela.w, tela.h, hover, &janelas);
             self.barra = Some((chave, t.em_buffer()));

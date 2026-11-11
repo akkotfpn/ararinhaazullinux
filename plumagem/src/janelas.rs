@@ -281,6 +281,7 @@ impl<B: Backend> AnvilState<B> {
             self.painel.menu_aberto = false;
             self.painel.som_aberto = false;
             self.painel.rede_aberta = false;
+            self.painel.central_aberta = false;
             let tinha_contexto = self.painel.menu_contexto.take().is_some();
             // Clique fora do menu de contexto só fecha o menu.
             return tinha_contexto && !direito;
@@ -346,6 +347,9 @@ impl<B: Backend> AnvilState<B> {
         if !matches!(alvo, Alvo::Rede | Alvo::RedePainel | Alvo::RedeConfig) {
             self.painel.rede_aberta = false;
         }
+        if !matches!(alvo, Alvo::Relogio | Alvo::CentralPainel | Alvo::CentralItem(_) | Alvo::CentralLimpar | Alvo::CentralAcao(_)) {
+            self.painel.central_aberta = false;
+        }
         self.painel.segurando = true;
         if alvo != Alvo::Energia {
             self.painel.energia_aberta = false;
@@ -381,6 +385,41 @@ impl<B: Backend> AnvilState<B> {
                 }
             }
             Alvo::Energia => self.painel.energia_aberta = !self.painel.energia_aberta,
+            Alvo::Relogio => {
+                self.painel.central_aberta = !self.painel.central_aberta;
+                self.painel.menu_aberto = false;
+            }
+            Alvo::CentralPainel => {}
+            Alvo::CentralLimpar => self.painel.historico.clear(),
+            Alvo::CentralItem(i) => {
+                if let Some((_, _, _, acao)) = self.painel.historico.get(i).cloned() {
+                    self.painel.historico.remove(i);
+                    if let Some(cmd) = acao {
+                        self.painel.central_aberta = false;
+                        self.executar_programa(&cmd);
+                    }
+                }
+            }
+            Alvo::CentralAcao(i) => match i {
+                0 => {
+                    self.painel.nao_perturbe = !self.painel.nao_perturbe;
+                    painel::gravar_chave("nao_perturbe", if self.painel.nao_perturbe { "sim" } else { "nao" });
+                }
+                1 => {
+                    let escuro = !crate::desenho::tema::escuro();
+                    painel::gravar_chave("tema", if escuro { "escuro" } else { "claro" });
+                    crate::desenho::tema::definir_escuro(escuro);
+                }
+                2 => {
+                    self.painel.central_aberta = false;
+                    self.painel.recorte = Some(None);
+                    crate::render::RECORTE.store(true, std::sync::atomic::Ordering::Relaxed);
+                }
+                _ => {
+                    self.painel.central_aberta = false;
+                    self.executar_programa("configuracoes");
+                }
+            },
             Alvo::Dormir => {
                 self.painel.menu_aberto = false;
                 // O gancho do system-sleep bloqueia a tela antes de dormir.
