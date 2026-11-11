@@ -1,0 +1,33 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Flatpak (aplicativos do Flathub): BLFS, shared-mime-info
+# Compilado no ambiente isolado, sobre o sistema base.
+
+[pacote]
+nome      = "shared-mime-info"
+versao    = "2.5.1"
+resumo    = "Tipos de arquivo (MIME)"
+licenca   = "GPL-2.0-or-later"
+categoria = "flatpak"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://gitlab.freedesktop.org/xdg/shared-mime-info/-/archive/2.5.1/shared-mime-info-2.5.1.tar.gz"
+
+[dependencias]
+construcao = ["glib", "libxml2", "meson"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+mkdir -p build && cd build && meson setup --prefix=/usr --buildtype=release --wrap-mode=nofallback -D update-mimedb=true -D build-tests=false ..
+''',
+  '''
+cd build && ninja
+''',
+]
+instalar = [
+  '''
+cd build && ninja install
+''',
+]

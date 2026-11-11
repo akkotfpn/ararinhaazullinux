@@ -1,0 +1,34 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Flatpak (aplicativos do Flathub): BLFS, GnuPG 2
+# Compilado no ambiente isolado, sobre o sistema base.
+# Diferença do BLFS: sem LDAP, sem SQLite e sem manual.
+
+[pacote]
+nome      = "gnupg"
+versao    = "2.5.24"
+resumo    = "GnuPG: assinaturas (confere os repositórios do Flatpak)"
+licenca   = "GPL-3.0-or-later"
+categoria = "flatpak"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://www.gnupg.org/ftp/gcrypt/gnupg/gnupg-2.5.24.tar.bz2"
+
+[dependencias]
+construcao = ["libassuan", "libgcrypt", "libksba", "npth", "zlib", "bzip2", "readline"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+mkdir -p build && cd build && ../configure --prefix=/usr --localstatedir=/var --sysconfdir=/etc --disable-ldap --disable-doc --disable-sqlite
+''',
+  '''
+cd build && make
+''',
+]
+instalar = [
+  '''
+cd build && make install
+''',
+]

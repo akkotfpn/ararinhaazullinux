@@ -1,0 +1,33 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Flatpak (aplicativos do Flathub): BLFS, libassuan
+# Compilado no ambiente isolado, sobre o sistema base.
+
+[pacote]
+nome      = "libassuan"
+versao    = "3.0.2"
+resumo    = "Comunicação entre processos do GnuPG"
+licenca   = "LGPL-2.1-or-later"
+categoria = "flatpak"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://www.gnupg.org/ftp/gcrypt/libassuan/libassuan-3.0.2.tar.bz2"
+
+[dependencias]
+construcao = ["libgpg-error"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+./configure --prefix=/usr --sysconfdir=/etc --disable-static
+''',
+  '''
+make
+''',
+]
+instalar = [
+  '''
+make install
+''',
+]

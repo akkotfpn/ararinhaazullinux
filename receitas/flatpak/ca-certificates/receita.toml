@@ -1,0 +1,34 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Flatpak (aplicativos do Flathub): pacote de CAs da Mozilla extraído pelo curl (versão datada)
+# Compilado no ambiente isolado, sobre o sistema base.
+
+[pacote]
+nome      = "ca-certificates"
+versao    = "2026-11-05"
+resumo    = "Certificados das autoridades (Mozilla, via curl)"
+licenca   = "MPL-2.0"
+categoria = "flatpak"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://curl.se/ca/cacert-2026-11-05.pem"
+extrair = false
+
+[dependencias]
+construcao = []
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+true
+''',
+]
+instalar = [
+  '''
+install -vDm644 ../cacert-2026-11-05.pem /etc/ssl/certs/ca-certificates.crt
+ln -sfv certs/ca-certificates.crt /etc/ssl/cert.pem
+install -vdm755 /etc/pki/tls/certs
+ln -sfv /etc/ssl/certs/ca-certificates.crt /etc/pki/tls/certs/ca-bundle.crt
+''',
+]

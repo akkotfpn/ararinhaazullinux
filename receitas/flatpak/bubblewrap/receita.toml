@@ -1,0 +1,33 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Flatpak (aplicativos do Flathub): BLFS, Bubblewrap
+# Compilado no ambiente isolado, sobre o sistema base.
+
+[pacote]
+nome      = "bubblewrap"
+versao    = "0.13.0"
+resumo    = "bwrap: caixa de areia dos aplicativos"
+licenca   = "LGPL-2.0-or-later"
+categoria = "flatpak"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://github.com/containers/bubblewrap/releases/download/v0.13.0/bubblewrap-0.13.0.tar.xz"
+
+[dependencias]
+construcao = ["libcap", "meson"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+mkdir -p build && cd build && meson setup --prefix=/usr --buildtype=release --wrap-mode=nofallback -D man=disabled -D tests=false ..
+''',
+  '''
+cd build && ninja
+''',
+]
+instalar = [
+  '''
+cd build && ninja install
+''',
+]

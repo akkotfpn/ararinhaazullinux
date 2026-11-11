@@ -1,0 +1,33 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Flatpak (aplicativos do Flathub): BLFS, libseccomp
+# Compilado no ambiente isolado, sobre o sistema base.
+
+[pacote]
+nome      = "libseccomp"
+versao    = "2.6.1"
+resumo    = "Filtros de chamadas de sistema (caixa de areia)"
+licenca   = "LGPL-2.1-or-later"
+categoria = "flatpak"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://github.com/seccomp/libseccomp/releases/download/v2.6.1/libseccomp-2.6.1.tar.gz"
+
+[dependencias]
+construcao = ["gperf"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+./configure --prefix=/usr --disable-static
+''',
+  '''
+make
+''',
+]
+instalar = [
+  '''
+make install
+''',
+]

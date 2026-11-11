@@ -1,0 +1,34 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Flatpak (aplicativos do Flathub): upstream (github.com/ostreedev/ostree)
+# Compilado no ambiente isolado, sobre o sistema base.
+# Sem composefs, SELinux, Avahi e documentação.
+
+[pacote]
+nome      = "ostree"
+versao    = "2026.2"
+resumo    = "OSTree: repositórios versionados (base do Flatpak)"
+licenca   = "LGPL-2.0-or-later"
+categoria = "flatpak"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://github.com/ostreedev/ostree/releases/download/v2026.2/libostree-2026.2.tar.xz"
+
+[dependencias]
+construcao = ["glib", "curl", "gpgme", "libarchive", "openssl", "fuse3", "e2fsprogs", "util-linux", "xz", "zlib", "systemd"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+./configure --prefix=/usr --sysconfdir=/etc --localstatedir=/var --disable-static --with-curl --without-soup --without-soup3 --with-gpgme --with-libarchive --with-openssl --without-selinux --without-smack --without-avahi --with-libsystemd --without-composefs --without-dracut --without-mkinitcpio --disable-man --disable-gtk-doc --disable-introspection
+''',
+  '''
+make
+''',
+]
+instalar = [
+  '''
+make install
+''',
+]

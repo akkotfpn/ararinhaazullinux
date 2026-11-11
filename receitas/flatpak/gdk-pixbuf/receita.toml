@@ -1,0 +1,35 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Flatpak (aplicativos do Flathub): BLFS, gdk-pixbuf
+# Compilado no ambiente isolado, sobre o sistema base.
+# Diferença do BLFS: carregadores PNG e GIF embutidos, sem glycin.
+
+[pacote]
+nome      = "gdk-pixbuf"
+versao    = "2.44.8"
+resumo    = "Carregamento de imagens (PNG/GIF) para a GLib"
+licenca   = "LGPL-2.1-or-later"
+categoria = "flatpak"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://download.gnome.org/sources/gdk-pixbuf/2.44/gdk-pixbuf-2.44.8.tar.xz"
+
+[dependencias]
+construcao = ["glib", "libpng", "shared-mime-info", "meson"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+mkdir -p build && cd build && meson setup --prefix=/usr --buildtype=release --wrap-mode=nofallback -D png=enabled -D gif=enabled -D jpeg=disabled -D tiff=disabled -D thumbnailer=disabled -D glycin=disabled -D introspection=disabled -D man=false -D tests=false -D installed_tests=false ..
+''',
+  '''
+cd build && ninja
+''',
+]
+instalar = [
+  '''
+cd build && ninja install
+gdk-pixbuf-query-loaders --update-cache
+''',
+]

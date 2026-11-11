@@ -1,0 +1,42 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Flatpak (aplicativos do Flathub): upstream (github.com/flatpak/flatpak)
+# Compilado no ambiente isolado, sobre o sistema base.
+# Sem o ajudante de sistema (polkit): os apps são instalados por usuário.
+
+[pacote]
+nome      = "flatpak"
+versao    = "1.18.4"
+resumo    = "Flatpak: aplicativos do Flathub em caixa de areia"
+licenca   = "LGPL-2.1-or-later"
+categoria = "flatpak"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://github.com/flatpak/flatpak/releases/download/1.18.4/flatpak-1.18.4.tar.xz"
+
+[[fonte]]
+url = "https://dl.flathub.org/repo/flathub.flatpakrepo"
+extrair = false
+
+[dependencias]
+construcao = ["ostree", "appstream", "gdk-pixbuf", "json-glib", "libseccomp", "libarchive", "curl", "gpgme", "fuse3", "bubblewrap", "xdg-dbus-proxy", "pyparsing", "wayland", "wayland-protocols", "libcap", "zstd", "systemd", "libxml2", "meson"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+mkdir -p build && cd build && meson setup --prefix=/usr --buildtype=release --wrap-mode=nofallback -D system_bubblewrap=/usr/bin/bwrap -D system_dbus_proxy=/usr/bin/xdg-dbus-proxy -D system_helper=disabled -D dconf=disabled -D malcontent=disabled -D selinux_module=disabled -D gir=disabled -D gtkdoc=disabled -D docbook_docs=disabled -D man=disabled -D tests=false -D installed_tests=false -D xauth=disabled -D wayland_security_context=enabled -D seccomp=enabled -D systemd=enabled ..
+''',
+  '''
+cd build && ninja
+''',
+]
+instalar = [
+  '''
+cd build && ninja install
+# Flathub já configurado para quem quiser instalar no sistema; para cada
+# usuário, a sessão adiciona o mesmo arquivo (ver plumagem-sessao).
+install -vDm644 ../../flathub.flatpakrepo /etc/flatpak/remotes.d/flathub.flatpakrepo
+install -vDm644 ../../flathub.flatpakrepo /usr/share/flatpak/flathub.flatpakrepo
+''',
+]

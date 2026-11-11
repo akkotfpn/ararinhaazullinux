@@ -31,6 +31,9 @@ qm create "$VMID" --name ararinha-teste --ostype l26 --machine q35 \
 qm set "$VMID" --efidisk0 "$ARMAZENAMENTO:1,efitype=4m,pre-enrolled-keys=0"
 qm disk import "$VMID" "$LOCAL" "$ARMAZENAMENTO"
 qm set "$VMID" --scsi0 "$ARMAZENAMENTO:vm-$VMID-disk-1" --boot order=scsi0
+# Espaço para apps do Flatpak: o disco cresce e o Ararinha aumenta a raiz
+# sozinho no boot.
+qm disk resize "$VMID" scsi0 +24G
 qm start "$VMID"
 
 cat <<FIM

@@ -1,0 +1,33 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Flatpak (aplicativos do Flathub): BLFS, GPGME
+# Compilado no ambiente isolado, sobre o sistema base.
+
+[pacote]
+nome      = "gpgme"
+versao    = "2.2.0"
+resumo    = "GPGME: interface de programação do GnuPG"
+licenca   = "LGPL-2.1-or-later"
+categoria = "flatpak"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://www.gnupg.org/ftp/gcrypt/gpgme/gpgme-2.2.0.tar.bz2"
+
+[dependencias]
+construcao = ["libassuan", "gnupg"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+mkdir -p build && cd build && ../configure --prefix=/usr --disable-static
+''',
+  '''
+cd build && make
+''',
+]
+instalar = [
+  '''
+cd build && make install
+''',
+]

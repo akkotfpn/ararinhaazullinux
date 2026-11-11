@@ -1,0 +1,33 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Flatpak (aplicativos do Flathub): BLFS, npth
+# Compilado no ambiente isolado, sobre o sistema base.
+
+[pacote]
+nome      = "npth"
+versao    = "1.8"
+resumo    = "Threads do GnuPG"
+licenca   = "LGPL-2.1-or-later"
+categoria = "flatpak"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://www.gnupg.org/ftp/gcrypt/npth/npth-1.8.tar.bz2"
+
+[dependencias]
+construcao = []
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+./configure --prefix=/usr --sysconfdir=/etc --disable-static
+''',
+  '''
+make
+''',
+]
+instalar = [
+  '''
+make install
+''',
+]

@@ -1,0 +1,34 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Flatpak (aplicativos do Flathub): BLFS, AppStream
+# Compilado no ambiente isolado, sobre o sistema base.
+# Diferença do BLFS: sem documentação, man, GIR e compose.
+
+[pacote]
+nome      = "appstream"
+versao    = "1.2.0"
+resumo    = "AppStream: catálogo de aplicativos"
+licenca   = "LGPL-2.1-or-later"
+categoria = "flatpak"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://www.freedesktop.org/software/appstream/releases/AppStream-1.2.0.tar.xz"
+
+[dependencias]
+construcao = ["glib", "curl", "libxml2", "libxmlb", "libfyaml", "itstool", "gperf", "systemd", "zstd", "meson"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+mkdir -p build && cd build && meson setup --prefix=/usr --buildtype=release --wrap-mode=nofallback -D apidocs=false -D docs=false -D install-docs=false -D man=false -D bash-completion=false -D stemming=false -D gir=false -D vapi=false -D compose=false -D qt=false -D systemd=true ..
+''',
+  '''
+cd build && ninja
+''',
+]
+instalar = [
+  '''
+cd build && ninja install
+''',
+]

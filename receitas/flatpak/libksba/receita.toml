@@ -1,0 +1,33 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Flatpak (aplicativos do Flathub): BLFS, libksba
+# Compilado no ambiente isolado, sobre o sistema base.
+
+[pacote]
+nome      = "libksba"
+versao    = "1.8.1"
+resumo    = "Certificados X.509 do GnuPG"
+licenca   = "LGPL-3.0-or-later"
+categoria = "flatpak"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://www.gnupg.org/ftp/gcrypt/libksba/libksba-1.8.1.tar.bz2"
+
+[dependencias]
+construcao = ["libgpg-error"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+./configure --prefix=/usr --sysconfdir=/etc --disable-static
+''',
+  '''
+make
+''',
+]
+instalar = [
+  '''
+make install
+''',
+]

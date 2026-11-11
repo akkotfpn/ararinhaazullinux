@@ -1,0 +1,36 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Flatpak (aplicativos do Flathub): BLFS, itstool
+# Compilado no ambiente isolado, sobre o sistema base.
+
+[pacote]
+nome      = "itstool"
+versao    = "2.0.7"
+resumo    = "Tradução de XML (usada pelo AppStream)"
+licenca   = "GPL-3.0-or-later"
+categoria = "flatpak"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://github.com/itstool/itstool/archive/2.0.7/itstool-2.0.7.tar.gz"
+
+[dependencias]
+construcao = ["libxml2", "autoconf", "automake"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+[ -x configure ] || autoreconf -fi
+''',
+  '''
+PYTHON=/usr/bin/python3 ./configure --prefix=/usr
+''',
+  '''
+make
+''',
+]
+instalar = [
+  '''
+make install
+''',
+]

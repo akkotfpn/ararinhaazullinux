@@ -69,6 +69,12 @@ export XDG_SESSION_TYPE=wayland XDG_CURRENT_DESKTOP=Plumagem
 if [ -z "$DBUS_SESSION_BUS_ADDRESS" ] && command -v dbus-run-session >/dev/null; then
   exec dbus-run-session -- "$0" "$@"
 fi
+# Flatpak: apps instalados (do usuário e do sistema) no menu, e o Flathub
+# configurado para o usuário na primeira sessão.
+if command -v flatpak >/dev/null; then
+  export XDG_DATA_DIRS="$HOME/.local/share/flatpak/exports/share:/var/lib/flatpak/exports/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
+  flatpak remote-add --user --if-not-exists flathub /usr/share/flatpak/flathub.flatpakrepo >/dev/null 2>&1 &
+fi
 # Som: PipeWire, WirePlumber e o servidor compatível com PulseAudio.
 pids=
 if command -v pipewire >/dev/null; then

@@ -44,7 +44,18 @@ printf '/bin/sh\n/bin/bash\n' > /etc/shells
   '''
 cat > /etc/fstab << "EOF"
 # Ararinha Azul Linux — a raiz é achada pelo nome da partição GPT
-PARTLABEL=ararinha-raiz  /  ext4  defaults  1 1
+PARTLABEL=ararinha-raiz  /  ext4  defaults,x-systemd.growfs  1 1
+EOF
+''',
+  # A raiz cresce até ocupar o disco todo no boot (systemd-repart aumenta a
+  # partição; o x-systemd.growfs do fstab aumenta o ext4).
+  '''
+install -vdm755 /usr/lib/repart.d
+cat > /usr/lib/repart.d/50-raiz.conf << "EOF"
+[Partition]
+Type=root
+Label=ararinha-raiz
+GrowFileSystem=yes
 EOF
 ''',
   '''

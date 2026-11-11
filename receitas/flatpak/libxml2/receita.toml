@@ -1,0 +1,36 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Flatpak (aplicativos do Flathub): BLFS, libxml2 (com o módulo Python, usado pelo itstool)
+# Compilado no ambiente isolado, sobre o sistema base.
+
+[pacote]
+nome      = "libxml2"
+versao    = "2.15.4"
+resumo    = "Biblioteca de XML"
+licenca   = "MIT"
+categoria = "flatpak"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://download.gnome.org/sources/libxml2/2.15/libxml2-2.15.4.tar.xz"
+
+[dependencias]
+construcao = ["meson", "python", "readline"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+sed -i "/'git'/,+3d" meson.build
+''',
+  '''
+mkdir -p build && cd build && meson setup --prefix=/usr --buildtype=release --wrap-mode=nofallback -D history=enabled -D icu=disabled -D python=enabled ..
+''',
+  '''
+cd build && ninja
+''',
+]
+instalar = [
+  '''
+cd build && ninja install
+''',
+]

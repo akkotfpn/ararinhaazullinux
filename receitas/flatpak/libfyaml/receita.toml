@@ -1,0 +1,33 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Flatpak (aplicativos do Flathub): BLFS, libfyaml
+# Compilado no ambiente isolado, sobre o sistema base.
+
+[pacote]
+nome      = "libfyaml"
+versao    = "0.9.6"
+resumo    = "Leitor de YAML (usado pelo AppStream)"
+licenca   = "MIT"
+categoria = "flatpak"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://github.com/pantoniou/libfyaml/releases/download/v0.9.6/libfyaml-0.9.6.tar.gz"
+
+[dependencias]
+construcao = []
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+./configure --prefix=/usr --disable-static --without-libclang
+''',
+  '''
+make
+''',
+]
+instalar = [
+  '''
+make install
+''',
+]

@@ -1,0 +1,33 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Flatpak (aplicativos do Flathub): BLFS, libarchive
+# Compilado no ambiente isolado, sobre o sistema base.
+
+[pacote]
+nome      = "libarchive"
+versao    = "3.8.9"
+resumo    = "Leitura e escrita de arquivos compactados"
+licenca   = "BSD-2-Clause"
+categoria = "flatpak"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://github.com/libarchive/libarchive/releases/download/v3.8.9/libarchive-3.8.9.tar.xz"
+
+[dependencias]
+construcao = ["xz", "zstd", "bzip2", "zlib", "libxml2", "openssl"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+./configure --prefix=/usr --disable-static
+''',
+  '''
+make
+''',
+]
+instalar = [
+  '''
+make install
+''',
+]
