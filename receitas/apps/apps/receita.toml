@@ -101,7 +101,7 @@ LockPersonality=yes
 MemoryDenyWriteExecute=yes
 SystemCallArchitectures=native
 SystemCallFilter=@system-service
-CapabilityBoundingSet=CAP_NET_ADMIN
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_SYS_BOOT
 RestrictAddressFamilies=AF_UNIX AF_NETLINK
 FIM
 systemctl enable ararinha-sistema.socket

@@ -74,6 +74,8 @@ Wants=network-pre.target
 [Service]
 Type=oneshot
 RemainAfterExit=yes
+# Desligado pela pessoa (Configurações › Firewall): não carrega regras.
+ExecCondition=/bin/sh -c "! test -e /etc/ararinha/firewall-desligado"
 ExecStart=/usr/sbin/nft -f /etc/nftables.conf
 ExecReload=/usr/sbin/nft -f /etc/nftables.conf
 ExecStop=/usr/sbin/nft flush ruleset

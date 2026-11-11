@@ -1,0 +1,31 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Regras udev da Valve para controles de jogo (Steam Controller, DualShock,
+# Switch Pro, Index...) e o /dev/uinput: a Steam reclama sem elas
+# ("Missing permissions for input devices"). Só dão acesso ao usuário que
+# está na frente do computador (uaccess).
+
+[pacote]
+nome      = "steam-devices"
+versao    = "2025.22ec85e"
+resumo    = "Regras udev para controles da Steam"
+licenca   = "MIT"
+categoria = "x11"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://github.com/ValveSoftware/steam-devices/archive/22ec85e5ff5ea2e15c56d71a41bcbef46356cd60.tar.gz"
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+true
+''',
+]
+instalar = [
+  '''
+install -vDm644 60-steam-input.rules /usr/lib/udev/rules.d/60-steam-input.rules
+install -vDm644 60-steam-vr.rules    /usr/lib/udev/rules.d/60-steam-vr.rules
+install -vDm644 LICENSE /usr/share/licenses/steam-devices/LICENSE
+''',
+]

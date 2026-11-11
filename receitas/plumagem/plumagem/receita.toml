@@ -78,6 +78,14 @@ if command -v flatpak >/dev/null; then
   if [ ! -f "$HOME/.local/share/flatpak/overrides/global" ] || ! grep -q OZONE "$HOME/.local/share/flatpak/overrides/global" 2>/dev/null; then
     flatpak override --user --env=ELECTRON_OZONE_PLATFORM_HINT=auto >/dev/null 2>&1 &
   fi
+  # Apps GTK e o Chromium desenham a própria barra de título: botões de
+  # minimizar, maximizar e fechar à direita, como no Windows.
+  for v in 3.0 4.0; do
+    if [ ! -e "$HOME/.config/gtk-$v/settings.ini" ]; then
+      mkdir -p "$HOME/.config/gtk-$v"
+      printf '[Settings]\ngtk-decoration-layout=:minimize,maximize,close\ngtk-font-name=Inter 10\n' > "$HOME/.config/gtk-$v/settings.ini"
+    fi
+  done
   # Primeiro login: atalho da Central de Apps na área de trabalho e o
   # Chromium instalado sozinho (em segundo plano, com prioridade baixa).
   marca="$HOME/.config/ararinha/primeiro-login"
@@ -89,7 +97,10 @@ if command -v flatpak >/dev/null; then
       sleep 8
       ararinha-notificar "Instalando o Chromium" "O navegador chega em alguns minutos; ele aparece no menu Iniciar."
       if nice -n 15 flatpak install --user -y --noninteractive flathub org.chromium.Chromium >/dev/null 2>&1; then
-        cp "$HOME/.local/share/flatpak/exports/share/applications/org.chromium.Chromium.desktop" "$HOME/Área de Trabalho/" 2>/dev/null
+        mkdir -p "$HOME/Área de Trabalho"
+        for d in "$HOME/.local/share/flatpak/exports/share/applications/org.chromium.Chromium.desktop" /var/lib/flatpak/exports/share/applications/org.chromium.Chromium.desktop; do
+          if [ -e "$d" ]; then cp "$d" "$HOME/Área de Trabalho/"; break; fi
+        done
         ararinha-notificar "Chromium pronto" "O navegador já está no menu Iniciar e na área de trabalho."
       else
         ararinha-notificar "Chromium não foi instalado" "Sem internet? Instale depois pela Central de Apps."

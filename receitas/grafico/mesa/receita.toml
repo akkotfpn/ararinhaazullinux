@@ -18,13 +18,13 @@ tipo      = "toolchain"
 url = "https://archive.mesa3d.org/mesa-26.2.3.tar.xz"
 
 [dependencias]
-construcao = ["libdrm", "wayland-protocols", "mako", "pyyaml", "packaging", "zstd", "libelf", "llvm"]
+construcao = ["libdrm", "wayland-protocols", "mako", "pyyaml", "packaging", "zstd", "libelf", "llvm", "libx11", "libxcb", "libxext", "libxfixes", "libxxf86vm", "libxrandr", "libxshmfence"]
 
 [construcao]
 ambiente = "isolado"
 passos = [
   '''
-mkdir -p build && cd build && meson setup --prefix=/usr --buildtype=release --wrap-mode=nofallback -D platforms=wayland -D gallium-drivers=llvmpipe,softpipe,virgl,radeonsi,r600,r300,nouveau,svga -D vulkan-drivers= -D llvm=enabled -D shared-llvm=enabled -D glx=disabled -D gles1=disabled -D valgrind=disabled -D libunwind=disabled -D video-codecs= -D build-tests=false ..
+mkdir -p build && cd build && meson setup --prefix=/usr --buildtype=release --wrap-mode=nofallback -D platforms=x11,wayland -D gallium-drivers=llvmpipe,softpipe,virgl,radeonsi,r600,r300,nouveau,svga,iris,crocus -D vulkan-drivers= -D llvm=enabled -D shared-llvm=enabled -D glx=dri -D glvnd=disabled -D gles1=disabled -D valgrind=disabled -D libunwind=disabled -D video-codecs= -D build-tests=false ..
 ''',
   '''
 cd build && ninja

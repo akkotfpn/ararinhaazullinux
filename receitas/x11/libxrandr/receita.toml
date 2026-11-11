@@ -1,0 +1,32 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# GLX no Xwayland (Steam e jogos X11): BLFS, libXrandr
+
+[pacote]
+nome      = "libxrandr"
+versao    = "1.5.5"
+resumo    = "Extensão RandR"
+licenca   = "MIT"
+categoria = "x11"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://www.x.org/pub/individual/lib/libXrandr-1.5.5.tar.xz"
+
+[dependencias]
+construcao = ["libxext", "libxrender"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+./configure --prefix=/usr --sysconfdir=/etc --localstatedir=/var --disable-static
+''',
+  '''
+make -j$NUCLEOS
+''',
+]
+instalar = [
+  '''
+make install
+''',
+]
