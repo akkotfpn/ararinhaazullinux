@@ -50,6 +50,8 @@ const ENERGIA_A: i32 = 48;
 pub struct Usuario {
     pub login: String,
     pub nome: String,
+    /// Foto da conta (~/.face), já redonda.
+    pub foto: Option<image::RgbaImage>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -143,6 +145,7 @@ pub fn ler_usuarios() -> Vec<Usuario> {
             Some(Usuario {
                 login: c[0].to_string(),
                 nome: if nome.is_empty() { c[0].to_string() } else { nome.to_string() },
+                foto: desenho::foto_da_conta(c[5], 104),
             })
         })
         .collect()
@@ -704,7 +707,11 @@ impl Ninho {
         let a = self.cartao_a();
         let mut t = Tela::nova(CARTAO_L, a);
         t.vidro(0.0, 0.0, CARTAO_L as f32, a as f32, 18.0, (origem.x, origem.y), tema::FUNDO().com_alfa(185));
-        if let Some(m) = &self.mingau {
+        // Ao entrar, a foto da conta (se houver) no lugar do Mingau.
+        let foto = if self.modo == Modo::Entrar { self.usuario().and_then(|u| u.foto.as_ref()) } else { None };
+        if let Some(f) = foto {
+            t.imagem((CARTAO_L - f.width() as i32) / 2, 22, f);
+        } else if let Some(m) = &self.mingau {
             t.imagem((CARTAO_L - m.width() as i32) / 2, 18, m);
         }
         let (campos, botao) = self.campos_y();

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Página "Conta": trocar a senha da própria conta (pelo ararinha-senha).
+//! Página "Conta": foto da conta (~/.face) e trocar a senha da própria
+//! conta (pelo ararinha-senha).
 
 use std::{
     io::Write,
@@ -16,6 +17,53 @@ pub struct PaginaConta {
     foco: usize,
     pub aviso: Option<String>,
     rx: Option<Receiver<i32>>,
+    foto: Option<penas::desenho::Imagem>,
+    foto_lida: bool,
+    rx_foto: Option<Receiver<Result<(), String>>>,
+}
+
+fn casa() -> String {
+    std::env::var("HOME").unwrap_or_default()
+}
+
+/// Lê a foto da conta, recortada num círculo.
+fn ler_foto(lado: u32) -> Option<penas::desenho::Imagem> {
+    let bytes = std::fs::read(format!("{}/.face", casa())).ok()?;
+    let img = image::load_from_memory(&bytes).ok()?.to_rgba8();
+    let mut r = image::imageops::resize(&img, lado, lado, image::imageops::FilterType::Triangle);
+    let c = lado as f32 / 2.0;
+    for (x, y, p) in r.enumerate_pixels_mut() {
+        let d = ((x as f32 + 0.5 - c).powi(2) + (y as f32 + 0.5 - c).powi(2)).sqrt();
+        p[3] = (p[3] as f32 * (c - d).clamp(0.0, 1.0)) as u8;
+    }
+    Some(r)
+}
+
+/// Pede a foto ao Explorador (modo escolher), recorta o centro quadrado e
+/// grava ~/.face em PNG de 256 px (o Ninho, o menu e o bloqueio usam).
+fn escolher_foto() -> Result<(), String> {
+    let saida = Command::new("explorador")
+        .args(["--escolher", "abrir", "--titulo", "Escolha a foto da conta", "--pasta"])
+        .arg(format!("{}/Imagens", casa()))
+        .output()
+        .map_err(|e| format!("Não deu para abrir o Explorador: {e}"))?;
+    let caminho = String::from_utf8_lossy(&saida.stdout).lines().next().unwrap_or("").trim().to_string();
+    if caminho.is_empty() {
+        return Ok(());
+    }
+    let img = image::ImageReader::open(&caminho)
+        .and_then(|r| r.with_guessed_format())
+        .map_err(|e| format!("Não deu para abrir a imagem: {e}"))?
+        .decode()
+        .map_err(|_| "Não deu para ler essa imagem (use PNG, JPEG ou WebP).".to_string())?
+        .to_rgba8();
+    let q = img.width().min(img.height());
+    let recorte = image::imageops::crop_imm(&img, (img.width() - q) / 2, (img.height() - q) / 2, q, q).to_image();
+    let foto = image::imageops::resize(&recorte, 256, 256, image::imageops::FilterType::Lanczos3);
+    let destino = format!("{}/.face", casa());
+    let tmp = format!("{destino}.novo");
+    foto.save_with_format(&tmp, image::ImageFormat::Png).map_err(|e| format!("Não deu para salvar a foto: {e}"))?;
+    std::fs::rename(&tmp, &destino).map_err(|e| format!("Não deu para salvar a foto: {e}"))
 }
 
 impl PaginaConta {
@@ -53,7 +101,61 @@ impl PaginaConta {
         self.aviso = Some("Trocando a senha…".into());
     }
 
-    pub fn desenhar(&mut self, ui: &mut Ui, x0: f32, _l: f32) {
+    fn desenhar_foto(&mut self, ui: &mut Ui, x: f32, y: f32) {
+        if !self.foto_lida {
+            self.foto_lida = true;
+            self.foto = ler_foto(112);
+        }
+        if let Some(rx) = &self.rx_foto {
+            match rx.try_recv() {
+                Ok(r) => {
+                    self.rx_foto = None;
+                    match r {
+                        Ok(()) => {
+                            self.foto = ler_foto(112);
+                            if self.foto.is_some() {
+                                self.aviso = Some("Foto da conta atualizada.".into());
+                            }
+                        }
+                        Err(e) => self.aviso = Some(format!("Não deu: {e}")),
+                    }
+                }
+                Err(_) => ui.acordar_em = Some(Duration::from_millis(250)),
+            }
+        }
+        ui.tela.texto(x, y, 12.5, tema::TEXTO_SECUNDARIO(), "Foto da conta");
+        let (fx, fy) = (x, y + 14.0);
+        if let Some(f) = &self.foto {
+            ui.tela.imagem(fx as i32, fy as i32, f);
+        } else {
+            let usuario = std::env::var("USER").unwrap_or_default();
+            ui.tela.retangulo(fx, fy, 112.0, 112.0, 56.0, tema::DESTAQUE());
+            let ini: String = usuario.chars().next().map(|c| c.to_uppercase().collect()).unwrap_or_default();
+            let li = desenho::medir(44.0, &ini);
+            ui.tela.texto(fx + 56.0 - li / 2.0, fy + 72.0, 44.0, tema::BRANCO(), &ini);
+        }
+        let livre = self.rx_foto.is_none();
+        if penas::componentes::botao(ui, x, fy + 128.0, "Escolher foto…", penas::componentes::Estilo::Comum, livre) {
+            let (tx, rx) = channel();
+            std::thread::spawn(move || {
+                let _ = tx.send(escolher_foto());
+            });
+            self.rx_foto = Some(rx);
+        }
+        if self.foto.is_some() && penas::componentes::botao(ui, x, fy + 172.0, "Remover foto", penas::componentes::Estilo::Comum, livre) {
+            let _ = std::fs::remove_file(format!("{}/.face", casa()));
+            self.foto = None;
+            self.aviso = Some("Foto removida.".into());
+        }
+    }
+
+    pub fn desenhar(&mut self, ui: &mut Ui, x0: f32, l: f32) {
+        // Foto ao lado dos campos de senha (ou embaixo, se a janela for estreita).
+        if l >= 600.0 {
+            self.desenhar_foto(ui, x0 + 410.0, 120.0);
+        } else {
+            self.desenhar_foto(ui, x0 + 32.0, 400.0);
+        }
         if let Some(rx) = &self.rx {
             match rx.try_recv() {
                 Ok(c) => {

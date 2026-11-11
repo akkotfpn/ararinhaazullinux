@@ -442,6 +442,30 @@ pub fn icone(png: &[u8], largura: u32, altura: u32) -> Option<image::RgbaImage> 
     Some(image::imageops::resize(&img, largura, altura, image::imageops::FilterType::Triangle))
 }
 
+/// Foto da conta (`~/.face`, PNG gravado pelas Configurações), recortada
+/// num círculo com borda suave e um aro branco fino.
+pub fn foto_da_conta(casa: &str, lado: u32) -> Option<image::RgbaImage> {
+    let bytes = std::fs::read(format!("{casa}/.face")).ok()?;
+    if bytes.len() > 8 * 1024 * 1024 {
+        return None;
+    }
+    let img = image::load_from_memory_with_format(&bytes, image::ImageFormat::Png).ok()?.to_rgba8();
+    let q = img.width().min(img.height());
+    let recorte = image::imageops::crop_imm(&img, (img.width() - q) / 2, (img.height() - q) / 2, q, q).to_image();
+    let mut r = image::imageops::resize(&recorte, lado, lado, image::imageops::FilterType::Triangle);
+    let c = lado as f32 / 2.0;
+    for (x, y, p) in r.enumerate_pixels_mut() {
+        let d = ((x as f32 + 0.5 - c).powi(2) + (y as f32 + 0.5 - c).powi(2)).sqrt();
+        let dentro = (c - d).clamp(0.0, 1.0);
+        let aro = (1.0 - ((d - (c - 1.5)).abs() - 0.75).clamp(0.0, 1.0)) * dentro;
+        for k in 0..3 {
+            p[k] = (p[k] as f32 * (1.0 - aro * 0.85) + 255.0 * aro * 0.85) as u8;
+        }
+        p[3] = (p[3] as f32 * dentro) as u8;
+    }
+    Some(r)
+}
+
 /// Papel de parede desfocado na resolução da tela, base do efeito de vidro.
 struct Vidro {
     l: i32,

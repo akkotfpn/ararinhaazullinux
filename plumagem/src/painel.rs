@@ -370,6 +370,8 @@ pub struct Painel {
     pub menu_rolagem: usize,
     /// App escolhido pelo teclado (índice na lista filtrada).
     pub menu_sel: usize,
+    /// Foto da conta (~/.face), relida ao abrir o menu.
+    foto: Option<image::RgbaImage>,
     relogio: (u64, String, String),
     barra: Option<(String, MemoryRenderBuffer)>,
     menu: Option<(String, MemoryRenderBuffer)>,
@@ -420,6 +422,7 @@ impl Default for Painel {
             busca: String::new(),
             menu_rolagem: 0,
             menu_sel: 0,
+            foto: None,
             relogio: (0, String::new(), String::new()),
             barra: None,
             menu: None,
@@ -534,6 +537,8 @@ impl Painel {
         self.busca.clear();
         self.menu_rolagem = 0;
         self.menu_sel = 0;
+        self.foto = std::env::var("HOME").ok().and_then(|h| desenho::foto_da_conta(&h, 32));
+        self.menu = None;
         self.carregar_apps();
     }
 
@@ -1649,10 +1654,14 @@ impl Painel {
         if hover == Some(Alvo::Usuario) {
             t.retangulo(10.0, ry + 12.0, fim_usuario - 14.0, 40.0, 8.0, tema::SUPERFICIE().com_alfa(200));
         }
-        t.retangulo(18.0, ry + 16.0, 32.0, 32.0, 16.0, tema::DESTAQUE());
-        let ini = letra(&nome_conta);
-        let li = desenho::medir(15.0, &ini);
-        t.texto(34.0 - li / 2.0, ry + 37.5, 15.0, tema::BRANCO(), &ini);
+        if let Some(f) = &self.foto {
+            t.imagem(18, (ry + 16.0) as i32, f);
+        } else {
+            t.retangulo(18.0, ry + 16.0, 32.0, 32.0, 16.0, tema::DESTAQUE());
+            let ini = letra(&nome_conta);
+            let li = desenho::medir(15.0, &ini);
+            t.texto(34.0 - li / 2.0, ry + 37.5, 15.0, tema::BRANCO(), &ini);
+        }
         let rotulo_hover = match hover {
             Some(Alvo::Bloquear) => Some("Bloquear (Win+L)"),
             Some(Alvo::Sair) => Some("Sair da sessão"),

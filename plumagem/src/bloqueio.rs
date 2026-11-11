@@ -31,6 +31,7 @@ pub struct Bloqueio {
     /// Senhas erradas seguidas e até quando a tela recusa novas tentativas.
     erros: u32,
     espera_ate: Option<std::time::Instant>,
+    foto: Option<image::RgbaImage>,
 }
 
 fn agora() -> (String, String) {
@@ -57,6 +58,7 @@ impl Bloqueio {
             buf: None,
             erros: 0,
             espera_ate: None,
+            foto: std::env::var("HOME").ok().and_then(|h| desenho::foto_da_conta(&h, 96)),
         }
     }
 
@@ -147,6 +149,9 @@ impl Bloqueio {
         // Cartão da senha
         let (cl, ca) = (380.0, 170.0);
         let (cx, cy) = (l / 2.0 - cl / 2.0, a * 0.52);
+        if let Some(f) = &self.foto {
+            t.imagem((l / 2.0) as i32 - 48, (cy - 108.0) as i32, f);
+        }
         t.vidro(cx, cy, cl, ca, 16.0, (cx as i32, cy as i32), Cor(244, 247, 250, 150));
         let lu = desenho::medir(18.0, &self.usuario);
         t.texto(cx + cl / 2.0 - lu / 2.0, cy + 40.0, 18.0, desenho::Cor::hex(0x0B1A2E), &self.usuario);

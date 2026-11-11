@@ -8,3 +8,5 @@ authors.workspace = true
 
 [dependencies]
 penas = { path = "../penas" }
+# Foto da conta: abre JPEG/PNG/WebP e grava ~/.face em PNG.
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "bmp"] }
