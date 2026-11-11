@@ -347,6 +347,9 @@ impl<B: Backend> AnvilState<B> {
             self.painel.rede_aberta = false;
         }
         self.painel.segurando = true;
+        if alvo != Alvo::Energia {
+            self.painel.energia_aberta = false;
+        }
 
         match alvo {
             Alvo::Iniciar => self.alternar_menu(),
@@ -376,6 +379,12 @@ impl<B: Backend> AnvilState<B> {
                 if let Some(exec) = self.painel.apps_visiveis().get(i).map(|a| a.exec.clone()) {
                     self.executar_programa(&exec);
                 }
+            }
+            Alvo::Energia => self.painel.energia_aberta = !self.painel.energia_aberta,
+            Alvo::Dormir => {
+                self.painel.menu_aberto = false;
+                // O gancho do system-sleep bloqueia a tela antes de dormir.
+                self.executar_programa("systemctl suspend");
             }
             Alvo::Bloquear => {
                 self.painel.menu_aberto = false;

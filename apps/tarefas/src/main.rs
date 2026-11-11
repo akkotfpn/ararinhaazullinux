@@ -18,7 +18,10 @@ const LINHA_A: f32 = 30.0;
 
 #[derive(Clone, Copy, PartialEq)]
 enum Aba {
+    /// Agrupado por app (como no Windows).
     Processos,
+    /// Todos os subprocessos, um por linha.
+    Subprocessos,
     Desempenho,
     Hardware,
 }
@@ -33,6 +36,7 @@ enum Ordem {
 
 struct Processo {
     pid: u32,
+    ppid: u32,
     nome: String,
     usuario: u32,
     cpu: f32,
@@ -63,6 +67,90 @@ struct Tarefas {
     rx_memoria: Option<std::sync::mpsc::Receiver<Result<hardware::Memoria, String>>>,
     secoes: Option<Vec<(String, Vec<(String, String)>)>>,
     rolagem_hw: f32,
+    /// Grupos abertos (pela raiz) na aba Processos.
+    abertos: std::collections::HashSet<u32>,
+    /// A seleção é um grupo inteiro (aba Processos).
+    sel_grupo: bool,
+}
+
+/// Uma linha das listas de processos.
+#[derive(Clone)]
+struct Linha {
+    nome: String,
+    pid: u32,
+    n: usize,
+    cpu: f32,
+    mem: u64,
+    recuo: f32,
+    grupo: bool,
+    titulo: bool,
+}
+
+/// Processos que só embrulham outros (sandbox, lançadores).
+fn embrulho(nome: &str) -> bool {
+    matches!(nome, "bwrap" | "flatpak" | "flatpak-spawn" | "zypak-helper" | "zypak-sandbox" | "sh" | "bash" | "dash" | "env" | "nice" | "xdg-dbus-proxy")
+}
+
+/// Pais que encerram a busca: a sessão, não um app.
+fn fronteira(nome: &str) -> bool {
+    matches!(nome, "plumagem" | "plumagem-sessao" | "systemd" | "init" | "su" | "dbus-daemon" | "dbus-run-session" | "ninho" | "dbus-broker" | "login")
+}
+
+/// Nome de app para o grupo: o Name[pt_BR] do .desktop, ou um nome conhecido.
+fn nome_do_app(base: &str) -> (String, bool) {
+    let conhecidos = [
+        ("chrome", "Chromium"),
+        ("chromium", "Chromium"),
+        ("firefox", "Firefox"),
+        ("steam", "Steam"),
+        ("Discord", "Discord"),
+        ("telegram-desktop", "Telegram"),
+        ("spotify", "Spotify"),
+        ("obs", "OBS Studio"),
+        ("code", "Visual Studio Code"),
+        ("vlc", "VLC"),
+        ("soffice.bin", "LibreOffice"),
+        ("gimp", "GIMP"),
+        ("krita", "Krita"),
+        ("alacritty", "Terminal (Alacritty)"),
+    ];
+    if let Some((_, n)) = conhecidos.iter().find(|(k, _)| *k == base) {
+        return (n.to_string(), true);
+    }
+    for pasta in ["/usr/share/applications", "/usr/local/share/applications"] {
+        if let Ok(t) = fs::read_to_string(format!("{pasta}/{base}.desktop")) {
+            let mut nome = None;
+            for l in t.lines() {
+                if let Some(v) = l.strip_prefix("Name[pt_BR]=") {
+                    nome = Some(v.to_string());
+                    break;
+                }
+                if nome.is_none() {
+                    if let Some(v) = l.strip_prefix("Name=") {
+                        nome = Some(v.to_string());
+                    }
+                }
+            }
+            if let Some(n) = nome {
+                return (n, true);
+            }
+        }
+    }
+    let sistema = [
+        ("plumagem", "Plumagem (área de trabalho)"),
+        ("Xwayland", "Xwayland (apps X11)"),
+        ("pipewire", "Som (PipeWire)"),
+        ("pipewire-pulse", "Som (PipeWire)"),
+        ("wireplumber", "Som (WirePlumber)"),
+        ("ararinha-bandeja", "Bandeja do sistema"),
+        ("xdg-desktop-portal", "Portais do Flatpak"),
+        ("xdg-desktop-portal-ararinha", "Portais do Ararinha"),
+        ("dbus-daemon", "Barramento D-Bus"),
+    ];
+    if let Some((_, n)) = sistema.iter().find(|(k, _)| *k == base) {
+        return (n.to_string(), false);
+    }
+    (base.to_string(), false)
 }
 
 fn ler_cpu() -> (u64, u64) {
@@ -98,8 +186,8 @@ fn meu_uid() -> u32 {
         .unwrap_or(0)
 }
 
-/// (nome, tempo de CPU em ticks) de /proc/<pid>/stat.
-fn ler_stat(pid: u32) -> Option<(String, u64)> {
+/// (nome, tempo de CPU em ticks, pai) de /proc/<pid>/stat.
+fn ler_stat(pid: u32) -> Option<(String, u64, u32)> {
     let t = fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
     let ini = t.find('(')?;
     let fim = t.rfind(')')?;
@@ -108,7 +196,8 @@ fn ler_stat(pid: u32) -> Option<(String, u64)> {
     // Depois do ")": estado é o campo 0; utime=11, stime=12.
     let ut: u64 = resto.get(11)?.parse().ok()?;
     let st: u64 = resto.get(12)?.parse().ok()?;
-    Some((nome, ut + st))
+    let ppid: u32 = resto.get(1)?.parse().ok()?;
+    Some((nome, ut + st, ppid))
 }
 
 fn ler_status(pid: u32) -> (u64, u32) {
@@ -181,6 +270,8 @@ impl Tarefas {
             rx_memoria: None,
             secoes: None,
             rolagem_hw: 0.0,
+            abertos: Default::default(),
+            sel_grupo: false,
         };
         let (tx, rx) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
@@ -216,7 +307,7 @@ impl Tarefas {
         if let Ok(rd) = fs::read_dir("/proc") {
             for e in rd.flatten() {
                 let Some(pid) = e.file_name().to_str().and_then(|s| s.parse::<u32>().ok()) else { continue };
-                let Some((comm, tempo)) = ler_stat(pid) else { continue };
+                let Some((comm, tempo, ppid)) = ler_stat(pid) else { continue };
                 let (rss, uid) = ler_status(pid);
                 // Linhas do kernel (sem memória própria) não interessam.
                 if rss == 0 {
@@ -230,7 +321,7 @@ impl Tarefas {
                     _ => 0.0,
                 };
                 novos.insert(pid, tempo);
-                lista.push(Processo { pid, nome: nome_bonito(pid, comm), usuario: uid, cpu, memoria_kb: rss });
+                lista.push(Processo { pid, ppid, nome: nome_bonito(pid, comm), usuario: uid, cpu, memoria_kb: rss });
             }
         }
         self.tempos_ant = novos;
@@ -254,6 +345,30 @@ impl Tarefas {
 
     fn finalizar(&mut self) {
         let Some(pid) = self.selecionado else { return };
+        if self.sel_grupo && self.aba == Aba::Processos {
+            let grupos = self.agrupar();
+            let Some(g) = grupos.iter().find(|g| g.0 == pid) else { return };
+            let membros: Vec<&Processo> = g.3.iter().map(|i| &self.processos[*i]).collect();
+            if membros.iter().any(|p| p.usuario != self.meu_uid) && self.meu_uid != 0 {
+                self.aviso = Some(format!("\"{}\" é do sistema; não dá para finalizar daqui.", g.1));
+                return;
+            }
+            let mut cmd = std::process::Command::new("kill");
+            cmd.arg("-TERM");
+            for p in &membros {
+                cmd.arg(p.pid.to_string());
+            }
+            let nome = g.1.clone();
+            match cmd.status() {
+                Ok(_) => {
+                    self.aviso = Some(format!("\"{nome}\" foi finalizado."));
+                    self.selecionado = None;
+                    self.proxima = Instant::now() + Duration::from_millis(300);
+                }
+                Err(_) => self.aviso = Some(format!("Não deu para finalizar \"{nome}\".")),
+            }
+            return;
+        }
         let Some(p) = self.processos.iter().find(|p| p.pid == pid) else { return };
         if p.usuario != self.meu_uid && self.meu_uid != 0 {
             self.aviso = Some(format!("\"{}\" é do sistema; não dá para finalizar daqui.", p.nome));
@@ -270,6 +385,102 @@ impl Tarefas {
         }
     }
 
+    /// Grupos por app: (raiz, nome, é app, índices dos membros).
+    fn agrupar(&self) -> Vec<(u32, String, bool, Vec<usize>)> {
+        let por_pid: HashMap<u32, usize> = self.processos.iter().enumerate().map(|(i, p)| (p.pid, i)).collect();
+        let mut grupos: HashMap<u32, Vec<usize>> = HashMap::new();
+        for (i, p) in self.processos.iter().enumerate() {
+            // Sobe enquanto o pai for o mesmo app (mesmo nome ou prefixo) ou
+            // só um embrulho (bwrap, sh...), sem passar da sessão.
+            let mut atual = p;
+            let mut base = p.nome.clone();
+            for _ in 0..32 {
+                let Some(pai) = por_pid.get(&atual.ppid).map(|j| &self.processos[*j]) else { break };
+                if fronteira(&pai.nome) || pai.pid <= 1 {
+                    break;
+                }
+                let mesmo = embrulho(&pai.nome)
+                    || embrulho(&atual.nome)
+                    || pai.nome == base
+                    || (base.len() > 3 && pai.nome.len() > 3 && (base.starts_with(&pai.nome) || pai.nome.starts_with(&base)));
+                if !mesmo {
+                    break;
+                }
+                if !embrulho(&pai.nome) {
+                    base = pai.nome.clone();
+                }
+                atual = pai;
+            }
+            grupos.entry(atual.pid).or_default().push(i);
+        }
+        let mut v: Vec<(u32, String, bool, Vec<usize>)> = grupos
+            .into_iter()
+            .map(|(raiz, membros)| {
+                // Nome do grupo: o membro "de verdade" (não embrulho) mais pesado.
+                let principal = membros
+                    .iter()
+                    .map(|i| &self.processos[*i])
+                    .filter(|p| !embrulho(&p.nome))
+                    .min_by_key(|p| (p.ppid != raiz && p.pid != raiz, std::cmp::Reverse(p.memoria_kb)))
+                    .map(|p| p.nome.clone())
+                    .unwrap_or_else(|| self.processos[membros[0]].nome.clone());
+                let (nome, app) = nome_do_app(&principal);
+                (raiz, nome, app, membros)
+            })
+            .collect();
+        v.sort_by(|a, b| a.1.to_lowercase().cmp(&b.1.to_lowercase()));
+        v
+    }
+
+    fn linhas(&self) -> Vec<Linha> {
+        if self.aba == Aba::Subprocessos {
+            return self
+                .processos
+                .iter()
+                .map(|p| Linha { nome: p.nome.clone(), pid: p.pid, n: 1, cpu: p.cpu, mem: p.memoria_kb, recuo: 0.0, grupo: false, titulo: false })
+                .collect();
+        }
+        let mut grupos: Vec<Linha> = Vec::new();
+        let mut membros_de: HashMap<u32, Vec<Linha>> = HashMap::new();
+        let mut eh_app: HashMap<u32, bool> = HashMap::new();
+        for (raiz, nome, app, membros) in self.agrupar() {
+            let cpu: f32 = membros.iter().map(|i| self.processos[*i].cpu).sum();
+            let mem: u64 = membros.iter().map(|i| self.processos[*i].memoria_kb).sum();
+            grupos.push(Linha { nome, pid: raiz, n: membros.len(), cpu, mem, recuo: 0.0, grupo: true, titulo: false });
+            eh_app.insert(raiz, app);
+            let mut ms: Vec<Linha> = membros
+                .iter()
+                .map(|i| {
+                    let p = &self.processos[*i];
+                    Linha { nome: p.nome.clone(), pid: p.pid, n: 1, cpu: p.cpu, mem: p.memoria_kb, recuo: 28.0, grupo: false, titulo: false }
+                })
+                .collect();
+            ms.sort_by(|a, b| b.mem.cmp(&a.mem));
+            membros_de.insert(raiz, ms);
+        }
+        match self.ordem {
+            Ordem::Nome => grupos.sort_by_key(|g| g.nome.to_lowercase()),
+            Ordem::Pid => grupos.sort_by_key(|g| g.pid),
+            Ordem::Cpu => grupos.sort_by(|a, b| b.cpu.total_cmp(&a.cpu).then(b.mem.cmp(&a.mem))),
+            Ordem::Memoria => grupos.sort_by(|a, b| b.mem.cmp(&a.mem)),
+        }
+        let mut saida = Vec::new();
+        for (titulo, quer_app) in [("Aplicativos", true), ("Processos em segundo plano", false)] {
+            let desta: Vec<&Linha> = grupos.iter().filter(|g| eh_app.get(&g.pid) == Some(&quer_app)).collect();
+            if desta.is_empty() {
+                continue;
+            }
+            saida.push(Linha { nome: format!("{titulo} ({})", desta.len()), pid: 0, n: 0, cpu: 0.0, mem: 0, recuo: 0.0, grupo: false, titulo: true });
+            for g in desta {
+                saida.push(g.clone());
+                if g.n > 1 && self.abertos.contains(&g.pid) {
+                    saida.extend(membros_de.remove(&g.pid).unwrap_or_default());
+                }
+            }
+        }
+        saida
+    }
+
     fn processos(&mut self, ui: &mut Ui, y0: f32) {
         let (l, a) = (ui.largura(), ui.altura());
         let rodape = 52.0;
@@ -279,7 +490,116 @@ impl Tarefas {
             ("CPU", Ordem::Cpu, l - 240.0),
             ("Memória", Ordem::Memoria, l - 140.0),
         ];
-        // Cabeçalho com totais, como no Windows.
+        let linhas = self.linhas();
+        let lista_y = y0 + 47.0;
+        let lista_a = a - lista_y - rodape;
+        let conteudo = linhas.len() as f32 * LINHA_A;
+        self.rolagem = (self.rolagem + ui.rolagem).clamp(0.0, (conteudo - lista_a).max(0.0));
+        let selecionavel: Vec<usize> = (0..linhas.len()).filter(|i| !linhas[*i].titulo).collect();
+        for t in &ui.teclas {
+            let idx = self
+                .selecionado
+                .and_then(|s| selecionavel.iter().position(|i| linhas[*i].pid == s && linhas[*i].grupo == self.sel_grupo));
+            let novo = match (t, idx) {
+                (Tecla::Baixo, Some(i)) => Some((i + 1).min(selecionavel.len().saturating_sub(1))),
+                (Tecla::Cima, Some(i)) => Some(i.saturating_sub(1)),
+                (Tecla::Baixo | Tecla::Cima, None) => Some(0),
+                _ => None,
+            };
+            if let Some(k) = novo {
+                if let Some(&i) = selecionavel.get(k) {
+                    self.selecionado = Some(linhas[i].pid);
+                    self.sel_grupo = linhas[i].grupo;
+                    let yi = i as f32 * LINHA_A;
+                    if yi < self.rolagem {
+                        self.rolagem = yi;
+                    } else if yi + LINHA_A > self.rolagem + lista_a {
+                        self.rolagem = yi + LINHA_A - lista_a;
+                    }
+                }
+            }
+            // Setas para os lados abrem e fecham o grupo escolhido.
+            if self.sel_grupo {
+                if let Some(pid) = self.selecionado {
+                    match t {
+                        Tecla::Direita => {
+                            self.abertos.insert(pid);
+                        }
+                        Tecla::Esquerda => {
+                            self.abertos.remove(&pid);
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+        let primeiro = (self.rolagem / LINHA_A) as usize;
+        let mut clicado = None;
+        let mut alternar = None;
+        for (i, p) in linhas.iter().enumerate().skip(primeiro) {
+            let y = lista_y + i as f32 * LINHA_A - self.rolagem;
+            if y > lista_y + lista_a {
+                break;
+            }
+            if p.titulo {
+                ui.tela.texto(16.0, y + 21.0, 13.5, tema::DESTAQUE(), &p.nome);
+                continue;
+            }
+            let sel = self.selecionado == Some(p.pid) && self.sel_grupo == p.grupo;
+            let sobre = ui.sobre(0.0, y, l, LINHA_A) && ui.mouse.is_some_and(|(_, my)| my >= lista_y && my < lista_y + lista_a);
+            if sel {
+                ui.tela.retangulo(0.0, y, l, LINHA_A, 0.0, tema::DESTAQUE_SUAVE());
+            } else if sobre {
+                ui.tela.retangulo(0.0, y, l, LINHA_A, 0.0, tema::SUPERFICIE_ALTA());
+            }
+            // Fundo amarelado proporcional ao uso, como o Windows faz.
+            let calor = |v: f32| Cor(255, 196, 0, (v.clamp(0.0, 100.0) * 1.4) as u8 + 18);
+            ui.tela.retangulo(cols[2].2 - 8.0, y, 96.0, LINHA_A, 0.0, calor(p.cpu * 2.0));
+            let mem_rel = p.mem as f32 / self.mem_total_kb.max(1) as f32 * 100.0;
+            ui.tela.retangulo(cols[3].2 - 8.0, y, 124.0, LINHA_A, 0.0, calor(mem_rel * 4.0));
+            let ty = y + 20.0;
+            let mut x = 16.0 + p.recuo;
+            if p.grupo && p.n > 1 {
+                // Setinha de abrir/fechar.
+                let aberto = self.abertos.contains(&p.pid);
+                let (cx, cy) = (x + 5.0, y + LINHA_A / 2.0);
+                if aberto {
+                    ui.tela.linha(cx - 4.0, cy - 2.0, cx, cy + 2.5, 1.6, tema::TEXTO_SECUNDARIO());
+                    ui.tela.linha(cx, cy + 2.5, cx + 4.0, cy - 2.0, 1.6, tema::TEXTO_SECUNDARIO());
+                } else {
+                    ui.tela.linha(cx - 2.0, cy - 4.0, cx + 2.5, cy, 1.6, tema::TEXTO_SECUNDARIO());
+                    ui.tela.linha(cx + 2.5, cy, cx - 2.0, cy + 4.0, 1.6, tema::TEXTO_SECUNDARIO());
+                }
+                if ui.clicou(0.0, y, x + 16.0, LINHA_A) || (ui.duplo && sobre) {
+                    alternar = Some(p.pid);
+                }
+            }
+            if p.grupo {
+                x += 18.0;
+            }
+            let nome = if p.grupo && p.n > 1 { format!("{} ({})", p.nome, p.n) } else { p.nome.clone() };
+            let nome = desenho::encurtar(13.0, &nome, cols[1].2 - x - 16.0);
+            ui.tela.texto(x, ty, 13.0, tema::TEXTO(), &nome);
+            if !p.grupo || p.n == 1 {
+                ui.tela.texto(cols[1].2, ty, 13.0, tema::TEXTO_SECUNDARIO(), &p.pid.to_string());
+            }
+            ui.tela.texto(cols[2].2, ty, 13.0, tema::TEXTO(), &format!("{:.1}%", p.cpu).replace('.', ","));
+            ui.tela.texto(cols[3].2, ty, 13.0, tema::TEXTO(), &formatar_mem(p.mem));
+            if (ui.clique || ui.clique_direito) && sobre {
+                clicado = Some((p.pid, p.grupo));
+            }
+        }
+        if let Some(pid) = alternar {
+            if !self.abertos.remove(&pid) {
+                self.abertos.insert(pid);
+            }
+        }
+        if let Some((pid, grupo)) = clicado {
+            self.selecionado = Some(pid);
+            self.sel_grupo = grupo;
+        }
+
+        // Cabeçalho com totais, como no Windows (por cima da lista rolada).
         let cpu_agora = self.hist_cpu.last().copied().unwrap_or(0.0);
         let mem_pct = if self.mem_total_kb > 0 { self.mem_usada_kb as f32 / self.mem_total_kb as f32 * 100.0 } else { 0.0 };
         ui.tela.retangulo(0.0, y0, l, 46.0, 0.0, tema::SUPERFICIE());
@@ -302,60 +622,6 @@ impl Tarefas {
         }
         ui.tela.retangulo(0.0, y0 + 46.0, l, 1.0, 0.0, tema::BORDA());
 
-        let lista_y = y0 + 47.0;
-        let lista_a = a - lista_y - rodape;
-        let conteudo = self.processos.len() as f32 * LINHA_A;
-        self.rolagem = (self.rolagem + ui.rolagem).clamp(0.0, (conteudo - lista_a).max(0.0));
-        for t in &ui.teclas {
-            let idx = self.selecionado.and_then(|s| self.processos.iter().position(|p| p.pid == s));
-            let novo = match (t, idx) {
-                (Tecla::Baixo, Some(i)) => Some((i + 1).min(self.processos.len().saturating_sub(1))),
-                (Tecla::Cima, Some(i)) => Some(i.saturating_sub(1)),
-                (Tecla::Baixo | Tecla::Cima, None) => Some(0),
-                _ => None,
-            };
-            if let Some(i) = novo {
-                self.selecionado = self.processos.get(i).map(|p| p.pid);
-                let yi = i as f32 * LINHA_A;
-                if yi < self.rolagem {
-                    self.rolagem = yi;
-                } else if yi + LINHA_A > self.rolagem + lista_a {
-                    self.rolagem = yi + LINHA_A - lista_a;
-                }
-            }
-        }
-        let primeiro = (self.rolagem / LINHA_A) as usize;
-        let mut clicado = None;
-        for (i, p) in self.processos.iter().enumerate().skip(primeiro) {
-            let y = lista_y + i as f32 * LINHA_A - self.rolagem;
-            if y > lista_y + lista_a {
-                break;
-            }
-            let sel = self.selecionado == Some(p.pid);
-            let sobre = ui.sobre(0.0, y, l, LINHA_A) && ui.mouse.is_some_and(|(_, my)| my < lista_y + lista_a);
-            if sel {
-                ui.tela.retangulo(0.0, y, l, LINHA_A, 0.0, tema::DESTAQUE_SUAVE());
-            } else if sobre {
-                ui.tela.retangulo(0.0, y, l, LINHA_A, 0.0, tema::SUPERFICIE_ALTA());
-            }
-            // Fundo amarelado proporcional ao uso, como o Windows faz.
-            let calor = |v: f32| Cor(255, 196, 0, (v.clamp(0.0, 100.0) * 1.4) as u8 + 18);
-            ui.tela.retangulo(cols[2].2 - 8.0, y, 96.0, LINHA_A, 0.0, calor(p.cpu * 2.0));
-            let mem_rel = p.memoria_kb as f32 / self.mem_total_kb.max(1) as f32 * 100.0;
-            ui.tela.retangulo(cols[3].2 - 8.0, y, 124.0, LINHA_A, 0.0, calor(mem_rel * 4.0));
-            let ty = y + 20.0;
-            let nome = desenho::encurtar(13.0, &p.nome, l - 370.0);
-            ui.tela.texto(16.0, ty, 13.0, tema::TEXTO(), &nome);
-            ui.tela.texto(cols[1].2, ty, 13.0, tema::TEXTO_SECUNDARIO(), &p.pid.to_string());
-            ui.tela.texto(cols[2].2, ty, 13.0, tema::TEXTO(), &format!("{:.1}%", p.cpu).replace('.', ","));
-            ui.tela.texto(cols[3].2, ty, 13.0, tema::TEXTO(), &formatar_mem(p.memoria_kb));
-            if (ui.clique || ui.clique_direito) && sobre {
-                clicado = Some(p.pid);
-            }
-        }
-        if let Some(pid) = clicado {
-            self.selecionado = Some(pid);
-        }
         // Barra de rolagem
         if conteudo > lista_a {
             let ba = (lista_a / conteudo * lista_a).max(24.0);
@@ -382,7 +648,14 @@ impl Tarefas {
         let info = self
             .aviso
             .clone()
-            .unwrap_or_else(|| format!("{} processos", self.processos.len()));
+            .unwrap_or_else(|| {
+                if self.aba == Aba::Processos {
+                    let g = self.agrupar();
+                    format!("{} apps e serviços · {} subprocessos", g.len(), self.processos.len())
+                } else {
+                    format!("{} subprocessos", self.processos.len())
+                }
+            });
         ui.tela.texto(16.0, ry + 31.0, 12.5, tema::TEXTO_SECUNDARIO(), &desenho::encurtar(12.5, &info, l - 210.0));
     }
 
@@ -546,7 +819,7 @@ impl App for Tarefas {
         if self.aba == Aba::Hardware {
             self.hardware(ui, 45.0);
         }
-        for (aba, nome) in [(Aba::Processos, "Processos"), (Aba::Desempenho, "Desempenho"), (Aba::Hardware, "Hardware")] {
+        for (aba, nome) in [(Aba::Processos, "Processos"), (Aba::Subprocessos, "Subprocessos"), (Aba::Desempenho, "Desempenho"), (Aba::Hardware, "Hardware")] {
             let w = desenho::medir(14.0, nome) + 28.0;
             let sel = self.aba == aba;
             if !sel && ui.sobre(x, 6.0, w, 34.0) {
@@ -564,7 +837,7 @@ impl App for Tarefas {
         }
         ui.tela.retangulo(0.0, 44.0, l, 1.0, 0.0, tema::BORDA());
         match self.aba {
-            Aba::Processos => self.processos(ui, 45.0),
+            Aba::Processos | Aba::Subprocessos => self.processos(ui, 45.0),
             Aba::Desempenho => self.desempenho(ui, 45.0),
             Aba::Hardware => {}
         }

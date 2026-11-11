@@ -130,6 +130,12 @@ const APP_A: i32 = 42;
 const RODAPE_A: i32 = 64;
 /// Botões de energia no rodapé do menu (quadrados).
 const ENERGIA_L: i32 = 40;
+/// Opções do botão de energia, numa janelinha acima dele.
+const OPCOES_ENERGIA: [(Alvo, &str); 4] =
+    [(Alvo::Dormir, "Dormir"), (Alvo::Sair, "Sair da sessão"), (Alvo::Reiniciar, "Reiniciar"), (Alvo::Desligar, "Desligar")];
+const POP_L: i32 = 190;
+const POP_ITEM: i32 = 38;
+const POP_A: i32 = 4 * POP_ITEM + 12;
 const INICIAR_X: i32 = 6;
 const TAREFA_MAX: i32 = 220;
 const RELOGIO_L: i32 = 120;
@@ -225,6 +231,9 @@ pub enum Alvo {
     Reiniciar,
     Desligar,
     Bloquear,
+    /// Botão de energia do menu (abre Dormir, Sair, Reiniciar, Desligar).
+    Energia,
+    Dormir,
     /// Avatar e nome do usuário no rodapé do menu (abre a Conta).
     Usuario,
     Menu,
@@ -416,6 +425,8 @@ pub struct Painel {
     pub menu_sel: usize,
     /// Foto da conta (~/.face), relida ao abrir o menu.
     foto: Option<image::RgbaImage>,
+    /// As opções do botão de energia estão abertas.
+    pub energia_aberta: bool,
     /// Ícones dos apps na bandeja e quantas vezes a lista mudou.
     pub bandeja: Vec<ItemBandeja>,
     bandeja_versao: u32,
@@ -472,6 +483,7 @@ impl Default for Painel {
             menu_rolagem: 0,
             menu_sel: 0,
             foto: None,
+            energia_aberta: false,
             bandeja: Vec::new(),
             bandeja_versao: 0,
             bandeja_clique: (0, 0).into(),
@@ -589,6 +601,7 @@ impl Painel {
         self.busca.clear();
         self.menu_rolagem = 0;
         self.menu_sel = 0;
+        self.energia_aberta = false;
         self.foto = std::env::var("HOME").ok().and_then(|h| desenho::foto_da_conta(&h, 32));
         self.menu = None;
         self.carregar_apps();
@@ -747,9 +760,16 @@ impl Painel {
             let o = Self::menu_origem(tela);
             let (mx, my) = (x - o.x, y - o.y);
             if mx >= 0 && my >= 0 && mx < MENU_L && my < MENU_A {
+                if self.energia_aberta {
+                    let (px, py) = (MENU_L - 12 - POP_L, MENU_A - RODAPE_A - POP_A + 4);
+                    if mx >= px && mx < px + POP_L && my >= py && my < py + POP_A {
+                        let i = ((my - py - 6).max(0) / POP_ITEM) as usize;
+                        return Some(OPCOES_ENERGIA.get(i).map(|o| o.0).unwrap_or(Alvo::Menu));
+                    }
+                }
                 if my >= MENU_A - RODAPE_A + 12 && my < MENU_A - 12 {
-                    // Botões de energia, da direita para a esquerda.
-                    let botoes = [Alvo::Desligar, Alvo::Reiniciar, Alvo::Sair, Alvo::Bloquear];
+                    // Botões do rodapé, da direita para a esquerda.
+                    let botoes = [Alvo::Energia, Alvo::Bloquear];
                     let dx = MENU_L - 12 - mx;
                     if dx >= 0 {
                         let i = (dx / (ENERGIA_L + 4)) as usize;
@@ -757,7 +777,7 @@ impl Painel {
                             return Some(botoes[i]);
                         }
                     }
-                    if mx >= 12 && mx < MENU_L - 12 - 4 * (ENERGIA_L + 4) {
+                    if mx >= 12 && mx < MENU_L - 12 - 2 * (ENERGIA_L + 4) {
                         return Some(Alvo::Usuario);
                     }
                     return Some(Alvo::Menu);
@@ -1488,7 +1508,8 @@ impl Painel {
 
         if self.menu_aberto {
             let chave = format!(
-                "{hover:?}|{:?}|{}|{}|{}",
+                "{hover:?}|{}|{:?}|{}|{}|{}",
+                self.energia_aberta,
                 self.apps.as_ref().map(|a| a.len()),
                 self.busca,
                 self.menu_rolagem,
@@ -1773,7 +1794,7 @@ impl Painel {
         t.retangulo(0.0, ry, l, 1.0, 0.0, tema::BORDA());
         let usuario = std::env::var("USER").unwrap_or_else(|_| "você".into());
         let nome_conta = nome_completo(&usuario).unwrap_or_else(|| usuario.clone());
-        let fim_usuario = l - 12.0 - 4.0 * (ENERGIA_L + 4) as f32;
+        let fim_usuario = l - 12.0 - 2.0 * (ENERGIA_L + 4) as f32;
         if hover == Some(Alvo::Usuario) {
             t.retangulo(10.0, ry + 12.0, fim_usuario - 14.0, 40.0, 8.0, tema::SUPERFICIE().com_alfa(200));
         }
@@ -1787,24 +1808,38 @@ impl Painel {
         }
         let rotulo_hover = match hover {
             Some(Alvo::Bloquear) => Some("Bloquear (Win+L)"),
-            Some(Alvo::Sair) => Some("Sair da sessão"),
-            Some(Alvo::Reiniciar) => Some("Reiniciar"),
-            Some(Alvo::Desligar) => Some("Desligar"),
+            Some(Alvo::Energia) => Some("Energia"),
             _ => None,
         };
         let texto_usuario = rotulo_hover.map(str::to_string).unwrap_or(nome_conta);
         t.texto(60.0, ry + 37.0, 13.5, tema::TEXTO(), &desenho::encurtar(13.5, &texto_usuario, fim_usuario - 70.0));
 
-        for (i, alvo) in [Alvo::Desligar, Alvo::Reiniciar, Alvo::Sair, Alvo::Bloquear].iter().enumerate() {
+        for (i, alvo) in [Alvo::Energia, Alvo::Bloquear].iter().enumerate() {
             let x = l - 12.0 - ((i + 1) as i32 * (ENERGIA_L + 4) - 4) as f32;
             let y = ry + 12.0;
-            let sobre = hover == Some(*alvo);
+            let sobre = hover == Some(*alvo) || (*alvo == Alvo::Energia && self.energia_aberta);
             if sobre {
-                let cor = if *alvo == Alvo::Desligar { tema::ERRO() } else { tema::SUPERFICIE().com_alfa(220) };
-                t.retangulo(x, y, ENERGIA_L as f32, 40.0, 8.0, cor);
+                t.retangulo(x, y, ENERGIA_L as f32, 40.0, 8.0, tema::SUPERFICIE().com_alfa(220));
             }
-            let cor = if sobre && *alvo == Alvo::Desligar { tema::BRANCO() } else { tema::TEXTO() };
-            icone_energia(&mut t, *alvo, x + ENERGIA_L as f32 / 2.0, y + 20.0, cor);
+            icone_energia(&mut t, *alvo, x + ENERGIA_L as f32 / 2.0, y + 20.0, tema::TEXTO());
+        }
+
+        // Opções do botão de energia, numa janelinha acima dele.
+        if self.energia_aberta {
+            let (px, py) = ((MENU_L - 12 - POP_L) as f32, (MENU_A - RODAPE_A - POP_A + 4) as f32);
+            t.retangulo(px - 1.0, py - 1.0, POP_L as f32 + 2.0, POP_A as f32 + 2.0, 10.0, tema::BORDA());
+            t.retangulo(px, py, POP_L as f32, POP_A as f32, 9.0, tema::SUPERFICIE());
+            for (i, (alvo, nome)) in OPCOES_ENERGIA.iter().enumerate() {
+                let y = py + 6.0 + i as f32 * POP_ITEM as f32;
+                let sobre = hover == Some(*alvo);
+                if sobre {
+                    let cor = if *alvo == Alvo::Desligar { tema::ERRO() } else { tema::DESTAQUE_SUAVE() };
+                    t.retangulo(px + 6.0, y, POP_L as f32 - 12.0, (POP_ITEM - 2) as f32, 6.0, cor);
+                }
+                let cor = if sobre && *alvo == Alvo::Desligar { tema::BRANCO() } else { tema::TEXTO() };
+                icone_energia(&mut t, *alvo, px + 26.0, y + POP_ITEM as f32 / 2.0 - 1.0, cor);
+                t.texto(px + 48.0, y + 24.0, 13.5, cor, nome);
+            }
         }
         t
     }
@@ -1814,7 +1849,7 @@ impl Painel {
 fn icone_energia(t: &mut Tela, alvo: Alvo, cx: f32, cy: f32, cor: desenho::Cor) {
     let e = 1.8;
     match alvo {
-        Alvo::Desligar => {
+        Alvo::Desligar | Alvo::Energia => {
             // Arco com abertura em cima + traço vertical.
             arco(t, cx, cy + 1.0, 7.0, 0.32, 1.18, e, cor);
             t.linha(cx, cy - 8.0, cx, cy - 1.0, e, cor);
@@ -1825,6 +1860,11 @@ fn icone_energia(t: &mut Tela, alvo: Alvo, cx: f32, cy: f32, cor: desenho::Cor) 
             let (px, py) = (cx + 7.0 * (0.12f32 * std::f32::consts::TAU).cos(), cy - 7.0 * (0.12f32 * std::f32::consts::TAU).sin());
             t.linha(px, py, px - 4.0, py - 1.0, e, cor);
             t.linha(px, py, px + 1.0, py - 4.5, e, cor);
+        }
+        Alvo::Dormir => {
+            // Lua crescente: um círculo com outro "mordendo".
+            arco(t, cx, cy, 7.0, 0.18, 0.95, e, cor);
+            arco(t, cx + 3.5, cy - 2.5, 5.5, 0.62, 1.12, e, cor);
         }
         Alvo::Sair => {
             // Porta + seta saindo.
