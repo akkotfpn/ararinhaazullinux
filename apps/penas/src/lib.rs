@@ -166,6 +166,54 @@ fn versao_config() -> Vec<Option<std::time::SystemTime>> {
     arquivos_config().iter().map(|c| std::fs::metadata(c).and_then(|m| m.modified()).ok()).collect()
 }
 
+extern "C" {
+    fn inotify_init1(flags: i32) -> i32;
+    fn inotify_add_watch(fd: i32, caminho: *const std::os::raw::c_char, mascara: u32) -> i32;
+}
+
+/// Vigia as pastas da configuração com inotify, dentro do laço de eventos.
+/// Devolve false se não deu (aí o laço confere de tempos em tempos).
+fn vigiar_config(event_loop: &EventLoop<Janela>) -> bool {
+    use smithay_client_toolkit::reexports::calloop::{generic::Generic, Interest, Mode, PostAction};
+    use std::os::fd::FromRawFd;
+    const IN_NONBLOCK: i32 = 0o4000;
+    const IN_CLOEXEC: i32 = 0o2000000;
+    // IN_CLOSE_WRITE | IN_MOVED_TO | IN_CREATE | IN_DELETE
+    const MASCARA: u32 = 0x8 | 0x80 | 0x100 | 0x200;
+    // SAFETY: chamada simples ao sistema; o fd é conferido abaixo.
+    let fd = unsafe { inotify_init1(IN_NONBLOCK | IN_CLOEXEC) };
+    if fd < 0 {
+        return false;
+    }
+    // SAFETY: o fd acabou de ser criado e passa a ser só deste File.
+    let arquivo = unsafe { std::fs::File::from_raw_fd(fd) };
+    let mut algum = false;
+    for c in arquivos_config() {
+        let Some(pasta) = c.parent() else { continue };
+        let _ = std::fs::create_dir_all(pasta);
+        let Ok(cp) = std::ffi::CString::new(pasta.as_os_str().as_encoded_bytes()) else { continue };
+        // SAFETY: fd válido e string C válida durante a chamada.
+        if unsafe { inotify_add_watch(fd, cp.as_ptr(), MASCARA) } >= 0 {
+            algum = true;
+        }
+    }
+    if !algum {
+        return false;
+    }
+    let Ok(mut leitor) = arquivo.try_clone() else { return false };
+    let fonte = Generic::new(arquivo, Interest::READ, Mode::Level);
+    event_loop
+        .handle()
+        .insert_source(fonte, move |_, _, janela: &mut Janela| {
+            use std::io::Read;
+            let mut buf = [0u8; 4096];
+            while matches!(leitor.read(&mut buf), Ok(n) if n > 0) {}
+            janela.config_mudou = true;
+            Ok(PostAction::Continue)
+        })
+        .is_ok()
+}
+
 /// Abre a janela e roda o app até ela ser fechada.
 pub fn executar(opcoes: Opcoes, app: Box<dyn App>) {
     let conn = match Connection::connect_to_env() {
@@ -222,6 +270,7 @@ pub fn executar(opcoes: Opcoes, app: Box<dyn App>) {
         mods: Modifiers::default(),
         ultimo_clique: None,
         sujo: true,
+        config_mudou: false,
         acordar: None,
         repetir: None,
         titulo: opcoes.titulo,
@@ -229,10 +278,13 @@ pub fn executar(opcoes: Opcoes, app: Box<dyn App>) {
     };
 
     tema::definir_escuro(ler_tema_escuro());
+    // O tema mudou nas Configurações? O inotify avisa; sem ele, confere a
+    // cada 2 s. Parado, o laço não acorda à toa.
+    let vigia = vigiar_config(&event_loop);
     let mut config = (Instant::now(), versao_config());
     while !janela.sair {
-        // O tema mudou nas Configurações? Redesenha com as cores novas.
-        if config.0.elapsed() >= Duration::from_secs(1) {
+        if janela.config_mudou || (!vigia && config.0.elapsed() >= Duration::from_secs(2)) {
+            janela.config_mudou = false;
             let v = versao_config();
             if v != config.1 {
                 tema::definir_escuro(ler_tema_escuro());
@@ -244,9 +296,18 @@ pub fn executar(opcoes: Opcoes, app: Box<dyn App>) {
             (Some(a), Some(b)) => Some(a.min(b)),
             (a, b) => a.or(b),
         };
-        let espera = proximo
-            .map(|t| t.saturating_duration_since(Instant::now()).min(Duration::from_millis(100)))
-            .unwrap_or(Duration::from_millis(100));
+        // Quadro pedido com `redesenhar` (animação contínua): 20 por segundo.
+        let teto = if janela.sujo {
+            Some(Duration::from_millis(50))
+        } else if vigia {
+            None
+        } else {
+            Some(Duration::from_secs(2))
+        };
+        let espera = match (proximo.map(|t| t.saturating_duration_since(Instant::now())), teto) {
+            (Some(a), Some(b)) => Some(a.min(b)),
+            (a, b) => a.or(b),
+        };
         if event_loop.dispatch(espera, &mut janela).is_err() {
             break;
         }
@@ -268,6 +329,8 @@ pub fn executar(opcoes: Opcoes, app: Box<dyn App>) {
 }
 
 struct Janela {
+    /// O inotify viu mudança na pasta da configuração.
+    config_mudou: bool,
     registry_state: RegistryState,
     seat_state: SeatState,
     output_state: OutputState,

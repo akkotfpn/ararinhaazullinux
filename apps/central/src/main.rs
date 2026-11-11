@@ -357,7 +357,8 @@ impl App for Central {
             ui.tela.retangulo(16.0, a - 26.0, 120.0, 6.0, 3.0, tema::DESTAQUE_SUAVE());
             ui.tela.retangulo(16.0 + fase * 90.0, a - 26.0, 30.0, 6.0, 3.0, tema::DESTAQUE());
             ui.tela.texto(150.0, a - 17.0, 13.0, tema::TEXTO(), &desenho::encurtar(13.0, desc, l - 170.0));
-            ui.redesenhar = true;
+            // Animação leve (12 quadros/s): não roubar CPU de quem instala.
+            ui.acordar_em = Some(std::time::Duration::from_millis(80));
         } else if let Some(av) = &self.aviso {
             ui.tela.texto(16.0, a - 17.0, 13.0, tema::TEXTO(), &desenho::encurtar(13.0, av, l - 32.0));
         } else {
