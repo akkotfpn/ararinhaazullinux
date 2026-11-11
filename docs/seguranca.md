@@ -163,6 +163,21 @@ A tela bloqueia sozinha depois de 5 minutos sem teclado nem mouse
 de suspender (gancho em `/usr/lib/systemd/system-sleep`, que avisa a
 Plumagem pelo FIFO `$XDG_RUNTIME_DIR/plumagem-ctl`, só do usuário).
 
+## Auditoria das crates
+
+Os workflows Apps e Plumagem rodam clippy, `cargo audit` (base RustSec) e
+contam os blocos `unsafe`; o resumo fica em cada run do CI. Primeira
+rodada (11/11):
+
+- `memmap2` 0.8 (RUSTSEC-2026-0186), puxada pela crate `xkbcommon` que o
+  smithay-client-toolkit usa para mapear o mapa de teclado que a Plumagem
+  envia. Sai quando o smithay-client-toolkit subir de versão; o dado
+  mapeado vem só do nosso compositor.
+- `cgmath` (RUSTSEC-2026-0197, `swap_columns` com índices iguais): a
+  Plumagem não chama essa função.
+- Crates sem manutenção, sem falha conhecida: `ttf-parser`, `paste`,
+  `cgmath`, `zbus_names`, `zvariant`.
+
 ## A seguir
 
 - Atualizações automáticas dos apps do Flathub.
