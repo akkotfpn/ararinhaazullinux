@@ -67,12 +67,15 @@ ExecStart=/usr/bin/ararinha-energia aplicar
 WantedBy=multi-user.target
 FIM
 systemctl enable ararinha-energia.service
-for app in imagens notas configuracoes central calculadora tarefas paciencia musicas; do
+for app in imagens notas configuracoes central calculadora tarefas paciencia musicas instalador; do
   install -vDm755 target/release/$app /usr/bin/$app
   install -vDm644 $app/recursos/$app.desktop /usr/share/applications/$app.desktop
   install -vDm644 $app/recursos/$app.png /usr/share/icons/hicolor/64x64/apps/$app.png
 done
 install -vDm644 configuracoes/recursos/sobre.desktop /usr/share/applications/sobre.desktop
 install -vDm755 target/release/ararinha-som /usr/bin/ararinha-som
+# Instalador: o ajudante é setuid root e só obedece ao grupo wheel.
+install -vDm4750 -g wheel target/release/ararinha-instalar /usr/bin/ararinha-instalar 2>/dev/null \
+  || install -vDm4755 target/release/ararinha-instalar /usr/bin/ararinha-instalar
 ''',
 ]
