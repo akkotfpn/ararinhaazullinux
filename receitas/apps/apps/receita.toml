@@ -52,7 +52,7 @@ install -vDm644 explorador/recursos/explorador.desktop /usr/share/applications/e
 install -vDm644 explorador/recursos/explorador.png /usr/share/icons/hicolor/64x64/apps/explorador.png
 # Ajudante das unidades de rede: setuid root (ver apps/unidade).
 install -vDm4755 target/release/ararinha-unidade /usr/bin/ararinha-unidade
-for app in imagens notas configuracoes; do
+for app in imagens notas configuracoes central; do
   install -vDm755 target/release/$app /usr/bin/$app
   install -vDm644 $app/recursos/$app.desktop /usr/share/applications/$app.desktop
   install -vDm644 $app/recursos/$app.png /usr/share/icons/hicolor/64x64/apps/$app.png

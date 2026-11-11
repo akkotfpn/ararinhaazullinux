@@ -1,0 +1,10 @@
+[package]
+name = "central"
+version = "0.1.0"
+description = "Central de Apps do Ararinha Azul Linux (Flatpak/Flathub)"
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+penas = { path = "../penas" }

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Central de Apps
+Name[en]=App Center
+Comment=Instale navegadores, jogos e outros aplicativos do Flathub
+Exec=central
+Icon=central
+StartupWMClass=central
+Categories=System;PackageManager;
