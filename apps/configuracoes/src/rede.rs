@@ -268,8 +268,9 @@ impl PaginaRede {
 
     pub fn desenhar(&mut self, ui: &mut Ui, x0: f32, l: f32) {
         // Respostas do iwctl.
-        if let Some(rx) = &self.rx {
-            while let Ok(r) = rx.try_recv() {
+        let respostas: Vec<Resposta> = self.rx.as_ref().map(|rx| rx.try_iter().collect()).unwrap_or_default();
+        {
+            for r in respostas {
                 match r {
                     Resposta::Redes(v) => {
                         self.redes = v;

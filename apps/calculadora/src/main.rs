@@ -2,7 +2,7 @@
 //! Calculadora do Ararinha: a padrão de bolso, com vírgula decimal e
 //! teclado (números, + - * /, Enter, Backspace, Esc, %).
 
-use penas::{desenho, tema, App, Cor, Opcoes, Tecla, Ui};
+use penas::{desenho, tema, App, Opcoes, Tecla, Ui};
 
 #[derive(Clone, Copy, PartialEq)]
 enum Op {
