@@ -648,6 +648,12 @@ impl Drop for SurfaceData {
     }
 }
 
+/// Redesenhar a tela inteira a cada quadro. Com renderização por software
+/// (llvmpipe), a idade dos buffers informada não é confiável: desenhando só
+/// as partes "danificadas", sobravam rastros do cursor e áreas pretas.
+/// Também pode ser ligado com PLUMAGEM_REDESENHO_TOTAL=1.
+static REDESENHO_TOTAL: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 struct BackendData {
     surfaces: HashMap<crtc::Handle, SurfaceData>,
     non_desktop_connectors: Vec<(connector::Handle, crtc::Handle)>,
@@ -791,6 +797,7 @@ impl AnvilState<UdevData> {
             }
             if egl_device.is_software() {
                 warn!("sem aceleração 3D em {node}: desenhando a tela pelo processador");
+                REDESENHO_TOTAL.store(true, std::sync::atomic::Ordering::Relaxed);
             }
 
             let render_node = egl_device.try_get_render_node().ok().flatten().unwrap_or(node);
@@ -1685,6 +1692,11 @@ fn render_surface<'a>(
     } else {
         FrameFlags::DEFAULT
     };
+    if REDESENHO_TOTAL.load(std::sync::atomic::Ordering::Relaxed)
+        || std::env::var_os("PLUMAGEM_REDESENHO_TOTAL").is_some()
+    {
+        surface.drm_output.reset_buffers();
+    }
     let (rendered, states) = surface
         .drm_output
         .render_frame(renderer, &elements, clear_color, frame_mode)
