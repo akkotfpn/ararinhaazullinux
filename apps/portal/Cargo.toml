@@ -13,3 +13,8 @@ async-io = "2"
 [[bin]]
 name = "xdg-desktop-portal-ararinha"
 path = "src/main.rs"
+
+# Bandeja do sistema (StatusNotifierWatcher), iniciada com a sessão.
+[[bin]]
+name = "ararinha-bandeja"
+path = "src/bandeja.rs"
