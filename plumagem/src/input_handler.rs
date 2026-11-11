@@ -75,6 +75,10 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             KeyAction::FecharJanela => self.fechar_janela_ativa(),
             KeyAction::MostrarAreaDeTrabalho => self.mostrar_area_de_trabalho(),
             KeyAction::Captura => crate::captura::pedir(),
+            KeyAction::Recorte => {
+                self.painel.recorte = Some(None);
+                crate::render::RECORTE.store(true, Ordering::Relaxed);
+            }
             KeyAction::Encaixar(lado) => self.encaixar(lado),
             KeyAction::Bloquear => self.bloquear(),
 
@@ -175,6 +179,21 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 }
                 FilterResult::Intercept(())
             });
+            return KeyAction::None;
+        }
+
+        // Recorte de captura: Esc cancela.
+        if self.painel.recorte.is_some() {
+            let mut cancelar = false;
+            keyboard.input::<(), _>(self, keycode, state, serial, time, |_, _, h| {
+                if state == KeyState::Pressed && h.modified_sym() == Keysym::Escape {
+                    cancelar = true;
+                }
+                FilterResult::Intercept(())
+            });
+            if cancelar {
+                self.cancelar_recorte();
+            }
             return KeyAction::None;
         }
 
@@ -305,6 +324,31 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                     }
                 }
                 self.processar_ninho();
+            }
+            return;
+        }
+
+        // Captura com recorte: o arraste escolhe a área; nada chega às janelas.
+        if let Some(r) = self.painel.recorte {
+            let pos = self.pointer.current_location();
+            if button == 0x111 {
+                self.cancelar_recorte();
+            } else if wl_pointer::ButtonState::Pressed == state && r.is_none() {
+                self.painel.recorte = Some(Some(pos));
+            } else if wl_pointer::ButtonState::Released == state {
+                if let (Some(inicio), Some(o)) = (r, self.space.outputs().next().cloned()) {
+                    let geo = self.space.output_geometry(&o).unwrap_or_default();
+                    let esc = o.current_scale().fractional_scale();
+                    let (a, b) = (inicio - geo.loc.to_f64(), pos - geo.loc.to_f64());
+                    let (x0, y0) = (a.x.min(b.x), a.y.min(b.y));
+                    let (w, h) = ((a.x - b.x).abs(), (a.y - b.y).abs());
+                    if w >= 4.0 && h >= 4.0 {
+                        *crate::captura::REGIAO.lock().unwrap() =
+                            Some(((x0 * esc) as i32, (y0 * esc) as i32, (w * esc) as i32, (h * esc) as i32));
+                        crate::captura::pedir();
+                    }
+                }
+                self.cancelar_recorte();
             }
             return;
         }
@@ -666,6 +710,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                     | KeyAction::FecharJanela
                     | KeyAction::MostrarAreaDeTrabalho
                     | KeyAction::Captura
+                    | KeyAction::Recorte
                     | KeyAction::Encaixar(_)
                     | KeyAction::Bloquear
                     | KeyAction::TogglePreview
@@ -891,6 +936,7 @@ impl AnvilState<UdevData> {
                     | KeyAction::FecharJanela
                     | KeyAction::MostrarAreaDeTrabalho
                     | KeyAction::Captura
+                    | KeyAction::Recorte
                     | KeyAction::Encaixar(_)
                     | KeyAction::Bloquear
                     | KeyAction::TogglePreview
@@ -1475,6 +1521,8 @@ enum KeyAction {
     ScaleUp,
     ScaleDown,
     TogglePreview,
+    /// Win+Shift+S: captura de uma área escolhida com o mouse.
+    Recorte,
     RotateOutput,
     ToggleTint,
     ToggleDecorations,
@@ -1498,6 +1546,11 @@ fn process_keyboard_shortcut(modifiers: ModifiersState, keysym: Keysym) -> Optio
         Some(KeyAction::Encaixar(crate::janelas::Encaixe::Cima))
     } else if modifiers.logo && keysym == Keysym::Down {
         Some(KeyAction::Encaixar(crate::janelas::Encaixe::Baixo))
+    } else if (modifiers.logo && modifiers.shift && (keysym == Keysym::s || keysym == Keysym::S))
+        || (modifiers.shift && keysym == Keysym::Print)
+    {
+        // Win+Shift+S (ou Shift+Print): recortar uma área da tela
+        Some(KeyAction::Recorte)
     } else if keysym == Keysym::Print {
         // Print Screen: salva a tela em Imagens/Capturas de Tela
         Some(KeyAction::Captura)

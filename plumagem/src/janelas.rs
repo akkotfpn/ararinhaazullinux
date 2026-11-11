@@ -614,3 +614,11 @@ pub fn pedir_sistema(pedido: &'static str, som: Option<&'static str>) {
         }
     });
 }
+
+impl<BackendData: crate::state::Backend + 'static> crate::state::AnvilState<BackendData> {
+    /// Sai do modo de recorte da captura.
+    pub fn cancelar_recorte(&mut self) {
+        self.painel.recorte = None;
+        crate::render::RECORTE.store(false, std::sync::atomic::Ordering::Relaxed);
+    }
+}

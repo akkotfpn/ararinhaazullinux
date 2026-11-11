@@ -29,6 +29,9 @@ pub static PEDIDA: AtomicBool = AtomicBool::new(false);
 /// Última captura salva (a Plumagem abre no Visualizador).
 pub static SALVA: Mutex<Option<PathBuf>> = Mutex::new(None);
 
+/// Recorte pedido (x, y, largura, altura em pixels da saída).
+pub static REGIAO: Mutex<Option<(i32, i32, i32, i32)>> = Mutex::new(None);
+
 pub fn pedir() {
     PEDIDA.store(true, Ordering::Relaxed);
 }
@@ -80,6 +83,11 @@ where
     let mut img = image::RgbaImage::from_raw(l as u32, a as u32, px).ok_or("tamanho inesperado dos pixels")?;
     if invertida {
         image::imageops::flip_vertical_in_place(&mut img);
+    }
+    if let Some((x, y, w, h)) = REGIAO.lock().unwrap().take() {
+        let (x, y) = (x.clamp(0, l - 1) as u32, y.clamp(0, a - 1) as u32);
+        let (w, h) = ((w.max(1) as u32).min(l as u32 - x), (h.max(1) as u32).min(a as u32 - y));
+        img = image::imageops::crop_imm(&img, x, y, w, h).to_image();
     }
     // Sem transparência no arquivo.
     for p in img.pixels_mut() {

@@ -141,6 +141,9 @@ where
         })
 }
 
+/// Captura com recorte ativa: a camada escura vai por cima das janelas.
+pub static RECORTE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 #[profiling::function]
 pub fn output_elements<R>(
     output: &Output,
@@ -181,6 +184,7 @@ where
             .into_iter()
             .map(OutputRenderElements::from)
             .collect::<Vec<_>>();
+        let custom_n = output_render_elements.len();
 
         // Barra de tarefas e menu: acima das janelas, abaixo do cursor.
         output_render_elements.extend(interface.into_iter().map(OutputRenderElements::Fundo));
@@ -199,7 +203,16 @@ where
         output_render_elements.extend(space_elements.into_iter().map(OutputRenderElements::Space));
 
         // Seleção na área de trabalho: abaixo das janelas, acima do fundo.
-        output_render_elements.extend(selecao.into_iter().map(OutputRenderElements::Solido));
+        // No recorte de captura, por cima de tudo (menos o cursor).
+        if RECORTE.load(std::sync::atomic::Ordering::Relaxed) {
+            let n = custom_n;
+            let topo: Vec<_> = selecao.into_iter().map(OutputRenderElements::Solido).collect();
+            for (i, e) in topo.into_iter().enumerate() {
+                output_render_elements.insert(n + i, e);
+            }
+        } else {
+            output_render_elements.extend(selecao.into_iter().map(OutputRenderElements::Solido));
+        }
         // Ícones da área de trabalho, logo acima do papel de parede.
         output_render_elements.extend(area.into_iter().map(OutputRenderElements::Fundo));
 

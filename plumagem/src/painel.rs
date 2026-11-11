@@ -399,7 +399,10 @@ pub struct Painel {
     pub minimizadas: Vec<(WindowElement, Point<i32, Logical>)>,
     /// Retângulo de seleção na área de trabalho: onde o arrasto começou.
     pub selecao: Option<Point<f64, Logical>>,
-    sel: [SolidColorBuffer; 5],
+    sel: [SolidColorBuffer; 9],
+    /// Captura com recorte (Win+Shift+S): None = desligado; Some(None) =
+    /// esperando o arraste; Some(Some(p)) = arrastando desde `p`.
+    pub recorte: Option<Option<Point<f64, Logical>>>,
     /// Bordas da janela sendo redimensionada (para a forma do cursor).
     pub cursor_redim: Option<crate::shell::ResizeEdge>,
     pub som: Som,
@@ -469,6 +472,7 @@ impl Default for Painel {
             minimizadas: Vec::new(),
             selecao: None,
             sel: Default::default(),
+            recorte: None,
             cursor_redim: None,
             som: Som::default(),
             som_aberto: false,
@@ -1231,6 +1235,9 @@ impl Painel {
         ponteiro: Point<f64, Logical>,
         escala: f64,
     ) -> Vec<SolidColorRenderElement> {
+        if let Some(r) = self.recorte {
+            return self.elementos_recorte(r, geo, ponteiro, escala);
+        }
         let Some(inicio) = self.selecao else { return Vec::new() };
         let (x0, y0) = (inicio.x.min(ponteiro.x), inicio.y.min(ponteiro.y));
         let (x1, y1) = (inicio.x.max(ponteiro.x), inicio.y.max(ponteiro.y));
@@ -1258,6 +1265,57 @@ impl Painel {
         }
         // A borda vem antes (fica por cima do preenchimento).
         v.rotate_left(1);
+        v
+    }
+
+    /// Captura com recorte: escurece a tela fora do retângulo escolhido.
+    fn elementos_recorte(
+        &mut self,
+        inicio: Option<Point<f64, Logical>>,
+        geo: Rectangle<i32, Logical>,
+        ponteiro: Point<f64, Logical>,
+        escala: f64,
+    ) -> Vec<SolidColorRenderElement> {
+        let (tw, th) = (geo.size.w, geo.size.h);
+        let p = ponteiro - geo.loc.to_f64();
+        let (x0, y0, x1, y1) = match inicio {
+            Some(i) => {
+                let i = i - geo.loc.to_f64();
+                (i.x.min(p.x) as i32, i.y.min(p.y) as i32, i.x.max(p.x) as i32, i.y.max(p.y) as i32)
+            }
+            None => (0, 0, 0, 0),
+        };
+        let escuro = [0.0, 0.0, 0.0, 0.45];
+        let borda = [1.0, 1.0, 1.0, 1.0];
+        let (w, h) = (x1 - x0, y1 - y0);
+        let mut partes: Vec<((i32, i32), (i32, i32), [f32; 4])> = vec![
+            ((0, 0), (tw, y0), escuro),
+            ((0, y1), (tw, th - y1), escuro),
+            ((0, y0), (x0, h), escuro),
+            ((x1, y0), (tw - x1, h), escuro),
+        ];
+        if inicio.is_none() {
+            // Antes de arrastar: a tela toda escura.
+            partes = vec![((0, 0), (tw, th), escuro)];
+        } else if w > 1 && h > 1 {
+            partes.extend([
+                ((x0, y0), (w, 1), borda),
+                ((x0, y1 - 1), (w, 1), borda),
+                ((x0, y0), (1, h), borda),
+                ((x1 - 1, y0), (1, h), borda),
+            ]);
+        }
+        let mut v = Vec::new();
+        for (buf, (desl, tam, cor)) in self.sel.iter_mut().zip(partes) {
+            if tam.0 <= 0 || tam.1 <= 0 {
+                continue;
+            }
+            buf.update(tam, cor);
+            let pos = Point::<f64, Logical>::from((desl.0 as f64, desl.1 as f64)).to_physical(escala).to_i32_round();
+            v.push(SolidColorRenderElement::from_buffer(buf, pos, escala, 1.0, Kind::Unspecified));
+        }
+        // Bordas por cima.
+        v.reverse();
         v
     }
 

@@ -22,8 +22,14 @@ jobs:
 
       - name: Bibliotecas de sistema
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq --no-install-recommends libxkbcommon-dev libwayland-dev libasound2-dev libcrypt-dev pkg-config
+          # O espelho da Azure às vezes some do DNS: tenta de novo e, se não
+          # der, usa o archive.ubuntu.com direto.
+          for t in 1 2 3; do sudo apt-get update -qq && break; sleep 10; done
+          if ! getent hosts azure.archive.ubuntu.com >/dev/null; then
+            sudo sed -i 's#mirror+file:/etc/apt/apt-mirrors.txt#http://archive.ubuntu.com/ubuntu/#' /etc/apt/sources.list.d/ubuntu.sources 2>/dev/null || true
+            sudo apt-get update -qq || true
+          fi
+          for t in 1 2 3; do sudo apt-get install -y -qq --no-install-recommends --fix-missing libxkbcommon-dev libwayland-dev libasound2-dev libcrypt-dev pkg-config && break; sleep 15; sudo apt-get update -qq || true; done
 
       - name: Compilar
         working-directory: apps
@@ -50,8 +56,14 @@ jobs:
 
       - name: Bibliotecas de sistema
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq --no-install-recommends libxkbcommon-dev libwayland-dev libasound2-dev libcrypt-dev pkg-config
+          # O espelho da Azure às vezes some do DNS: tenta de novo e, se não
+          # der, usa o archive.ubuntu.com direto.
+          for t in 1 2 3; do sudo apt-get update -qq && break; sleep 10; done
+          if ! getent hosts azure.archive.ubuntu.com >/dev/null; then
+            sudo sed -i 's#mirror+file:/etc/apt/apt-mirrors.txt#http://archive.ubuntu.com/ubuntu/#' /etc/apt/sources.list.d/ubuntu.sources 2>/dev/null || true
+            sudo apt-get update -qq || true
+          fi
+          for t in 1 2 3; do sudo apt-get install -y -qq --no-install-recommends --fix-missing libxkbcommon-dev libwayland-dev libasound2-dev libcrypt-dev pkg-config && break; sleep 15; sudo apt-get update -qq || true; done
 
       - name: Clippy
         working-directory: apps
