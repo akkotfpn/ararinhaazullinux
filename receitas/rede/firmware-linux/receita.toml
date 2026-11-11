@@ -1,0 +1,61 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# BLFS (Firmware): só as partes do linux-firmware que fazem falta num PC
+# comum (Wi-Fi Intel, Realtek, Qualcomm, MediaTek e Broadcom; rede cabeada
+# Realtek; vídeo Intel e AMD) e a base de regras de rádio (regulatory.db),
+# comprimidas com zstd. O pacote inteiro passaria de 1 GB.
+
+[pacote]
+nome      = "firmware-linux"
+versao    = "20260622"
+resumo    = "Firmware de Wi-Fi, rede e vídeo para o Spix Kernel"
+licenca   = "LicenseRef-linux-firmware"
+categoria = "rede"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://cdn.kernel.org/pub/linux/kernel/firmware/linux-firmware-20260622.tar.xz"
+
+[dependencias]
+construcao = ["zstd"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+true
+''',
+]
+instalar = [
+  '''
+d=/usr/lib/firmware
+install -vdm755 $d
+# Pastas inteiras (as que existirem nesta versão).
+for p in intel/iwlwifi rtw88 rtw89 rtlwifi rtl_nic rtl_bt ath9k_htc ath10k ath11k ath12k \
+         mediatek brcm cypress i915 xe amdgpu regulatory.db regulatory.db.p7s; do
+  [ -e "$p" ] || continue
+  mkdir -p "$d/$(dirname "$p")"
+  cp -a "$p" "$d/$(dirname "$p")/"
+done
+# Wi-Fi Intel antigo fica na raiz do repositório.
+for f in iwlwifi-*; do
+  [ -e "$f" ] && cp -a "$f" "$d/"
+done
+# Os atalhos (Link:) do WHENCE das pastas copiadas.
+grep -E '^Link: ' WHENCE | while read -r _ de _ para; do
+  case "$de" in
+    intel/iwlwifi/*|rtw88/*|rtw89/*|rtlwifi/*|rtl_nic/*|rtl_bt/*|ath1*/*|ath9k_htc/*|mediatek/*|brcm/*|cypress/*|i915/*|xe/*|amdgpu/*|iwlwifi-*)
+      mkdir -p "$d/$(dirname "$de")"
+      ln -sfn "$para" "$d/$de" ;;
+  esac
+done
+# O kernel aceita firmware comprimido (CONFIG_FW_LOADER_COMPRESS_ZSTD).
+find $d -type f ! -name 'regulatory.db*' ! -name '*.zst' -print0 | xargs -0 -r -P $NUCLEOS -n 50 zstd -q --rm -19
+# Os atalhos passam a apontar para os .zst.
+find $d -type l | while read -r l; do
+  alvo=$(readlink "$l")
+  case "$alvo" in *.zst) continue ;; esac
+  [ -e "$(dirname "$l")/$alvo.zst" ] && { ln -sfn "$alvo.zst" "$l.zst"; rm -f "$l"; }
+done
+du -sh $d
+''',
+]

@@ -1,0 +1,54 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# BLFS (Rede): iwd, o "daemon" de Wi-Fi da Intel. Faz a conexão, o WPA e o
+# DHCP sozinho; a bandeja da Plumagem e as Configurações falam com ele pelo
+# iwctl. Usuários do grupo netdev (ou wheel) podem conectar.
+
+[pacote]
+nome      = "iwd"
+versao    = "3.12"
+resumo    = "Wi-Fi: procurar redes e conectar (iwd)"
+licenca   = "LGPL-2.1-or-later"
+categoria = "rede"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://www.kernel.org/pub/linux/network/wireless/iwd-3.12.tar.xz"
+
+[dependencias]
+construcao = ["dbus", "readline", "systemd"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+./configure --prefix=/usr --sysconfdir=/etc --localstatedir=/var \
+            --libexecdir=/usr/lib/iwd \
+            --disable-manual-pages \
+            --with-systemd-unitdir=/usr/lib/systemd/system \
+            --with-dbus-datadir=/usr/share
+''',
+  '''
+make -j$NUCLEOS
+''',
+]
+instalar = [
+  '''
+make install
+''',
+  # O iwd cuida do IP do Wi-Fi; o resolved cuida do DNS. O cabo continua
+  # com o systemd-networkd.
+  '''
+getent group netdev >/dev/null || groupadd -r netdev
+install -vdm755 /etc/iwd
+cat > /etc/iwd/main.conf << 'FIM'
+[General]
+EnableNetworkConfiguration=true
+AddressRandomization=once
+
+[Network]
+NameResolvingService=systemd
+EnableIPv6=true
+FIM
+systemctl enable iwd.service
+''',
+]
