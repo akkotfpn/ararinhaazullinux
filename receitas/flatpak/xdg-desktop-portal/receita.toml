@@ -24,6 +24,8 @@ construcao = ["glib", "meson", "fuse3", "gdk-pixbuf", "json-glib", "pipewire", "
 ambiente = "isolado"
 passos = [
   '''
+# GCC 15 trata ponteiro de tipo errado como erro; a 1.18 tem um no pipewire.c.
+export CFLAGS="-O2 -Wno-error=incompatible-pointer-types"
 mkdir -p build && cd build && meson setup --prefix=/usr --buildtype=release --wrap-mode=nofallback \
   -D pytest=disabled -D docbook-docs=disabled -D man-pages=disabled ..
 ''',
