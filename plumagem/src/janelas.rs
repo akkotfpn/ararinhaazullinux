@@ -37,6 +37,13 @@ pub enum Encaixe {
     Baixo,
 }
 
+/// Região onde a janela está encaixada (coluna, linha).
+struct RegiaoEncaixe(std::cell::Cell<Option<(i8, i8)>>);
+
+fn regiao_de(w: &WindowElement) -> Option<(i8, i8)> {
+    w.0.user_data().get::<RegiaoEncaixe>().and_then(|r| r.0.get())
+}
+
 /// Posição e tamanho antes de maximizar, guardados na própria janela.
 struct GeometriaAnterior(RefCell<Option<(Point<i32, Logical>, Option<Size<i32, Logical>>)>>);
 
@@ -164,16 +171,25 @@ impl<B: Backend> AnvilState<B> {
 
     /// Encaixa a janela ativa (Win+setas): metade esquerda/direita, maximizar,
     /// e para baixo restaura ou minimiza, como no Windows.
+    /// Win+setas, como no Windows: esquerda/direita encaixam na metade;
+    /// com a janela numa metade, cima/baixo levam ao quarto (e de volta).
     pub fn encaixar(&mut self, lado: Encaixe) {
         let Some(w) = self.space.elements().last().cloned() else { return };
-        match lado {
-            Encaixe::Cima => {
+        let atual = if self.esta_encaixada(&w) { regiao_de(&w) } else { None };
+        let nova = match (lado, atual) {
+            (Encaixe::Esquerda, _) => (-1, 0),
+            (Encaixe::Direita, _) => (1, 0),
+            (Encaixe::Cima, Some((c, 1))) => (c, 0),
+            (Encaixe::Cima, Some((c, 0))) => (c, -1),
+            (Encaixe::Baixo, Some((c, -1))) => (c, 0),
+            (Encaixe::Baixo, Some((c, 0))) => (c, 1),
+            (Encaixe::Cima, _) => {
                 if !self.esta_maximizada(&w) {
                     self.maximizar(&w);
                 }
                 return;
             }
-            Encaixe::Baixo => {
+            (Encaixe::Baixo, _) => {
                 if self.esta_maximizada(&w) || self.esta_encaixada(&w) {
                     self.restaurar(&w);
                 } else {
@@ -181,14 +197,19 @@ impl<B: Backend> AnvilState<B> {
                 }
                 return;
             }
-            _ => {}
-        }
+        };
+        self.encaixar_em(&w, nova);
+    }
+
+    /// Encaixa numa região: coluna -1/1 (esquerda/direita) e linha
+    /// 0 (altura toda), -1 (quarto de cima) ou 1 (quarto de baixo).
+    pub fn encaixar_em(&mut self, w: &WindowElement, (col, lin): (i8, i8)) {
         let Some(t) = w.0.toplevel().cloned() else { return };
-        let output = self.space.outputs_for_element(&w).first().cloned().or_else(|| self.space.outputs().next().cloned());
+        let output = self.space.outputs_for_element(w).first().cloned().or_else(|| self.space.outputs().next().cloned());
         let Some(area) = output.and_then(|o| area_util(&self.space, &o)) else { return };
         // Guarda o tamanho de antes (se ainda não está maximizada/encaixada).
-        if !self.esta_maximizada(&w) && !self.esta_encaixada(&w) {
-            if let Some(loc) = self.space.element_location(&w) {
+        if !self.esta_maximizada(w) && !self.esta_encaixada(w) {
+            if let Some(loc) = self.space.element_location(w) {
                 let tamanho = t.current_state().size;
                 w.0.user_data().insert_if_missing(|| GeometriaAnterior(RefCell::new(None)));
                 if let Some(g) = w.0.user_data().get::<GeometriaAnterior>() {
@@ -196,10 +217,18 @@ impl<B: Backend> AnvilState<B> {
                 }
             }
         }
+        w.0.user_data().insert_if_missing(|| RegiaoEncaixe(std::cell::Cell::new(None)));
+        if let Some(r) = w.0.user_data().get::<RegiaoEncaixe>() {
+            r.0.set(Some((col, lin)));
+        }
         let meia = area.size.w / 2;
-        let x = if lado == Encaixe::Esquerda { area.loc.x } else { area.loc.x + meia };
-        let mut tamanho: Size<i32, Logical> = (meia, area.size.h).into();
-        let y = area.loc.y;
+        let x = if col < 0 { area.loc.x } else { area.loc.x + meia };
+        let (y, alt) = match lin {
+            0 => (area.loc.y, area.size.h),
+            -1 => (area.loc.y, area.size.h / 2),
+            _ => (area.loc.y + area.size.h / 2, area.size.h - area.size.h / 2),
+        };
+        let mut tamanho: Size<i32, Logical> = (meia, alt).into();
         if w.decoration_state().is_ssd {
             tamanho.h -= HEADER_BAR_HEIGHT;
         }

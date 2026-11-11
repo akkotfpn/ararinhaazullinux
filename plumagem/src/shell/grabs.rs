@@ -72,18 +72,25 @@ impl<BackendData: Backend> PointerGrab<AnvilState<BackendData>> for PointerMoveS
             // Aero Snap: soltar a janela na borda da tela encaixa.
             let geo = data.space.output_under(pos).next().and_then(|o| data.space.output_geometry(o));
             if let Some(g) = geo {
-                let lado = if pos.x <= (g.loc.x + 2) as f64 {
-                    Some(crate::janelas::Encaixe::Esquerda)
-                } else if pos.x >= (g.loc.x + g.size.w - 3) as f64 {
-                    Some(crate::janelas::Encaixe::Direita)
-                } else if pos.y <= (g.loc.y + 2) as f64 {
-                    Some(crate::janelas::Encaixe::Cima)
+                // Cantos (80 px) levam ao quarto da tela; laterais, à metade.
+                let canto = 80.0;
+                let esq = pos.x <= (g.loc.x + 2) as f64;
+                let dir = pos.x >= (g.loc.x + g.size.w - 3) as f64;
+                let col = if esq { Some(-1) } else if dir { Some(1) } else { None };
+                let lin = if pos.y <= g.loc.y as f64 + canto {
+                    -1
+                } else if pos.y >= (g.loc.y + g.size.h) as f64 - canto {
+                    1
                 } else {
-                    None
+                    0
                 };
-                if let Some(lado) = lado {
+                if let Some(c) = col {
                     data.space.raise_element(&self.window, true);
-                    data.encaixar(lado);
+                    let w = self.window.clone();
+                    data.encaixar_em(&w, (c, lin));
+                } else if pos.y <= (g.loc.y + 2) as f64 {
+                    data.space.raise_element(&self.window, true);
+                    data.encaixar(crate::janelas::Encaixe::Cima);
                 }
             }
         }
