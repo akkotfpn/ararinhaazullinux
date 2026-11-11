@@ -78,6 +78,41 @@ Para conferir num sistema instalado: `sudo cryptsetup luksDump
 Ainda falta: tela de senha gráfica (hoje é texto no console), TPM2
 opcional e trocar a senha do disco pelas Configurações.
 
+## Secure Boot com chave própria
+
+O kernel do Ararinha já é um único `.efi` (EFI stub com a linha de
+comando e, no disco criptografado, a initramfs embutidas), então assinar
+esse arquivo protege a cadeia inteira até a raiz.
+
+No instalador, quando o firmware está em modo de configuração (Setup
+Mode), aparece "Ativar o Secure Boot com a chave deste computador":
+
+- três chaves RSA-3072 (PK, KEK e db) são geradas no próprio computador e
+  ficam em `/etc/ararinha/secureboot` (pasta 0700 do root, dentro do disco
+  criptografado quando ele é criptografado). Ninguém mais tem essas chaves;
+- o kernel da ESP é assinado com a chave db (`systemd-sbsign`);
+- as chaves são cadastradas no firmware pelo efivarfs, como variáveis
+  autenticadas da UEFI: db e KEK são acrescentados aos que já existirem
+  (placas de vídeo com ROM assinada pela Microsoft continuam funcionando)
+  e o PK vai por último, o que liga o Secure Boot;
+- se algo falhar, a instalação termina sem Secure Boot e avisa.
+
+Com o Secure Boot ligado o kernel entra em lockdown "integrity" e só
+carrega módulos assinados (seção abaixo).
+
+Como conferir: Configurações > Sobre mostra "Secure Boot: Ligado, com a
+chave deste computador". No terminal, `od -An -tx1
+/sys/firmware/efi/efivars/SecureBoot-8be4df61-93ca-11d2-aa0d-00e098032b8c`
+termina em `01`, e `sudo openssl x509 -noout -subject -in
+/etc/ararinha/secureboot/db.crt` mostra o certificado deste computador.
+
+Para pôr o firmware em Setup Mode: na configuração da UEFI (F2/Del ao
+ligar), em Secure Boot, "Clear/Delete all keys" ou "Reset to Setup Mode".
+Numa VM do Proxmox: OVMF com "Pre-Enroll keys" desmarcado.
+
+Ainda falta: assinar de novo o kernel quando ele for atualizado (entra com
+as atualizações do sistema).
+
 ## Módulos do kernel assinados
 
 Cada módulo do Spix Kernel é assinado (SHA-512) na construção, com uma
