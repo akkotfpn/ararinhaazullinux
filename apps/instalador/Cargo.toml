@@ -1,0 +1,19 @@
+[package]
+name = "instalador"
+version = "0.1.0"
+description = "Instala o Ararinha Azul Linux no disco do computador"
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+penas = { path = "../penas" }
+
+[[bin]]
+name = "instalador"
+path = "src/main.rs"
+
+# Ajudante setuid que particiona e copia (só para o grupo wheel).
+[[bin]]
+name = "ararinha-instalar"
+path = "src/ajudante.rs"

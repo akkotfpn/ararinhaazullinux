@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Instalar o Ararinha
+Name[en]=Install Ararinha
+Comment=Copia o Ararinha do pendrive para o disco do computador
+Exec=instalador
+Icon=instalador
+StartupWMClass=instalador
+Categories=System;
