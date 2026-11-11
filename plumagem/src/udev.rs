@@ -136,7 +136,6 @@ pub struct UdevData {
     fundo: Option<crate::fundo::Fundo>,
     #[cfg(feature = "debug")]
     fps_texture: Option<MultiTexture>,
-    pointer_image: crate::cursor::Cursor,
     debug_flags: DebugFlags,
     keyboards: Vec<smithay::reexports::input::Device>,
 }
@@ -257,7 +256,6 @@ pub fn run_udev() {
         primary_gpu,
         gpus,
         backends: HashMap::new(),
-        pointer_image: crate::cursor::Cursor::load(),
         pointer_images: Vec::new(),
         pointer_element: PointerElement::default(),
         fundo: crate::fundo::Fundo::atual(),
@@ -1767,7 +1765,8 @@ fn render_surface<'a>(
         .map(|render_frame_result| {
             #[cfg(feature = "renderer_sync")]
             if let PrimaryPlaneElement::Swapchain(element) = render_frame_result.primary_element {
-                element.sync.wait();
+                // Se a espera falhar, mostra o quadro assim mesmo.
+                let _ = element.sync.wait();
             }
             (!render_frame_result.is_empty, render_frame_result.states)
         })

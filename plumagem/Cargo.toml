@@ -50,5 +50,10 @@ egl = []
 udev = []
 xwayland = ["smithay/xwayland"]
 
+# Recursos do Anvil que a Plumagem não usa (winit, x11, debug): o código
+# continua lá atrás de cfg, sem avisos.
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("debug", "x11", "winit", "display-info"))'] }
+
 [profile.release]
 lto = "thin"

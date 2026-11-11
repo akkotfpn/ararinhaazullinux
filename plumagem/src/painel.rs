@@ -213,7 +213,6 @@ const ICONE_L: i32 = 92;
 const ICONE_A: i32 = 98;
 const AREA_X: i32 = 10;
 const AREA_Y: i32 = 12;
-static MINGAU_PNG: &[u8] = include_bytes!("../resources/mingau-128.png");
 
 /// O que está sob o ponteiro na interface.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -375,7 +374,6 @@ pub struct Painel {
     barra: Option<(String, MemoryRenderBuffer)>,
     menu: Option<(String, MemoryRenderBuffer)>,
     logo: Option<image::RgbaImage>,
-    mingau: Option<image::RgbaImage>,
     /// Última checagem da configuração: (segundo, datas dos arquivos).
     config_visto: (u64, Vec<Option<std::time::SystemTime>>),
 }
@@ -426,7 +424,6 @@ impl Default for Painel {
             barra: None,
             menu: None,
             logo: desenho::icone(LOGO_PNG, (altura() - 16).max(16) as u32, (altura() - 16).max(16) as u32),
-            mingau: desenho::icone(MINGAU_PNG, 44, 51),
             config_visto: (0, versao_config()),
         }
     }
