@@ -174,10 +174,38 @@ fn ler_sobre() -> Vec<(String, String)> {
         ("Usuário".into(), usuario),
         ("Processador".into(), format!("{cpu} ({nucleos} núcleos)")),
         ("Memória".into(), format!("{:.1} GB", mem_kb as f64 / 1024.0 / 1024.0).replace('.', ",")),
-        ("Kernel".into(), format!("Spix Kernel {kernel}")),
-        ("Interface".into(), "Plumagem".into()),
+        ("Kernel".into(), format!("Spix Kernel {kernel} · interface Plumagem")),
         ("Inicialização".into(), boot),
+        ("Disco".into(), estado_disco()),
+        ("Secure Boot".into(), estado_secure_boot()),
+        ("Privacidade".into(), "Sem telemetria: nada é enviado sobre você ou este computador".into()),
     ]
+}
+
+/// A raiz está num volume criptografado (LUKS)?
+fn estado_disco() -> String {
+    let montagens = fs::read_to_string("/proc/mounts").unwrap_or_default();
+    let raiz = montagens.lines().find(|l| l.split_whitespace().nth(1) == Some("/")).and_then(|l| l.split_whitespace().next()).unwrap_or("");
+    if raiz.starts_with("/dev/mapper/") || raiz.starts_with("/dev/dm-") {
+        "Criptografado (LUKS2, AES-XTS)".into()
+    } else {
+        "Sem criptografia".into()
+    }
+}
+
+fn estado_secure_boot() -> String {
+    let ler = |n: &str| fs::read(format!("/sys/firmware/efi/efivars/{n}-8be4df61-93ca-11d2-aa0d-00e098032b8c")).ok().and_then(|v| v.get(4).copied());
+    if !std::path::Path::new("/sys/firmware/efi").exists() {
+        return "Indisponível (inicialização sem UEFI)".into();
+    }
+    match (ler("SecureBoot"), ler("SetupMode")) {
+        (Some(1), _) => {
+            let proprio = std::path::Path::new("/etc/ararinha/secureboot").is_dir();
+            if proprio { "Ligado, com a chave deste computador".into() } else { "Ligado".into() }
+        }
+        (_, Some(1)) => "Desligado (firmware em modo de configuração)".into(),
+        _ => "Desligado".into(),
+    }
 }
 
 fn ler_energia() -> String {
@@ -432,7 +460,7 @@ impl Configuracoes {
         for (k, v) in &self.sobre {
             ui.tela.texto(x0 + 32.0, y, 13.0, tema::TEXTO_SECUNDARIO(), k);
             ui.tela.texto(x0 + 200.0, y, 13.5, tema::TEXTO(), &desenho::encurtar(13.5, v, l - 200.0 - 170.0));
-            y += 28.0;
+            y += 25.0;
         }
         y += 18.0;
         ui.tela.retangulo(x0 + 32.0, y, l - 64.0, 1.0, 0.0, tema::BORDA());
