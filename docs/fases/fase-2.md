@@ -61,3 +61,29 @@ Atalhos do Windows na Plumagem: Alt+Tab, Alt+F4, Win+D / Ctrl+Alt+D,
 Win+E / Ctrl+Alt+E, Ctrl+Esc (menu), Ctrl+Alt+T (terminal) e Print Screen
 (captura de tela).
 
+
+### Segurança, design e otimização (11/11, tarde)
+
+- **Disco criptografado** no instalador (LUKS2, AES-XTS 512, Argon2id),
+  com o kernel `vmlinuz-spix-cripto` que traz uma initramfs mínima feita
+  pela Ninhada para pedir a senha no boot.
+- **Secure Boot com chave própria**: com o firmware em Setup Mode, o
+  instalador gera as chaves do computador, assina o kernel e as cadastra.
+  Módulos do kernel assinados; lockdown "integrity" com Secure Boot.
+- **Bloqueio automático** (Configurações › Energia; padrão 5 min) e antes
+  de suspender; atraso progressivo depois de 3 senhas erradas.
+- **ararinha-sistema**: serviço root ativado por socket (SO_PEERCRED),
+  no lugar de ajudantes setuid. Já cuida do firewall e da energia.
+- **Configurações › Firewall**: rede pública ou de casa e portas liberadas.
+- Serviços endurecidos e sem core dumps. CI com clippy, cargo-audit e a
+  contagem de `unsafe`.
+- **Menu Iniciar**: busca ao digitar, lista com rolagem, teclado, avatar e
+  nome da conta, botões de Bloquear, Sair, Reiniciar e Desligar.
+- **Penas**: componentes únicos (botão, campo, caixa de marcar, chave,
+  aviso, medidor de senha) e medidas do sistema de design.
+- **Otimização**: as Penas não acordam mais a cada 100 ms (inotify); a
+  barra não cria processos a cada poucos segundos (getifaddrs,
+  localtime_r); a Central não fica num laço de redesenho durante as
+  instalações; Plumagem sem avisos de compilação.
+- Configurações › Sobre mostra a criptografia do disco, o Secure Boot e
+  que o sistema não tem telemetria.
