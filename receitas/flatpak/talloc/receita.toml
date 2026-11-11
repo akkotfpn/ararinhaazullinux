@@ -1,0 +1,32 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Unidades de rede (SMB/CIFS): BLFS, talloc (pedido pelo cifs-utils)
+
+[pacote]
+nome      = "talloc"
+versao    = "2.5.0"
+resumo    = "Alocador de memória hierárquico do Samba"
+licenca   = "LGPL-3.0-or-later"
+categoria = "rede"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://www.samba.org/ftp/talloc/talloc-2.5.0.tar.gz"
+
+[dependencias]
+construcao = ["python"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+./configure --prefix=/usr --disable-python
+''',
+  '''
+make
+''',
+]
+instalar = [
+  '''
+make install
+''',
+]

@@ -15,7 +15,7 @@ tipo      = "toolchain"
 url = "https://www.samba.org/ftp/linux-cifs/cifs-utils/cifs-utils-7.8.tar.bz2"
 
 [dependencias]
-construcao = ["libcap"]
+construcao = ["libcap", "talloc"]
 
 [construcao]
 ambiente = "isolado"
