@@ -74,6 +74,11 @@ for app in imagens notas configuracoes central calculadora tarefas paciencia mus
 done
 install -vDm644 configuracoes/recursos/sobre.desktop /usr/share/applications/sobre.desktop
 install -vDm755 target/release/ararinha-som /usr/bin/ararinha-som
+# Portais do Flatpak (Abrir/Salvar, tema, notificações) e notificações da sessão.
+install -vDm755 target/release/xdg-desktop-portal-ararinha /usr/libexec/xdg-desktop-portal-ararinha
+install -vDm644 portal/recursos/ararinha.portal /usr/share/xdg-desktop-portal/portals/ararinha.portal
+install -vDm644 portal/recursos/org.freedesktop.impl.portal.desktop.ararinha.service /usr/share/dbus-1/services/org.freedesktop.impl.portal.desktop.ararinha.service
+install -vDm644 portal/recursos/org.freedesktop.Notifications.service /usr/share/dbus-1/services/org.freedesktop.Notifications.service
 # Instalador: o ajudante é setuid root e só obedece ao grupo wheel.
 install -vDm4750 -g wheel target/release/ararinha-instalar /usr/bin/ararinha-instalar 2>/dev/null \
   || install -vDm4755 target/release/ararinha-instalar /usr/bin/ararinha-instalar
