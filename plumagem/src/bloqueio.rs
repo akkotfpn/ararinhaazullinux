@@ -28,6 +28,9 @@ pub struct Bloqueio {
     usuario: String,
     hora: (std::time::Instant, String, String),
     buf: Option<(String, smithay::backend::renderer::element::memory::MemoryRenderBuffer)>,
+    /// Senhas erradas seguidas e até quando a tela recusa novas tentativas.
+    erros: u32,
+    espera_ate: Option<std::time::Instant>,
 }
 
 fn agora() -> (String, String) {
@@ -52,12 +55,14 @@ impl Bloqueio {
             usuario: std::env::var("USER").or_else(|_| std::env::var("LOGNAME")).unwrap_or_default(),
             hora: (std::time::Instant::now(), h, d),
             buf: None,
+            erros: 0,
+            espera_ate: None,
         }
     }
 
     /// Tecla na tela de bloqueio.
     pub fn tecla(&mut self, sym: Keysym) {
-        if self.conferindo.is_some() {
+        if self.conferindo.is_some() || self.segundos_de_espera() > 0 {
             return;
         }
         match sym {
@@ -107,6 +112,12 @@ impl Bloqueio {
                 if ok {
                     return true;
                 }
+                self.erros += 1;
+                // Atraso que cresce: a partir do 3º erro, 5 s, 10 s, 20 s… até 5 min.
+                if self.erros >= 3 {
+                    let s = (5u64 << (self.erros - 3).min(6)).min(300);
+                    self.espera_ate = Some(std::time::Instant::now() + std::time::Duration::from_secs(s));
+                }
                 self.erro = Some("Senha incorreta. Tente de novo.".into());
             }
         }
@@ -115,6 +126,13 @@ impl Bloqueio {
             self.hora = (std::time::Instant::now(), h, d);
         }
         false
+    }
+
+    /// Segundos que faltam para aceitar outra tentativa (0 = pode).
+    fn segundos_de_espera(&self) -> u64 {
+        self.espera_ate
+            .map(|t| t.saturating_duration_since(std::time::Instant::now()).as_secs_f32().ceil() as u64)
+            .unwrap_or(0)
     }
 
     fn desenhar(&self, tela: Size<i32, Logical>) -> Tela {
@@ -141,8 +159,10 @@ impl Bloqueio {
             let pontos = "•".repeat(self.senha.chars().count().min(30));
             t.texto(fx + 14.0, fy + 27.0, 16.0, Cor::hex(0x0B1A2E), &pontos);
         }
-        let msg = self.erro.as_deref().unwrap_or("Digite a senha e tecle Enter");
-        let cor = if self.erro.is_some() { Cor::hex(0xC2413B) } else { Cor::hex(0x4A5A6A) };
+        let espera = self.segundos_de_espera();
+        let aguarde = format!("Muitas tentativas. Aguarde {espera} s.");
+        let msg = if espera > 0 { aguarde.as_str() } else { self.erro.as_deref().unwrap_or("Digite a senha e tecle Enter") };
+        let cor = if self.erro.is_some() || espera > 0 { Cor::hex(0xC2413B) } else { Cor::hex(0x4A5A6A) };
         let lm = desenho::medir(12.5, msg);
         t.texto(cx + cl / 2.0 - lm / 2.0, cy + 132.0, 12.5, cor, msg);
         t
@@ -160,7 +180,8 @@ impl Bloqueio {
     {
         desenho::preparar_vidro(tela.w, tela.h);
         let chave = format!(
-            "{tela:?}|{}|{:?}|{}|{}|{}",
+            "{tela:?}|{}|{}|{:?}|{}|{}|{}",
+            self.segundos_de_espera(),
             self.senha.chars().count(),
             self.erro,
             self.conferindo.is_some(),
