@@ -425,6 +425,10 @@ impl<B: Backend> AnvilState<B> {
                 // O gancho do system-sleep bloqueia a tela antes de dormir.
                 pedir_sistema("dormir", None);
             }
+            Alvo::Hibernar => {
+                self.painel.menu_aberto = false;
+                pedir_sistema("hibernar", None);
+            }
             Alvo::Bloquear => {
                 self.painel.menu_aberto = false;
                 self.bloquear();

@@ -132,11 +132,40 @@ const RODAPE_A: i32 = 64;
 /// Botões de energia no rodapé do menu (quadrados).
 const ENERGIA_L: i32 = 40;
 /// Opções do botão de energia, numa janelinha acima dele.
-const OPCOES_ENERGIA: [(Alvo, &str); 4] =
-    [(Alvo::Dormir, "Dormir"), (Alvo::Sair, "Sair da sessão"), (Alvo::Reiniciar, "Reiniciar"), (Alvo::Desligar, "Desligar")];
+fn opcoes_energia() -> &'static [(Alvo, &'static str)] {
+    const SEM: [(Alvo, &str); 4] = [(Alvo::Dormir, "Dormir"), (Alvo::Sair, "Sair da sessão"), (Alvo::Reiniciar, "Reiniciar"), (Alvo::Desligar, "Desligar")];
+    const COM: [(Alvo, &str); 5] =
+        [(Alvo::Dormir, "Dormir"), (Alvo::Hibernar, "Hibernar"), (Alvo::Sair, "Sair da sessão"), (Alvo::Reiniciar, "Reiniciar"), (Alvo::Desligar, "Desligar")];
+    if pode_hibernar() {
+        &COM
+    } else {
+        &SEM
+    }
+}
+
+/// Hibernar precisa de uma área de troca (swap) do tamanho da memória.
+fn pode_hibernar() -> bool {
+    static PODE: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *PODE.get_or_init(|| {
+        let kb = |arq: &str, chave: &str| -> u64 {
+            std::fs::read_to_string(arq)
+                .unwrap_or_default()
+                .lines()
+                .find(|l| l.starts_with(chave))
+                .and_then(|l| l.split_whitespace().nth(1))
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(0)
+        };
+        let swap = kb("/proc/meminfo", "SwapTotal:");
+        let disco = std::fs::read_to_string("/sys/power/state").unwrap_or_default().contains("disk");
+        disco && swap > 0 && swap >= kb("/proc/meminfo", "MemTotal:")
+    })
+}
 const POP_L: i32 = 190;
 const POP_ITEM: i32 = 38;
-const POP_A: i32 = 4 * POP_ITEM + 12;
+fn pop_a() -> i32 {
+    opcoes_energia().len() as i32 * POP_ITEM + 12
+}
 const INICIAR_X: i32 = 6;
 const TAREFA_MAX: i32 = 220;
 const RELOGIO_L: i32 = 120;
@@ -250,6 +279,7 @@ pub enum Alvo {
     /// Botão de energia do menu (abre Dormir, Sair, Reiniciar, Desligar).
     Energia,
     Dormir,
+    Hibernar,
     /// Avatar e nome do usuário no rodapé do menu (abre a Conta).
     Usuario,
     Menu,
@@ -925,10 +955,10 @@ impl Painel {
             let (mx, my) = (x - o.x, y - o.y);
             if mx >= 0 && my >= 0 && mx < MENU_L && my < MENU_A {
                 if self.energia_aberta {
-                    let (px, py) = (MENU_L - 12 - POP_L, MENU_A - RODAPE_A - POP_A + 4);
-                    if mx >= px && mx < px + POP_L && my >= py && my < py + POP_A {
+                    let (px, py) = (MENU_L - 12 - POP_L, MENU_A - RODAPE_A - pop_a() + 4);
+                    if mx >= px && mx < px + POP_L && my >= py && my < py + pop_a() {
                         let i = ((my - py - 6).max(0) / POP_ITEM) as usize;
-                        return Some(OPCOES_ENERGIA.get(i).map(|o| o.0).unwrap_or(Alvo::Menu));
+                        return Some(opcoes_energia().get(i).map(|o| o.0).unwrap_or(Alvo::Menu));
                     }
                 }
                 if my >= MENU_A - RODAPE_A + 12 && my < MENU_A - 12 {
@@ -2293,10 +2323,10 @@ impl Painel {
 
         // Opções do botão de energia, numa janelinha acima dele.
         if self.energia_aberta {
-            let (px, py) = ((MENU_L - 12 - POP_L) as f32, (MENU_A - RODAPE_A - POP_A + 4) as f32);
-            t.retangulo(px - 1.0, py - 1.0, POP_L as f32 + 2.0, POP_A as f32 + 2.0, 10.0, tema::BORDA());
-            t.retangulo(px, py, POP_L as f32, POP_A as f32, 9.0, tema::SUPERFICIE());
-            for (i, (alvo, nome)) in OPCOES_ENERGIA.iter().enumerate() {
+            let (px, py) = ((MENU_L - 12 - POP_L) as f32, (MENU_A - RODAPE_A - pop_a() + 4) as f32);
+            t.retangulo(px - 1.0, py - 1.0, POP_L as f32 + 2.0, pop_a() as f32 + 2.0, 10.0, tema::BORDA());
+            t.retangulo(px, py, POP_L as f32, pop_a() as f32, 9.0, tema::SUPERFICIE());
+            for (i, (alvo, nome)) in opcoes_energia().iter().enumerate() {
                 let y = py + 6.0 + i as f32 * POP_ITEM as f32;
                 let sobre = hover == Some(*alvo);
                 if sobre {
@@ -2328,7 +2358,7 @@ fn icone_energia(t: &mut Tela, alvo: Alvo, cx: f32, cy: f32, cor: desenho::Cor) 
             t.linha(px, py, px - 4.0, py - 1.0, e, cor);
             t.linha(px, py, px + 1.0, py - 4.5, e, cor);
         }
-        Alvo::Dormir => {
+        Alvo::Dormir | Alvo::Hibernar => {
             // Lua crescente: um círculo com outro "mordendo".
             arco(t, cx, cy, 7.0, 0.18, 0.95, e, cor);
             arco(t, cx + 3.5, cy - 2.5, 5.5, 0.62, 1.12, e, cor);
