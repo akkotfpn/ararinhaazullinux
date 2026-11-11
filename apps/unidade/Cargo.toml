@@ -1,0 +1,11 @@
+[package]
+name = "unidade"
+version = "0.1.0"
+description = "Ajudante do Ararinha para conectar unidades de rede (SMB/CIFS)"
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "ararinha-unidade"
+path = "src/main.rs"

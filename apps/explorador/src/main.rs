@@ -41,6 +41,89 @@ struct Unidade {
     ponto: PathBuf,
     total: u64,
     livre: u64,
+    /// Unidade de rede (SMB), conectada pelo ararinha-unidade.
+    rede: bool,
+}
+
+/// Diálogo "Mapear unidade de rede".
+#[derive(Debug, Clone)]
+struct Mapear {
+    letra: char,
+    /// Campos: pasta (\\servidor\pasta), usuário e senha.
+    campos: [String; 3],
+    foco: usize,
+    reconectar: bool,
+    erro: Option<String>,
+}
+
+/// Arquivo com as unidades a reconectar ao entrar (só do usuário, 0600).
+fn arquivo_unidades() -> PathBuf {
+    let casa = std::env::var("HOME").unwrap_or_else(|_| "/".into());
+    PathBuf::from(casa).join(".config/ararinha/unidades")
+}
+
+/// Conecta pelo ajudante; devolve a mensagem de erro, se houver.
+fn conectar_unidade(letra: char, pasta: &str, usuario: &str, senha: &str) -> Result<(), String> {
+    use std::io::Write as _;
+    let mut filho = Command::new("ararinha-unidade")
+        .args(["montar", &letra.to_string(), pasta, usuario])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("Não deu para chamar o ararinha-unidade: {e}"))?;
+    if let Some(mut entrada) = filho.stdin.take() {
+        let _ = writeln!(entrada, "{senha}");
+    }
+    let saida = filho.wait_with_output().map_err(|e| e.to_string())?;
+    if saida.status.success() {
+        Ok(())
+    } else {
+        Err(String::from_utf8_lossy(&saida.stderr).trim().to_string())
+    }
+}
+
+/// Lido no início da sessão: reconecta as unidades marcadas.
+fn reconectar_tudo() {
+    let Ok(texto) = fs::read_to_string(arquivo_unidades()) else { return };
+    for linha in texto.lines() {
+        let c: Vec<&str> = linha.splitn(4, '\t').collect();
+        if c.len() == 4 {
+            if let Some(l) = c[0].chars().next() {
+                if let Err(e) = conectar_unidade(l, c[1], c[2], c[3]) {
+                    eprintln!("explorador: {l}: {e}");
+                }
+            }
+        }
+    }
+}
+
+fn lembrar_unidade(letra: char, pasta: &str, usuario: &str, senha: &str) {
+    use std::os::unix::fs::OpenOptionsExt;
+    let p = arquivo_unidades();
+    if let Some(d) = p.parent() {
+        let _ = fs::create_dir_all(d);
+    }
+    let atual = fs::read_to_string(&p).unwrap_or_default();
+    let mut linhas: Vec<String> = atual
+        .lines()
+        .filter(|l| !l.starts_with(&format!("{letra}\t")))
+        .map(String::from)
+        .collect();
+    linhas.push(format!("{letra}\t{pasta}\t{usuario}\t{senha}"));
+    let _ = fs::remove_file(&p);
+    if let Ok(mut f) = fs::OpenOptions::new().write(true).create_new(true).mode(0o600).open(&p) {
+        use std::io::Write as _;
+        let _ = f.write_all((linhas.join("\n") + "\n").as_bytes());
+    }
+}
+
+fn esquecer_unidade(letra: char) {
+    let p = arquivo_unidades();
+    if let Ok(atual) = fs::read_to_string(&p) {
+        let resto: Vec<&str> = atual.lines().filter(|l| !l.starts_with(&format!("{letra}\t"))).collect();
+        let _ = fs::write(&p, resto.join("\n") + if resto.is_empty() { "" } else { "\n" });
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -69,6 +152,9 @@ struct Explorador {
     transferencia: Option<(Vec<PathBuf>, bool)>,
     /// Item sendo renomeado e o texto digitado.
     renomeando: Option<(usize, String)>,
+    mapear: Option<Mapear>,
+    /// Menu do botão direito numa unidade de rede: posição e letra.
+    menu_unidade: Option<(f32, f32, char)>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -90,6 +176,35 @@ const MENU_ITEM_A: f32 = 30.0;
 /// Lê as unidades: a raiz é C:, as outras partições montadas ganham D:, E:...
 fn ler_unidades() -> Vec<Unidade> {
     let montagens = fs::read_to_string("/proc/mounts").unwrap_or_default();
+    // Unidades de rede: /run/media/<usuário>/<LETRA>, com a letra escolhida.
+    let mut rede = Vec::new();
+    for linha in montagens.lines() {
+        let c: Vec<&str> = linha.split_whitespace().collect();
+        if c.len() < 3 || !(c[2] == "cifs" || c[2] == "smb3") {
+            continue;
+        }
+        let ponto = PathBuf::from(c[1].replace("\\040", " "));
+        let letra = ponto
+            .file_name()
+            .and_then(|n| n.to_str())
+            .filter(|n| n.len() == 1)
+            .and_then(|n| n.chars().next());
+        if let Some(letra) = letra {
+            let unc = c[0].replace("\\040", " ");
+            let mut partes = unc.trim_start_matches('/').splitn(2, '/');
+            let servidor = partes.next().unwrap_or("").to_string();
+            let pasta = partes.next().unwrap_or("").rsplit('/').next().unwrap_or("").to_string();
+            let (total, livre) = espaco(&ponto);
+            rede.push(Unidade {
+                letra,
+                nome: format!("{pasta} (\\\\{servidor})"),
+                ponto,
+                total,
+                livre,
+                rede: true,
+            });
+        }
+    }
     let mut pontos: Vec<(String, PathBuf)> = vec![("Disco Local".into(), PathBuf::from("/"))];
     for linha in montagens.lines() {
         let c: Vec<&str> = linha.split_whitespace().collect();
@@ -108,14 +223,18 @@ fn ler_unidades() -> Vec<Unidade> {
             pontos.push((nome, PathBuf::from(ponto)));
         }
     }
-    pontos
+    let usadas: Vec<char> = rede.iter().map(|u| u.letra).collect();
+    let mut livres = ('C'..='Z').filter(|l| !usadas.contains(l));
+    let mut v: Vec<Unidade> = pontos
         .into_iter()
-        .enumerate()
-        .map(|(i, (nome, ponto))| {
+        .filter_map(|(nome, ponto)| {
+            let letra = livres.next()?;
             let (total, livre) = espaco(&ponto);
-            Unidade { letra: (b'C' + i as u8) as char, nome, ponto, total, livre }
+            Some(Unidade { letra, nome, ponto, total, livre, rede: false })
         })
-        .collect()
+        .collect();
+    v.extend(rede);
+    v
 }
 
 /// Tamanho total e livre (em bytes) de uma unidade, pelo `df`.
@@ -208,6 +327,8 @@ impl Explorador {
             menu: None,
             transferencia: None,
             renomeando: None,
+            mapear: None,
+            menu_unidade: None,
         };
         // Abre numa pasta passada como argumento, se houver.
         if let Some(p) = std::env::args().nth(1).map(PathBuf::from).filter(|p| p.is_dir()) {
@@ -332,6 +453,203 @@ impl Explorador {
                 }
             }
         }
+    }
+
+    fn abrir_mapear(&mut self) {
+        let usadas: Vec<char> = self.unidades.iter().map(|u| u.letra).collect();
+        let letra = ('D'..='Z').rev().find(|l| !usadas.contains(l)).unwrap_or('Z');
+        self.mapear = Some(Mapear {
+            letra,
+            campos: [String::new(), String::new(), String::new()],
+            foco: 0,
+            reconectar: true,
+            erro: None,
+        });
+    }
+
+    fn trocar_letra(&mut self, passo: i32) {
+        let usadas: Vec<char> = self.unidades.iter().map(|u| u.letra).collect();
+        let livres: Vec<char> = ('D'..='Z').filter(|l| !usadas.contains(l)).collect();
+        if let Some(m) = self.mapear.as_mut() {
+            if livres.is_empty() {
+                return;
+            }
+            let i = livres.iter().position(|l| *l == m.letra).unwrap_or(0) as i32;
+            m.letra = livres[(i + passo).rem_euclid(livres.len() as i32) as usize];
+        }
+    }
+
+    fn tecla_mapear(&mut self, tecla: Tecla) {
+        let Some(m) = self.mapear.as_mut() else { return };
+        match tecla {
+            Tecla::Texto(t) => {
+                if m.campos[m.foco].chars().count() < 200 {
+                    m.campos[m.foco].push_str(&t);
+                }
+                m.erro = None;
+            }
+            Tecla::Apagar => {
+                m.campos[m.foco].pop();
+            }
+            Tecla::Outra(Keysym::Tab) | Tecla::Baixo => m.foco = (m.foco + 1) % 3,
+            Tecla::Cima => m.foco = (m.foco + 2) % 3,
+            Tecla::Esc => self.mapear = None,
+            Tecla::Enter => {
+                if m.foco < 2 {
+                    m.foco += 1;
+                } else {
+                    self.conectar_mapear();
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn conectar_mapear(&mut self) {
+        let Some(m) = self.mapear.clone() else { return };
+        let pasta = m.campos[0].trim().to_string();
+        if pasta.is_empty() {
+            if let Some(mm) = self.mapear.as_mut() {
+                mm.erro = Some("Digite a pasta: \\\\servidor\\pasta".into());
+                mm.foco = 0;
+            }
+            return;
+        }
+        match conectar_unidade(m.letra, &pasta, m.campos[1].trim(), &m.campos[2]) {
+            Ok(()) => {
+                if m.reconectar {
+                    lembrar_unidade(m.letra, &pasta, m.campos[1].trim(), &m.campos[2]);
+                }
+                self.mapear = None;
+                self.aviso = Some(format!("Unidade {}: conectada.", m.letra));
+                self.unidades = ler_unidades();
+            }
+            Err(e) => {
+                if let Some(mm) = self.mapear.as_mut() {
+                    mm.erro = Some(if e.is_empty() { "Não deu para conectar.".into() } else { e });
+                }
+            }
+        }
+    }
+
+    fn desconectar(&mut self, letra: char) {
+        let saida = Command::new("ararinha-unidade").args(["desmontar", &letra.to_string()]).output();
+        match saida {
+            Ok(o) if o.status.success() => {
+                esquecer_unidade(letra);
+                self.aviso = Some(format!("Unidade {letra}: desconectada."));
+            }
+            Ok(o) => self.aviso = Some(String::from_utf8_lossy(&o.stderr).trim().to_string()),
+            Err(e) => self.aviso = Some(format!("Não deu para desconectar: {e}")),
+        }
+        if matches!(&self.local, Local::Pasta(p) if p.starts_with("/run/media")) {
+            self.local = Local::EsteComputador;
+        }
+        self.recarregar();
+    }
+
+    /// Posição do diálogo de mapear (centralizado).
+    fn caixa_mapear(l: f32, a: f32) -> (f32, f32, f32, f32) {
+        let (cl, ca) = (480.0, 380.0);
+        ((l - cl) / 2.0, (a - ca) / 2.0, cl, ca)
+    }
+
+    fn clique_mapear(&mut self, ui: &mut Ui, l: f32, a: f32) {
+        if !ui.clique {
+            ui.duplo = false;
+            ui.clique_direito = false;
+            return;
+        }
+        let (x, y, cl, ca) = Self::caixa_mapear(l, a);
+        let campos_y = [118.0, 190.0, 248.0];
+        let mut acao = None;
+        for (i, cy) in campos_y.iter().enumerate() {
+            if ui.sobre(x + 24.0, y + cy, cl - 48.0, 34.0) {
+                acao = Some(i as i32);
+            }
+        }
+        if ui.sobre(x + 24.0, y + 62.0, 30.0, 30.0) {
+            self.trocar_letra(1);
+        }
+        if ui.sobre(x + 110.0, y + 62.0, 30.0, 30.0) {
+            self.trocar_letra(-1);
+        }
+        if ui.sobre(x + 24.0, y + 292.0, 240.0, 24.0) {
+            if let Some(m) = self.mapear.as_mut() {
+                m.reconectar = !m.reconectar;
+            }
+        }
+        if ui.sobre(x + cl - 228.0, y + ca - 54.0, 100.0, 36.0) {
+            self.mapear = None;
+        } else if ui.sobre(x + cl - 120.0, y + ca - 54.0, 100.0, 36.0) {
+            self.conectar_mapear();
+        }
+        if let (Some(i), Some(m)) = (acao, self.mapear.as_mut()) {
+            m.foco = i as usize;
+        }
+        ui.clique = false;
+        ui.duplo = false;
+        ui.clique_direito = false;
+    }
+
+    fn desenhar_mapear(&mut self, ui: &mut Ui, l: f32, a: f32) {
+        let Some(m) = self.mapear.clone() else { return };
+        ui.tela.retangulo(0.0, 0.0, l, a, 0.0, Cor(11, 26, 46, 90));
+        let (x, y, cl, ca) = Self::caixa_mapear(l, a);
+        ui.tela.retangulo(x + 3.0, y + 6.0, cl, ca, 12.0, Cor(0, 0, 0, 50));
+        ui.tela.retangulo(x, y, cl, ca, 12.0, tema::BORDA);
+        ui.tela.retangulo(x + 1.0, y + 1.0, cl - 2.0, ca - 2.0, 11.0, tema::BRANCO);
+        desenhar_icone(ui.tela, "unidade-rede", x + 20.0, y + 14.0, 36.0);
+        ui.tela.texto(x + 66.0, y + 38.0, 17.0, tema::TEXTO, "Mapear unidade de rede");
+
+        // Letra.
+        ui.tela.texto(x + 160.0, y + 82.0, 13.0, tema::TEXTO_SECUNDARIO, "Unidade");
+        ui.tela.retangulo(x + 56.0, y + 62.0, 50.0, 30.0, 6.0, tema::DESTAQUE_SUAVE);
+        let lt = format!("{}:", m.letra);
+        let w = desenho::medir(16.0, &lt);
+        ui.tela.texto(x + 81.0 - w / 2.0, y + 83.0, 16.0, tema::TEXTO, &lt);
+        seta(ui.tela, x + 39.0, y + 77.0, 0.0, tema::TEXTO);
+        seta(ui.tela, x + 125.0, y + 77.0, 1.0, tema::TEXTO);
+
+        let rotulos = ["Pasta (por exemplo \\\\servidor\\documentos)", "Usuário (vazio = convidado)", "Senha"];
+        let campos_y = [118.0, 190.0, 248.0];
+        for i in 0..3 {
+            let cy = y + campos_y[i];
+            ui.tela.texto(x + 26.0, cy - 6.0, 12.0, tema::TEXTO_SECUNDARIO, rotulos[i]);
+            let focado = m.foco == i;
+            ui.tela.retangulo(x + 24.0, cy, cl - 48.0, 34.0, 6.0, if focado { tema::DESTAQUE } else { tema::BORDA });
+            let e = if focado { 2.0 } else { 1.0 };
+            ui.tela.retangulo(x + 24.0 + e, cy + e, cl - 48.0 - 2.0 * e, 34.0 - 2.0 * e, 5.0, tema::BRANCO);
+            let texto = if i == 2 { "•".repeat(m.campos[2].chars().count()) } else { m.campos[i].clone() };
+            let texto = desenho::encurtar(14.0, &texto, cl - 80.0);
+            let fim = ui.tela.texto(x + 34.0, cy + 23.0, 14.0, tema::TEXTO, &texto);
+            if focado {
+                ui.tela.retangulo(x + 35.0 + fim, cy + 8.0, 1.5, 18.0, 0.0, tema::DESTAQUE);
+            }
+        }
+        // Reconectar ao entrar.
+        let cx = x + 24.0;
+        let cy = y + 294.0;
+        ui.tela.retangulo(cx, cy, 18.0, 18.0, 4.0, if m.reconectar { tema::DESTAQUE } else { tema::BORDA });
+        if m.reconectar {
+            ui.tela.linha(cx + 4.0, cy + 9.0, cx + 8.0, cy + 13.0, 2.0, tema::BRANCO);
+            ui.tela.linha(cx + 8.0, cy + 13.0, cx + 14.0, cy + 5.0, 2.0, tema::BRANCO);
+        } else {
+            ui.tela.retangulo(cx + 1.5, cy + 1.5, 15.0, 15.0, 3.0, tema::BRANCO);
+        }
+        ui.tela.texto(cx + 28.0, cy + 14.0, 13.0, tema::TEXTO, "Reconectar ao entrar");
+        if let Some(e) = &m.erro {
+            let e = desenho::encurtar(12.5, e, cl - 48.0);
+            ui.tela.texto(x + 24.0, y + ca - 66.0, 12.5, tema::ERRO, &e);
+        }
+        // Botões.
+        let by = y + ca - 54.0;
+        let sobre_c = ui.sobre(x + cl - 228.0, by, 100.0, 36.0);
+        ui.tela.retangulo(x + cl - 228.0, by, 100.0, 36.0, 8.0, if sobre_c { tema::SUPERFICIE_ALTA } else { tema::FUNDO });
+        ui.tela.texto(x + cl - 207.0, by + 23.0, 13.5, tema::TEXTO, "Cancelar");
+        let sobre_o = ui.sobre(x + cl - 120.0, by, 100.0, 36.0);
+        ui.tela.retangulo(x + cl - 120.0, by, 100.0, 36.0, 8.0, if sobre_o { tema::DESTAQUE_FORTE } else { tema::DESTAQUE });
+        ui.tela.texto(x + cl - 102.0, by + 23.0, 13.5, tema::BRANCO, "Conectar");
     }
 
     fn pasta_atual(&self) -> Option<PathBuf> {
@@ -651,6 +969,10 @@ impl App for Explorador {
     fn desenhar(&mut self, ui: &mut Ui) {
         // Teclado.
         for tecla in std::mem::take(&mut ui.teclas) {
+            if self.mapear.is_some() {
+                self.tecla_mapear(tecla);
+                continue;
+            }
             if self.renomeando.is_some() {
                 match tecla {
                     Tecla::Texto(t) => {
@@ -711,6 +1033,24 @@ impl App for Explorador {
             }
         }
         ui.titulo = Some(self.titulo());
+
+        // Diálogo "Mapear unidade de rede": modal, os cliques são dele.
+        let (l_tela, a_tela) = (ui.largura(), ui.altura());
+        if self.mapear.is_some() {
+            self.clique_mapear(ui, l_tela, a_tela);
+        }
+        // Menu de uma unidade de rede.
+        if let Some((mx, my, letra)) = self.menu_unidade {
+            if ui.clique || ui.clique_direito {
+                if ui.clique && ui.sobre(mx, my, MENU_L, MENU_ITEM_A + 12.0) {
+                    self.desconectar(letra);
+                }
+                self.menu_unidade = None;
+                ui.clique = false;
+                ui.duplo = false;
+                ui.clique_direito = false;
+            }
+        }
 
         // Menu do botão direito aberto: o clique é dele.
         if let Some((mx, my, alvo)) = self.menu {
@@ -780,6 +1120,21 @@ impl App for Explorador {
                 let cor = if *ativo { tema::TEXTO } else { tema::BORDA };
                 ui.tela.texto(mx + 16.0, y + 20.0, 13.0, cor, nome);
             }
+        }
+
+        if let Some((mx, my, letra)) = self.menu_unidade {
+            let h = MENU_ITEM_A + 12.0;
+            ui.tela.retangulo(mx + 2.0, my + 4.0, MENU_L, h, 8.0, Cor(0, 0, 0, 40));
+            ui.tela.retangulo(mx, my, MENU_L, h, 8.0, tema::BORDA);
+            ui.tela.retangulo(mx + 1.0, my + 1.0, MENU_L - 2.0, h - 2.0, 7.0, tema::BRANCO);
+            if ui.sobre(mx, my + 6.0, MENU_L, MENU_ITEM_A) {
+                ui.tela.retangulo(mx + 4.0, my + 6.0, MENU_L - 8.0, MENU_ITEM_A, 5.0, tema::DESTAQUE_SUAVE);
+            }
+            ui.tela.texto(mx + 16.0, my + 26.0, 13.0, tema::TEXTO, &format!("Desconectar {letra}:"));
+        }
+
+        if self.mapear.is_some() {
+            self.desenhar_mapear(ui, l, a);
         }
     }
 }
@@ -911,7 +1266,8 @@ impl Explorador {
         y += 14.0;
         let ul = 300.0;
         let por_linha = ((l - 48.0) / (ul + 12.0)).floor().max(1.0) as usize;
-        for (i, u) in self.unidades.iter().enumerate() {
+        let locais: Vec<Unidade> = self.unidades.iter().filter(|u| !u.rede).cloned().collect();
+        for (i, u) in locais.iter().enumerate() {
             let (c, r) = (i % por_linha, i / por_linha);
             let (x, uy) = (x0 + 24.0 + c as f32 * (ul + 12.0), y + r as f32 * 84.0);
             if ui.sobre(x, uy, ul, 76.0) {
@@ -933,11 +1289,39 @@ impl Explorador {
                 ir = Some(Local::Pasta(u.ponto.clone()));
             }
         }
-        let linhas = self.unidades.len().div_ceil(por_linha);
+        let linhas = locais.len().div_ceil(por_linha);
         y += linhas as f32 * 84.0 + 30.0;
 
         ui.tela.texto(x0 + 24.0, y, 15.0, tema::TEXTO, "Locais de rede");
         y += 14.0;
+        let redes: Vec<Unidade> = self.unidades.iter().filter(|u| u.rede).cloned().collect();
+        for (i, u) in redes.iter().enumerate() {
+            let (c, r) = (i % por_linha, i / por_linha);
+            let (x, uy) = (x0 + 24.0 + c as f32 * (ul + 12.0), y + r as f32 * 84.0);
+            if ui.sobre(x, uy, ul, 76.0) {
+                ui.tela.retangulo(x, uy, ul, 76.0, 8.0, tema::DESTAQUE_SUAVE);
+            }
+            desenhar_icone(ui.tela, "unidade-rede", x + 8.0, uy + 12.0, 52.0);
+            let nome = format!("{} ({}:)", u.nome, u.letra);
+            ui.tela.texto(x + 70.0, uy + 24.0, 13.5, tema::TEXTO, &desenho::encurtar(13.5, &nome, ul - 80.0));
+            let bl = ul - 86.0;
+            ui.tela.retangulo(x + 70.0, uy + 34.0, bl, 12.0, 2.0, tema::SUPERFICIE_ALTA);
+            if u.total > 0 {
+                let usado = 1.0 - u.livre as f32 / u.total as f32;
+                ui.tela.retangulo(x + 70.0, uy + 34.0, bl * usado, 12.0, 2.0, tema::DESTAQUE);
+                let txt = format!("{} livres de {}", tamanho_legivel(u.livre), tamanho_legivel(u.total));
+                ui.tela.texto(x + 70.0, uy + 64.0, 12.0, tema::TEXTO_SECUNDARIO, &txt);
+            }
+            if ui.clicou_duplo(x, uy, ul, 76.0) {
+                ir = Some(Local::Pasta(u.ponto.clone()));
+            }
+            if ui.clicou_direito(x, uy, ul, 76.0) {
+                if let Some((mx, my)) = ui.mouse {
+                    self.menu_unidade = Some((mx, my, u.letra));
+                }
+            }
+        }
+        y += redes.len().div_ceil(por_linha) as f32 * 84.0;
         desenhar_icone(ui.tela, "unidade-rede", x0 + 24.0, y + 2.0, 40.0);
         let bx = x0 + 74.0;
         let bl = 230.0;
@@ -945,7 +1329,7 @@ impl Explorador {
         ui.tela.retangulo(bx, y, bl, 40.0, 8.0, if sobre { tema::DESTAQUE_FORTE } else { tema::DESTAQUE });
         ui.tela.texto(bx + 18.0, y + 25.0, 13.5, tema::BRANCO, "Mapear unidade de rede…");
         if ui.clicou(bx, y, bl, 40.0) {
-            self.aviso = Some("Mapear unidade de rede (SMB/NFS) chega na próxima versão do Explorador.".into());
+            self.abrir_mapear();
         }
         if let Some(d) = ir {
             self.ir(d);
@@ -1068,6 +1452,11 @@ impl Explorador {
 }
 
 fn main() {
+    // Chamado pela sessão ao entrar: reconecta as unidades de rede salvas.
+    if std::env::args().nth(1).as_deref() == Some("--reconectar") {
+        reconectar_tudo();
+        return;
+    }
     penas::executar(
         Opcoes {
             titulo: "Este Computador".into(),
