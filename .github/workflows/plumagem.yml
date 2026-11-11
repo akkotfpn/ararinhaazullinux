@@ -53,3 +53,52 @@ jobs:
             plumagem/Cargo.lock
             plumagem/target/release/plumagem
           if-no-files-found: ignore
+
+  # Auditoria: clippy, falhas conhecidas nas crates (RustSec) e quantos
+  # blocos unsafe existem. Não impede o build; o resumo fica no run.
+  auditoria:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Bibliotecas de sistema
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends libudev-dev libinput-dev libgbm-dev libseat-dev libxkbcommon-dev libegl-dev libgles-dev libdrm-dev libpixman-1-dev libwayland-dev libsystemd-dev pkg-config
+
+      - name: Clippy
+        working-directory: plumagem
+        run: |
+          cargo clippy --release --locked 2>&1 | tee ../clippy.log || true
+          {
+            echo "## Clippy (plumagem)"
+            echo
+            echo '```'
+            grep -E "^(warning|error)" ../clippy.log | sed 's/`[^`]*`/X/g' | sort | uniq -c | sort -rn | head -40
+            echo '```'
+          } >> $GITHUB_STEP_SUMMARY
+
+      - name: cargo-audit (RustSec)
+        working-directory: plumagem
+        run: |
+          cargo install cargo-audit --locked -q
+          cargo audit 2>&1 | tee ../audit.log || true
+          {
+            echo "## cargo-audit (plumagem)"
+            echo
+            echo '```'
+            grep -E "^(Crate|Version|Title|ID|Solution|warning|error)" ../audit.log | head -80
+            tail -3 ../audit.log
+            echo '```'
+          } >> $GITHUB_STEP_SUMMARY
+
+      - name: unsafe
+        run: |
+          {
+            echo "## Blocos unsafe (plumagem)"
+            echo
+            echo '```'
+            grep -rn --include=*.rs -E "unsafe *(\{|fn|impl)" plumagem | grep -v "/target/" | awk -F: '{print $1}' | sort | uniq -c | sort -rn
+            echo '```'
+          } >> $GITHUB_STEP_SUMMARY
