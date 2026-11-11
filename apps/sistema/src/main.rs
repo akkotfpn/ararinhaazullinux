@@ -12,6 +12,7 @@
 //! Sai sozinho depois de 60 s sem pedidos (o socket o acorda de novo).
 
 mod firewall;
+mod hardware;
 
 use std::{
     io::{BufRead, BufReader, Read, Write},
@@ -91,6 +92,7 @@ fn atender(quem: &Quem, pedido: &str) -> Result<String, String> {
     match partes.as_slice() {
         ["ping"] => Ok("ararinha-sistema".into()),
         ["firewall", "estado"] => Ok(firewall::estado()),
+        ["hardware", "memoria"] => hardware::memoria(),
         ["firewall", "perfil", p] => {
             admin()?;
             firewall::definir_perfil(p)

@@ -189,11 +189,14 @@ impl HeaderBar {
         let tinta = if ativa { tema::DESTAQUE().com_alfa(70) } else { tema::FUNDO().com_alfa(150) };
         t.vidro(0.0, 0.0, l, a + 1.0, 0.0, origem, tinta);
 
-        let cor_titulo = if ativa { tema::TEXTO() } else { tema::TEXTO_SECUNDARIO() };
+        // O vidro da barra é escuro (papel de parede + azul): título branco
+        // com uma sombra leve, legível em qualquer papel de parede.
+        let cor_titulo = if ativa { tema::BRANCO() } else { tema::BRANCO().com_alfa(185) };
         let espaco = l - 3.0 * BOTAO_L as f32 - 24.0;
         if espaco > 20.0 {
-            let txt = desenho::encurtar(13.0, titulo, espaco);
-            t.texto_com_brilho(12.0, 21.0, 13.0, cor_titulo, &txt);
+            let txt = desenho::encurtar(13.5, titulo, espaco);
+            t.texto(12.0, 22.0, 13.5, desenho::Cor(0, 0, 0, 110), &txt);
+            t.texto(12.0, 21.0, 13.5, cor_titulo, &txt);
         }
 
         let b = BOTAO_L as f32;

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Gerenciador de Tarefas do Ararinha: processos (com Finalizar tarefa) e
-//! desempenho (gráficos de processador e memória). Lê tudo do /proc a cada
+//! Gerenciador de Tarefas do Ararinha: processos (com Finalizar tarefa),
+//! desempenho (gráficos de processador e memória) e hardware. Lê tudo do /proc a cada
 //! segundo e só redesenha quando há dado novo ou o usuário mexe.
 
 use std::{
@@ -11,6 +11,8 @@ use std::{
 
 use penas::{desenho, tema, App, Cor, Opcoes, Tecla, Ui};
 
+mod hardware;
+
 const HISTORICO: usize = 60;
 const LINHA_A: f32 = 30.0;
 
@@ -18,6 +20,7 @@ const LINHA_A: f32 = 30.0;
 enum Aba {
     Processos,
     Desempenho,
+    Hardware,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -55,6 +58,11 @@ struct Tarefas {
     proxima: Instant,
     aviso: Option<String>,
     meu_uid: u32,
+    cpu_modelo: String,
+    memoria: Option<Result<hardware::Memoria, String>>,
+    rx_memoria: Option<std::sync::mpsc::Receiver<Result<hardware::Memoria, String>>>,
+    secoes: Option<Vec<(String, Vec<(String, String)>)>>,
+    rolagem_hw: f32,
 }
 
 fn ler_cpu() -> (u64, u64) {
@@ -168,7 +176,17 @@ impl Tarefas {
             proxima: Instant::now(),
             aviso: None,
             meu_uid: meu_uid(),
+            cpu_modelo: hardware::modelo_cpu(),
+            memoria: None,
+            rx_memoria: None,
+            secoes: None,
+            rolagem_hw: 0.0,
         };
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = tx.send(hardware::memoria());
+        });
+        t.rx_memoria = Some(rx);
         t.amostrar();
         t
     }
@@ -402,23 +420,105 @@ impl Tarefas {
     fn desempenho(&mut self, ui: &mut Ui, y0: f32) {
         let (l, a) = (ui.largura(), ui.altura());
         let gl = l - 48.0;
-        let ga = ((a - y0 - 150.0) / 2.0).max(80.0);
+        let ga = ((a - y0 - 214.0) / 2.0).max(70.0);
         let cpu = self.hist_cpu.last().copied().unwrap_or(0.0);
         let mut y = y0 + 34.0;
         ui.tela.texto(24.0, y, 18.0, tema::TEXTO(), "Processador");
         let t = format!("{:.0}%  ·  {} núcleos", cpu, self.nucleos);
         let lt = desenho::medir(13.0, &t);
         ui.tela.texto(l - 24.0 - lt, y, 13.0, tema::TEXTO_SECUNDARIO(), &t);
-        y += 12.0;
+        ui.tela.texto(24.0, y + 20.0, 13.0, tema::TEXTO_SECUNDARIO(), &desenho::encurtar(13.0, &self.cpu_modelo, gl));
+        y += 32.0;
         Self::grafico(ui, 24.0, y, gl, ga, &self.hist_cpu, Cor::hex(0x2B7BC4), Cor(43, 123, 196, 40));
-        ui.tela.texto(24.0, y + ga + 16.0, 11.0, tema::TEXTO_SECUNDARIO(), "60 segundos");
+        ui.tela.texto(24.0, y + ga + 16.0, 11.5, tema::TEXTO_SECUNDARIO(), "60 segundos");
         y += ga + 50.0;
         ui.tela.texto(24.0, y, 18.0, tema::TEXTO(), "Memória");
         let t = format!("{} de {} em uso", formatar_mem(self.mem_usada_kb), formatar_mem(self.mem_total_kb));
         let lt = desenho::medir(13.0, &t);
         ui.tela.texto(l - 24.0 - lt, y, 13.0, tema::TEXTO_SECUNDARIO(), &t);
-        y += 12.0;
+        let resumo = match &self.memoria {
+            Some(Ok(m)) if !m.modulos.is_empty() => {
+                let instalada = formatar_mem(m.instalada_mb() * 1024);
+                let livres = (m.slots as usize).saturating_sub(m.usados());
+                let tipo = m.modulos.iter().find(|x| x.mb > 0).map(|x| format!(" {}", x.tipo)).unwrap_or_default();
+                format!(
+                    "{instalada}{tipo} instalados  ·  {} de {} slots em uso{}",
+                    m.usados(),
+                    m.slots,
+                    if livres > 0 { format!(" ({livres} livre{})", if livres > 1 { "s" } else { "" }) } else { String::new() }
+                )
+            }
+            Some(Err(_)) => "Slots de memória: indisponível".into(),
+            _ => "Lendo os slots de memória…".into(),
+        };
+        ui.tela.texto(24.0, y + 20.0, 13.0, tema::TEXTO_SECUNDARIO(), &desenho::encurtar(13.0, &resumo, gl));
+        y += 32.0;
         Self::grafico(ui, 24.0, y, gl, ga, &self.hist_mem, Cor::hex(0x8B3FB8), Cor(139, 63, 184, 40));
+    }
+
+    fn hardware(&mut self, ui: &mut Ui, y0: f32) {
+        let l = ui.largura();
+        let secoes = self.secoes.get_or_insert_with(hardware::secoes).clone();
+        // Memória com os slots, logo depois do processador.
+        let mut todas = secoes;
+        let mem: Vec<(String, String)> = match &self.memoria {
+            Some(Ok(m)) => {
+                let mut v = vec![(
+                    "Instalada".to_string(),
+                    format!(
+                        "{} em {} de {} slots{}",
+                        formatar_mem(m.instalada_mb() * 1024),
+                        m.usados(),
+                        m.slots,
+                        if m.maximo_mb > 0 { format!(" · aceita até {}", formatar_mem(m.maximo_mb * 1024)) } else { String::new() }
+                    ),
+                )];
+                for md in &m.modulos {
+                    let slot = if md.slot.is_empty() { "Slot".to_string() } else { md.slot.clone() };
+                    let desc = if md.mb == 0 {
+                        "vazio".to_string()
+                    } else {
+                        let mut d = formatar_mem(md.mb * 1024);
+                        if !md.tipo.is_empty() {
+                            d += &format!(" {}", md.tipo);
+                        }
+                        if !md.mts.is_empty() {
+                            d += &format!(" · {} MT/s", md.mts);
+                        }
+                        let marca = format!("{} {}", md.fabricante, md.modelo).trim().to_string();
+                        if !marca.is_empty() && !marca.eq_ignore_ascii_case("not specified") && !marca.contains("Unknown") {
+                            d += &format!(" · {marca}");
+                        }
+                        d
+                    };
+                    v.push((slot, desc));
+                }
+                v
+            }
+            Some(Err(e)) => vec![("Memória".into(), format!("{} ({e})", formatar_mem(self.mem_total_kb)))],
+            None => vec![("Memória".into(), "Lendo…".into())],
+        };
+        let pos = todas.iter().position(|(t, _)| t == "Processador").map(|p| p + 1).unwrap_or(todas.len());
+        todas.insert(pos, ("Memória".into(), mem));
+
+        let altura_total: f32 = todas.iter().map(|(_, v)| 44.0 + v.len() as f32 * 26.0 + 14.0).sum::<f32>() + 24.0;
+        self.rolagem_hw = (self.rolagem_hw + ui.rolagem).clamp(0.0, (altura_total - (ui.altura() - y0)).max(0.0));
+        let mut y = y0 + 16.0 - self.rolagem_hw;
+        let col = 190.0;
+        for (titulo, linhas) in &todas {
+            ui.tela.texto(24.0, y + 22.0, 16.0, tema::TEXTO(), titulo);
+            y += 34.0;
+            ui.tela.retangulo(24.0, y, l - 48.0, linhas.len() as f32 * 26.0 + 8.0, 8.0, tema::FUNDO());
+            y += 4.0;
+            for (k, v) in linhas {
+                ui.tela.texto(40.0, y + 18.0, 13.0, tema::TEXTO_SECUNDARIO(), k);
+                ui.tela.texto(40.0 + col, y + 18.0, 13.0, tema::TEXTO(), &desenho::encurtar(13.0, v, l - 88.0 - col));
+                y += 26.0;
+            }
+            y += 18.0;
+        }
+        // Cabeçalho das abas por cima do que rolou.
+        ui.tela.retangulo(0.0, 0.0, l, y0, 0.0, tema::FUNDO());
     }
 }
 
@@ -430,13 +530,23 @@ impl App for Tarefas {
             self.proxima = agora + Duration::from_secs(1);
         }
         ui.acordar_em = Some(self.proxima.saturating_duration_since(Instant::now()));
+        if let Some(rx) = &self.rx_memoria {
+            if let Ok(m) = rx.try_recv() {
+                self.memoria = Some(m);
+                self.rx_memoria = None;
+            }
+        }
 
         let l = ui.largura();
         ui.tela.limpar(tema::JANELA());
         // Abas
         ui.tela.retangulo(0.0, 0.0, l, 44.0, 0.0, tema::FUNDO());
         let mut x = 12.0;
-        for (aba, nome) in [(Aba::Processos, "Processos"), (Aba::Desempenho, "Desempenho")] {
+        // A aba Hardware desenha primeiro (rola por baixo do cabeçalho).
+        if self.aba == Aba::Hardware {
+            self.hardware(ui, 45.0);
+        }
+        for (aba, nome) in [(Aba::Processos, "Processos"), (Aba::Desempenho, "Desempenho"), (Aba::Hardware, "Hardware")] {
             let w = desenho::medir(14.0, nome) + 28.0;
             let sel = self.aba == aba;
             if !sel && ui.sobre(x, 6.0, w, 34.0) {
@@ -456,6 +566,7 @@ impl App for Tarefas {
         match self.aba {
             Aba::Processos => self.processos(ui, 45.0),
             Aba::Desempenho => self.desempenho(ui, 45.0),
+            Aba::Hardware => {}
         }
     }
 }

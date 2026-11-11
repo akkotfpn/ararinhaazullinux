@@ -59,6 +59,23 @@ struct Central {
     aviso: Option<String>,
     rolagem: f32,
     quadro: u64,
+    /// Ícones já lidos do catálogo do Flathub (None = não tem).
+    icones: std::cell::RefCell<std::collections::HashMap<String, Option<penas::desenho::Imagem>>>,
+}
+
+/// Ícone do app: o catálogo (appstream) do Flathub traz um PNG de cada um;
+/// o app instalado também exporta o seu.
+fn achar_icone(id: &str) -> Option<penas::desenho::Imagem> {
+    let casa = std::env::var("HOME").unwrap_or_default();
+    let arq = std::env::consts::ARCH;
+    let mut caminhos = Vec::new();
+    for raiz in [format!("{casa}/.local/share/flatpak"), "/var/lib/flatpak".to_string()] {
+        for t in ["128x128", "64x64"] {
+            caminhos.push(format!("{raiz}/appstream/flathub/{arq}/active/icons/{t}/{id}.png"));
+            caminhos.push(format!("{raiz}/exports/share/icons/hicolor/{t}/apps/{id}.png"));
+        }
+    }
+    caminhos.iter().find_map(|c| std::fs::read(c).ok().and_then(|b| penas::desenho::icone(&b, 40, 40)))
 }
 
 fn flatpak(args: &[&str]) -> Result<String, String> {
@@ -102,9 +119,12 @@ impl Central {
             aviso: None,
             rolagem: 0.0,
             quadro: 0,
+            icones: Default::default(),
         };
         c.rodar("Preparando o Flathub…", || {
             let _ = flatpak(&["remote-add", "--user", "--if-not-exists", "flathub", "/usr/share/flatpak/flathub.flatpakrepo"]);
+            // Catálogo com os ícones (rápido se já estiver em dia).
+            let _ = flatpak(&["update", "--user", "--appstream", "flathub"]);
             listar_instalados()
         });
         c
@@ -185,6 +205,8 @@ impl Central {
         let Some((_, rx)) = &self.trabalho else { return };
         let Ok(r) = rx.try_recv() else { return };
         self.trabalho = None;
+        // O catálogo pode ter chegado: tenta de novo os ícones que faltavam.
+        self.icones.borrow_mut().retain(|_, v| v.is_some());
         match r {
             Resultado::Busca(v) => self.resultados = Some(v),
             Resultado::Instalados(v) => self.instalados = v,
@@ -201,11 +223,18 @@ impl Central {
         if ui.sobre(x, y, l, LINHA_A - 6.0) {
             ui.tela.retangulo(x, y, l, LINHA_A - 6.0, 8.0, tema::SUPERFICIE_ALTA());
         }
-        // Ícone: a inicial num quadrado azul (o ícone real aparece depois de instalado, no menu).
-        ui.tela.retangulo(x + 10.0, y + 9.0, 40.0, 40.0, 10.0, tema::DESTAQUE());
-        let ini: String = app.nome.chars().next().map(|c| c.to_uppercase().collect()).unwrap_or_default();
-        let li = desenho::medir(20.0, &ini);
-        ui.tela.texto(x + 30.0 - li / 2.0, y + 36.0, 20.0, tema::BRANCO(), &ini);
+        // Ícone do catálogo do Flathub; sem ele, a inicial num quadrado azul.
+        let mut cache = self.icones.borrow_mut();
+        let icone = cache.entry(app.id.clone()).or_insert_with(|| achar_icone(&app.id));
+        if let Some(img) = icone {
+            ui.tela.imagem((x + 10.0) as i32, (y + 9.0) as i32, img);
+        } else {
+            ui.tela.retangulo(x + 10.0, y + 9.0, 40.0, 40.0, 10.0, tema::DESTAQUE());
+            let ini: String = app.nome.chars().next().map(|c| c.to_uppercase().collect()).unwrap_or_default();
+            let li = desenho::medir(20.0, &ini);
+            ui.tela.texto(x + 30.0 - li / 2.0, y + 36.0, 20.0, tema::BRANCO(), &ini);
+        }
+        drop(cache);
         let largura_texto = l - 260.0;
         ui.tela.texto(x + 64.0, y + 26.0, 15.0, tema::TEXTO(), &desenho::encurtar(15.0, &app.nome, largura_texto));
         ui.tela.texto(x + 64.0, y + 46.0, 12.5, tema::TEXTO_SECUNDARIO(), &desenho::encurtar(12.5, &app.descricao, largura_texto));

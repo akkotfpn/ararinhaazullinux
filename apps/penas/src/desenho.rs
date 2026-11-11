@@ -190,7 +190,7 @@ impl Tela {
                     for col in 0..g.largura {
                         let v = g.cobertura[row * g.largura + col];
                         if v > 0 {
-                            self.misturar(gx + col as i32, gy + row as i32, cor, v as f32 / 255.0);
+                            self.misturar(gx + col as i32, gy + row as i32, cor, reforco(v));
                         }
                     }
                 }
@@ -261,6 +261,20 @@ impl Tela {
 
 
 /// Largura do texto em pixels.
+/// Cobertura do glifo com "gama" de texto: as bordas finas ficam mais
+/// cheias e o texto pequeno fica mais nítido e escuro (sem isso, a Inter
+/// rasterizada sem hinting parece clara e fina).
+fn reforco(v: u8) -> f32 {
+    static TABELA: std::sync::OnceLock<[f32; 256]> = std::sync::OnceLock::new();
+    TABELA.get_or_init(|| {
+        let mut t = [0.0f32; 256];
+        for (i, x) in t.iter_mut().enumerate() {
+            *x = (i as f32 / 255.0).powf(0.72);
+        }
+        t
+    })[v as usize]
+}
+
 pub fn medir(tamanho: f32, texto: &str) -> f32 {
     let mut l = 0.0;
     com_fonte(|fonte| {
