@@ -107,7 +107,7 @@ const ICONES_AREA: [(&str, &str); 3] = [
 pub const FIXADOS: [&str; 1] = ["explorador"];
 const FIXADO_L: i32 = 40;
 const ICONE_L: i32 = 92;
-const ICONE_A: i32 = 92;
+const ICONE_A: i32 = 98;
 const AREA_X: i32 = 10;
 const AREA_Y: i32 = 12;
 static MINGAU_PNG: &[u8] = include_bytes!("../resources/mingau-128.png");
@@ -692,12 +692,23 @@ impl Painel {
                 if let Some(img) = self.imagens_area.get(i).and_then(|o| o.as_ref()) {
                     t.imagem((ICONE_L - 48) / 2, y as i32 + 8, img);
                 }
-                // Nome em branco com sombra, legível sobre o papel de parede.
-                let nome = desenho::encurtar(12.0, nome, ICONE_L as f32 - 6.0);
-                let ln = desenho::medir(12.0, &nome);
-                let x = ICONE_L as f32 / 2.0 - ln / 2.0;
-                t.texto(x + 1.0, y + 75.0, 12.0, desenho::Cor(0, 0, 0, 170), &nome);
-                t.texto(x, y + 74.0, 12.0, tema::BRANCO, &nome);
+                // Nome em branco com sombra, em até duas linhas (como no Windows).
+                let max = ICONE_L as f32 - 6.0;
+                let linhas: Vec<String> = if desenho::medir(12.0, nome) <= max {
+                    vec![nome.to_string()]
+                } else {
+                    match nome.split_once(' ') {
+                        Some((a, b)) => vec![a.to_string(), desenho::encurtar(12.0, b, max)],
+                        None => vec![desenho::encurtar(12.0, nome, max)],
+                    }
+                };
+                for (k, linha) in linhas.iter().enumerate() {
+                    let ln = desenho::medir(12.0, linha);
+                    let x = ICONE_L as f32 / 2.0 - ln / 2.0;
+                    let yl = y + 72.0 + k as f32 * 14.0;
+                    t.texto(x + 1.0, yl + 1.0, 12.0, desenho::Cor(0, 0, 0, 170), linha);
+                    t.texto(x, yl, 12.0, tema::BRANCO, linha);
+                }
             }
             self.area_buf = Some((chave, t.em_buffer()));
         }
