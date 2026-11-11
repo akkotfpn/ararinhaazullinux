@@ -208,6 +208,29 @@ where
             output_render_elements.push(OutputRenderElements::Fundo(elemento));
         }
 
+        // Renderização por software: uma camada sólida que muda (de forma
+        // invisível) a cada quadro faz a tela inteira ser redesenhada.
+        if REDESENHO_TOTAL.load(std::sync::atomic::Ordering::Relaxed)
+            || std::env::var_os("PLUMAGEM_REDESENHO_TOTAL").is_some()
+        {
+            if let Some(geo) = space.output_geometry(output) {
+                let escala = output.current_scale().fractional_scale();
+                CAMADA_TOTAL.with(|c| {
+                    let mut c = c.borrow_mut();
+                    c.1 = !c.1;
+                    let b = if c.1 { 0.310 } else { 0.311 };
+                    c.0.update(geo.size, [0.043, 0.165, b, 1.0]);
+                    output_render_elements.push(OutputRenderElements::Solido(SolidColorRenderElement::from_buffer(
+                        &c.0,
+                        (0, 0),
+                        escala,
+                        1.0,
+                        smithay::backend::renderer::element::Kind::Unspecified,
+                    )));
+                });
+            }
+        }
+
         (output_render_elements, CLEAR_COLOR)
     }
 }
@@ -230,4 +253,14 @@ where
     let (elements, clear_color) =
         output_elements(output, space, custom_elements, renderer, show_window_preview, None, Vec::new(), Vec::new(), Vec::new());
     damage_tracker.render_output(renderer, framebuffer, age, &elements, clear_color)
+}
+
+/// Redesenhar a tela inteira a cada quadro (ligado com renderização por
+/// software: com o llvmpipe, desenhar só as áreas danificadas deixava rastros
+/// do cursor). Também pode ser ligado com PLUMAGEM_REDESENHO_TOTAL=1.
+pub static REDESENHO_TOTAL: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+thread_local! {
+    static CAMADA_TOTAL: std::cell::RefCell<(smithay::backend::renderer::element::solid::SolidColorBuffer, bool)> =
+        std::cell::RefCell::new((Default::default(), false));
 }
