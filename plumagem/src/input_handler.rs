@@ -698,6 +698,9 @@ impl<BackendData: Backend> AnvilState<BackendData> {
 #[cfg(feature = "udev")]
 impl AnvilState<UdevData> {
     pub fn process_input_event<B: InputBackend>(&mut self, dh: &DisplayHandle, event: InputEvent<B>) {
+        if !matches!(event, InputEvent::DeviceAdded { .. } | InputEvent::DeviceRemoved { .. }) {
+            self.ultima_entrada = std::time::Instant::now();
+        }
         match event {
             InputEvent::Keyboard { event, .. } => match self.keyboard_key_to_action::<B>(event) {
                 #[cfg(feature = "udev")]

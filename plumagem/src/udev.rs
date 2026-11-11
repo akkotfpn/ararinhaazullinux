@@ -312,6 +312,47 @@ pub fn run_udev() {
         })
         .unwrap();
 
+    // Bloqueio automático: a cada 15 s confere há quanto tempo ninguém mexe
+    // no teclado nem no mouse ("bloquear_apos" em minutos; 0 = nunca).
+    event_loop
+        .handle()
+        .insert_source(Timer::from_duration(std::time::Duration::from_secs(15)), |_, _, data| {
+            let minutos: u64 = crate::painel::ler_chave("bloquear_apos")
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(5);
+            if minutos > 0
+                && data.bloqueio.is_none()
+                && data.ninho.is_none()
+                && data.ultima_entrada.elapsed().as_secs() >= minutos * 60
+            {
+                data.bloquear();
+            }
+            TimeoutAction::ToDuration(std::time::Duration::from_secs(15))
+        })
+        .unwrap();
+
+    // Canal de controle: $XDG_RUNTIME_DIR/plumagem-ctl, um FIFO só do usuário.
+    // "bloquear" bloqueia a tela (usado antes de suspender e pelo Painel).
+    if let Some(fifo) = crate::controle::abrir() {
+        if let Ok(leitor) = fifo.try_clone() {
+            let mut leitor = leitor;
+            let fonte = smithay::reexports::calloop::generic::Generic::new(
+                fifo,
+                smithay::reexports::calloop::Interest::READ,
+                smithay::reexports::calloop::Mode::Level,
+            );
+            let _ = event_loop.handle().insert_source(fonte, move |_, _, data| {
+                for pedido in crate::controle::ler(&mut leitor) {
+                    match pedido.as_str() {
+                        "bloquear" => data.bloquear(),
+                        outro => warn!("plumagem-ctl: pedido desconhecido {outro:?}"),
+                    }
+                }
+                Ok(smithay::reexports::calloop::PostAction::Continue)
+            });
+        }
+    }
+
     event_loop
         .handle()
         .insert_source(notifier, move |event, &mut (), data| match event {

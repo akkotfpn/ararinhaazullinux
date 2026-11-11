@@ -9,6 +9,8 @@
 #[cfg(any(feature = "udev", feature = "xwayland"))]
 pub mod bloqueio;
 pub mod captura;
+#[cfg(feature = "udev")]
+pub mod controle;
 pub mod cursor;
 pub mod desenho;
 pub mod drawing;

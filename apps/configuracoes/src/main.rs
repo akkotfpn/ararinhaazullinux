@@ -395,6 +395,32 @@ impl Configuracoes {
                 Err(e) => self.aviso = Some(format!("Não deu para mudar o plano: {e}")),
             }
         }
+
+        // Bloqueio automático (a Plumagem lê "bloquear_apos" em minutos).
+        let y = 110.0 + 3.0 * 78.0 + 24.0;
+        ui.tela.texto(x0 + 32.0, y, 16.0, tema::TEXTO(), "Bloquear a tela depois de parado");
+        ui.tela.texto(x0 + 32.0, y + 24.0, 12.5, tema::TEXTO_SECUNDARIO(), "A senha é pedida para voltar. Também bloqueia ao suspender. Win+L bloqueia na hora.");
+        let atual: u32 = ler_chave("bloquear_apos").and_then(|v| v.parse().ok()).unwrap_or(5);
+        let mut x = x0 + 32.0;
+        for (min, rot) in [(1, "1 min"), (5, "5 min"), (10, "10 min"), (15, "15 min"), (30, "30 min"), (0, "Nunca")] {
+            let w = desenho::medir(13.0, rot) + 28.0;
+            let (by, h) = (y + 40.0, 32.0);
+            let sel = atual == min;
+            let s = ui.sobre(x, by, w, h);
+            ui.tela.retangulo(x, by, w, h, 16.0, if sel { tema::DESTAQUE() } else if s { tema::TEXTO_SECUNDARIO() } else { tema::BORDA() });
+            if !sel {
+                ui.tela.retangulo(x + 1.0, by + 1.0, w - 2.0, h - 2.0, 15.0, tema::JANELA());
+            }
+            ui.tela.texto(x + 14.0, by + 21.0, 13.0, if sel { tema::BRANCO() } else { tema::TEXTO() }, rot);
+            if ui.clicou(x, by, w, h) && !sel {
+                self.aviso = Some(match gravar_chave("bloquear_apos", &min.to_string()) {
+                    Ok(()) if min == 0 => "A tela não vai mais bloquear sozinha.".into(),
+                    Ok(()) => format!("A tela vai bloquear depois de {min} min parado."),
+                    Err(e) => format!("Não deu para salvar: {e}"),
+                });
+            }
+            x += w + 8.0;
+        }
     }
 
     fn sobre(&mut self, ui: &mut Ui, x0: f32, l: f32) {

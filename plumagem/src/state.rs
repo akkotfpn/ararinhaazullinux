@@ -183,6 +183,8 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     pub ninho: Option<crate::ninho::Ninho>,
     /// Tela de bloqueio (Win+L), quando ativa.
     pub bloqueio: Option<crate::bloqueio::Bloqueio>,
+    /// Hora do último evento de teclado ou mouse (bloqueio automático).
+    pub ultima_entrada: std::time::Instant,
 }
 
 #[derive(Debug)]
@@ -758,6 +760,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             painel: Default::default(),
             ninho: std::env::var_os("PLUMAGEM_NINHO").map(|_| crate::ninho::Ninho::novo()),
             bloqueio: None,
+            ultima_entrada: std::time::Instant::now(),
         }
     }
 
