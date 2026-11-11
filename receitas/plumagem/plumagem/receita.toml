@@ -135,6 +135,27 @@ if command -v pipewire >/dev/null; then
     (sleep 1.5; ararinha-som /usr/share/sounds/ararinha/sessao-iniciada.wav) >/dev/null 2>&1 &
   fi
 fi
+# Atualização automática dos apps (Flathub), uma vez por dia, em segundo
+# plano e com prioridade baixa. Configurações › Atualizações desliga
+# ("atualizar_auto = nao").
+if command -v flatpak >/dev/null; then
+  (
+    estado_dir="$HOME/.local/state/ararinha"; mkdir -p "$estado_dir"
+    sleep 600
+    while :; do
+      conf="$HOME/.config/plumagem/plumagem.conf"
+      auto=$(sed -n 's/^atualizar_auto *= *//p' "$conf" 2>/dev/null | tail -1)
+      ultima=$(cat "$estado_dir/ultima-atualizacao" 2>/dev/null || echo 0)
+      agora=$(date +%s)
+      if [ "$auto" != nao ] && [ $((agora - ultima)) -gt 72000 ]; then
+        if nice -n 19 ionice -c 3 flatpak update --user -y --noninteractive >"$estado_dir/atualizacao.log" 2>&1; then
+          date +%s > "$estado_dir/ultima-atualizacao"
+        fi
+      fi
+      sleep 3600
+    done
+  ) >/dev/null 2>&1 & pids="$pids $!"
+fi
 # Bandeja do sistema (ícones da Steam, Discord...), antes dos apps.
 if [ -x /usr/libexec/ararinha-bandeja ]; then
   /usr/libexec/ararinha-bandeja 2>>"$XDG_RUNTIME_DIR/bandeja.log" & pids="$pids $!"

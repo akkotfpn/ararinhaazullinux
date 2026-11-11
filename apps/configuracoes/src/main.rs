@@ -10,6 +10,7 @@ mod firewall;
 mod hora;
 mod som;
 mod tela;
+mod atualizacoes;
 mod idioma;
 mod armazenamento;
 mod rede;
@@ -45,6 +46,7 @@ enum Pagina {
     Som,
     Energia,
     Armazenamento,
+    Atualizacoes,
     Hora,
     Idioma,
     Conta,
@@ -77,6 +79,7 @@ struct Configuracoes {
     contas: contas::PaginaContas,
     som: som::PaginaSom,
     tela: tela::PaginaTela,
+    atualizacoes: atualizacoes::PaginaAtualizacoes,
     idioma: idioma::PaginaIdioma,
     armazenamento: armazenamento::PaginaArmazenamento,
     mingau: Option<penas::desenho::Imagem>,
@@ -275,6 +278,7 @@ impl Configuracoes {
             contas: Default::default(),
             som: Default::default(),
             tela: Default::default(),
+            atualizacoes: Default::default(),
             idioma: Default::default(),
             armazenamento: Default::default(),
             mingau: desenho::icone(MINGAU_PNG, 120, 141),
@@ -588,6 +592,12 @@ impl App for Configuracoes {
             Pagina::Energia => self.energia(ui, LATERAL_L, l - LATERAL_L),
             Pagina::Som => self.som.desenhar(ui, LATERAL_L, l - LATERAL_L),
             Pagina::Tela => self.tela.desenhar(ui, LATERAL_L, l - LATERAL_L),
+            Pagina::Atualizacoes => {
+                self.atualizacoes.desenhar(ui, LATERAL_L, l - LATERAL_L);
+                if let Some(av) = self.atualizacoes.aviso.take() {
+                    self.aviso = Some(av);
+                }
+            }
             Pagina::Idioma => {
                 self.idioma.desenhar(ui, LATERAL_L, l - LATERAL_L);
                 if let Some(av) = self.idioma.aviso.take() {
@@ -632,6 +642,7 @@ impl App for Configuracoes {
             (Pagina::Som, "Som"),
             (Pagina::Energia, "Energia"),
             (Pagina::Armazenamento, "Armazenamento"),
+            (Pagina::Atualizacoes, "Atualizações"),
             (Pagina::Hora, "Data e hora"),
             (Pagina::Idioma, "Idioma e teclado"),
             (Pagina::Conta, "Sua conta"),
@@ -673,6 +684,7 @@ fn main() {
         Some("som") => app.pagina = Pagina::Som,
         Some("tela") => app.pagina = Pagina::Tela,
         Some("armazenamento") => app.pagina = Pagina::Armazenamento,
+        Some("atualizacoes") => app.pagina = Pagina::Atualizacoes,
         Some("hora") => app.pagina = Pagina::Hora,
         Some("idioma") => app.pagina = Pagina::Idioma,
         Some("contas") => app.pagina = Pagina::Contas,

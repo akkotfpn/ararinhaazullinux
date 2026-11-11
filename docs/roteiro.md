@@ -50,7 +50,8 @@ Imagem: ~630 MB (qcow2). Boot até a tela de entrada: ~3,4 s.
 - [em teste] Idioma e teclado: teclado por conta (na hora), idioma do sistema (próximo login)
 - [em teste] Outros usuários: criar, administrador/padrão, apagar (pelo ararinha-sistema + systemd-run)
 - [a fazer] Conta de convidado
-- [a fazer] Atualizações (sistema e Flatpak) com histórico e volta
+- [em teste] Atualizações: apps do Flathub sozinhos uma vez por dia (dá para desligar), procurar agora
+- [a fazer] Atualização do sistema com volta para a versão anterior
 - [a fazer] Privacidade: câmera, microfone, localização por app
 - [a fazer] Acessibilidade
 - [em teste] Armazenamento: uso do disco, o que ocupa, esvaziar Lixeira, remover partes de apps sem uso

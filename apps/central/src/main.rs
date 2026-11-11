@@ -560,8 +560,14 @@ fn main() {
         {
             let mut c = Central::nova();
             // "central instalados" abre direto em Instalados (Painel de Controle).
-            if std::env::args().nth(1).as_deref() == Some("instalados") {
-                c.aba = Aba::Instalados;
+            match std::env::args().nth(1).as_deref() {
+                Some("instalados") => c.aba = Aba::Instalados,
+                // "central atualizar" (Configurações › Atualizações): começa já.
+                Some("atualizar") => {
+                    c.aba = Aba::Instalados;
+                    c.atualizar_tudo();
+                }
+                _ => {}
             }
             Box::new(c)
         },
