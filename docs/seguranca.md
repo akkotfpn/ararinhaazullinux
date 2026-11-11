@@ -46,11 +46,40 @@ O que isso não esconde: o provedor de internet continua vendo com quais
 sites o computador fala, e os sites veem o IP. Quem precisa esconder isso
 usa uma VPN ou o Tor por cima.
 
+## Criptografia do disco
+
+O instalador oferece "Criptografar o disco (recomendado)", ligado por
+padrão. Com ele:
+
+- a raiz vira um volume LUKS2 na partição GPT `ararinha-cripto`:
+  AES-XTS com chave de 512 bits, cabeçalho com SHA-512 e a senha
+  derivada por Argon2id (custo de ~2 s de CPU e até 1 GB de memória por
+  tentativa, o que torna adivinhar a senha à força muito caro);
+- a senha do disco precisa ter pelo menos 8 caracteres; a tela mostra a
+  força dela; ela vai do instalador para o ajudante pela entrada padrão,
+  nunca na linha de comando, e é apagada da memória depois de usada;
+- a ESP recebe o `vmlinuz-spix-cripto`: o mesmo Spix Kernel, com uma
+  initramfs embutida feita pela Ninhada (receita `spix-kernel`). Ela tem só
+  bash, cryptsetup, blkid, mount, switch_root, loadkeys (ABNT2) e o
+  `kernel/initramfs/init`. Não tem rede nem shell de emergência: se algo
+  der errado, espera e reinicia;
+- cada senha errada atrasa a próxima tentativa (1 s, 2 s, … até 10 s),
+  além do custo do Argon2id;
+- o cryptsetup usa a criptografia do próprio kernel (AF_ALG, com AES-NI),
+  sem OpenSSL na initramfs.
+
+Sem a senha, o disco é ruído: nada do sistema, das contas ou dos arquivos
+pode ser lido tirando o disco do computador.
+
+Para conferir num sistema instalado: `sudo cryptsetup luksDump
+/dev/disk/by-partlabel/ararinha-cripto` mostra `luks2`, `aes-xts-plain64`,
+512 bits e `argon2id`.
+
+Ainda falta: tela de senha gráfica (hoje é texto no console), TPM2
+opcional e trocar a senha do disco pelas Configurações.
+
 ## A seguir
 
-- Criptografia do disco no instalador. Precisa de uma initramfs para pedir
-  a senha antes da raiz montar: cryptsetup (LUKS2 + Argon2id) e uma
-  initramfs mínima feita pela Ninhada.
 - Bloquear sozinho depois de um tempo parado e ao suspender.
 - Atualizações automáticas dos apps do Flathub.
 - Secure Boot com chave própria e kernel assinado (UKI).

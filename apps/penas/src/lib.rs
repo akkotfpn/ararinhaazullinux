@@ -7,6 +7,7 @@
 //! redesenha a janela inteira a cada evento e pergunta ao `Ui` se a área de
 //! um botão foi clicada.
 
+pub mod componentes;
 pub mod desenho;
 
 use std::time::{Duration, Instant};

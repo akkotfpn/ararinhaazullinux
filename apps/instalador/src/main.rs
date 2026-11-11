@@ -13,7 +13,7 @@ use std::{
 };
 
 use discos::Disco;
-use penas::{desenho, tema, App, Cor, Opcoes, Ui};
+use penas::{componentes as c, desenho, tema, App, Cor, Opcoes, Tecla, Ui};
 
 static MINGAU_PNG: &[u8] = include_bytes!("../recursos/mingau.png");
 
@@ -32,6 +32,10 @@ struct Instalador {
     discos: Vec<Disco>,
     escolhido: Option<usize>,
     entendi: bool,
+    /// Criptografar o disco (LUKS2). Ligado por padrão.
+    cripto: bool,
+    senha: [String; 2],
+    foco: usize,
     etapa: String,
     progresso: u32,
     rx: Option<Receiver<String>>,
@@ -45,6 +49,9 @@ impl Instalador {
             discos: discos::listar(),
             escolhido: None,
             entendi: false,
+            cripto: true,
+            senha: Default::default(),
+            foco: 0,
             etapa: String::new(),
             progresso: 0,
             rx: None,
@@ -55,14 +62,31 @@ impl Instalador {
     fn comecar(&mut self) {
         let Some(d) = self.escolhido.and_then(|i| self.discos.get(i)).cloned() else { return };
         let (tx, rx) = channel();
+        // A senha do disco vai pela entrada padrão, nunca na linha de comando
+        // (que qualquer um vê em /proc).
+        let senha = if self.cripto { Some(std::mem::take(&mut self.senha[0])) } else { None };
+        self.senha = Default::default();
         std::thread::spawn(move || {
+            let mut args = vec![d.nome.clone(), "APAGAR-TUDO".to_string()];
+            if senha.is_some() {
+                args.push("--cripto".into());
+            }
             let filho = Command::new("ararinha-instalar")
-                .args([d.nome.as_str(), "APAGAR-TUDO"])
+                .args(&args)
+                .stdin(Stdio::piped())
                 .stdout(Stdio::piped())
                 .stderr(Stdio::null())
                 .spawn();
             match filho {
                 Ok(mut f) => {
+                    if let Some(mut e) = f.stdin.take() {
+                        use std::io::Write;
+                        if let Some(mut s) = senha {
+                            let _ = e.write_all(s.as_bytes());
+                            // Apaga a cópia da memória antes de soltar.
+                            unsafe { s.as_bytes_mut().fill(0) };
+                        }
+                    }
                     if let Some(saida) = f.stdout.take() {
                         for linha in BufReader::new(saida).lines().map_while(Result::ok) {
                             if tx.send(linha).is_err() {
@@ -243,36 +267,60 @@ impl App for Instalador {
             Passo::Confirmar => {
                 let d = self.escolhido.and_then(|i| self.discos.get(i)).cloned();
                 ui.tela.texto(x0, 64.0, 22.0, tema::TEXTO(), "Tudo pronto para instalar");
+                // Teclas para os campos de senha.
+                if self.cripto {
+                    let teclas = std::mem::take(&mut ui.teclas);
+                    for t in c::editar(&mut self.senha[self.foco], teclas) {
+                        match t {
+                            Tecla::Outra(penas::Keysym::Tab) | Tecla::Baixo | Tecla::Enter => self.foco = (self.foco + 1) % 2,
+                            Tecla::Cima => self.foco = (self.foco + 1) % 2,
+                            _ => {}
+                        }
+                    }
+                }
+                let mut senha_ok = true;
                 if let Some(d) = d {
-                    let mut y = 110.0;
-                    y = paragrafo(ui, x0, y, largura, &format!(
+                    let mut y = 100.0;
+                    y = c::paragrafo(ui, x0, y, largura, &format!(
                         "O Ararinha será instalado em \"{}\" ({}, /dev/{}).",
                         d.modelo,
                         discos::tamanho_legivel(d.bytes),
                         d.nome
                     ));
-                    y += 6.0;
-                    ui.tela.retangulo(x0, y, largura, 70.0, 8.0, Cor(194, 65, 59, 36));
-                    paragrafo(ui, x0 + 16.0, y + 28.0, largura - 32.0, "Tudo o que existe nesse disco (outros sistemas, como o Windows, e arquivos) será apagado para sempre.");
-                    y += 96.0;
-                    // Caixinha "Entendi"
-                    let s = ui.sobre(x0, y - 4.0, largura, 30.0);
-                    ui.tela.retangulo(x0, y, 20.0, 20.0, 4.0, if self.entendi { tema::DESTAQUE() } else if s { tema::TEXTO_SECUNDARIO() } else { tema::BORDA() });
-                    if !self.entendi {
-                        ui.tela.retangulo(x0 + 1.5, y + 1.5, 17.0, 17.0, 3.0, tema::JANELA());
+                    y += 4.0;
+                    y += c::aviso(ui, x0, y, largura, "Tudo o que existe nesse disco (outros sistemas, como o Windows, e arquivos) será apagado para sempre.", true);
+                    y += 20.0;
+                    c::caixa_marcar(ui, x0, y, "Criptografar o disco (recomendado)", &mut self.cripto);
+                    y += 26.0;
+                    if self.cripto {
+                        y = c::paragrafo(ui, x0 + 30.0, y + 12.0, largura - 30.0, "Sem a senha do disco ninguém lê seus arquivos, nem tirando o disco do computador. Ela é pedida toda vez que o computador liga. Se esquecer, não há como recuperar.");
+                        let lc = ((largura - 30.0 - 12.0) / 2.0).min(260.0);
+                        let (fx1, fx2) = (x0 + 30.0, x0 + 30.0 + lc + 12.0);
+                        if c::campo(ui, fx1, y, lc, &self.senha[0], "Senha do disco", self.foco == 0, true) {
+                            self.foco = 0;
+                        }
+                        if c::campo(ui, fx2, y, lc, &self.senha[1], "Confirme a senha", self.foco == 1, true) {
+                            self.foco = 1;
+                        }
+                        c::medidor_senha(ui, fx1, y + 44.0, lc, &self.senha[0]);
+                        let iguais = self.senha[0] == self.senha[1];
+                        if !self.senha[1].is_empty() && !iguais {
+                            ui.tela.texto(fx2, y + 64.0, 11.5, tema::ERRO(), "As senhas não são iguais");
+                        }
+                        senha_ok = self.senha[0].chars().count() >= 8 && iguais;
+                        y += 84.0;
                     } else {
-                        ui.tela.linha(x0 + 5.0, y + 10.0, x0 + 9.0, y + 14.0, 2.0, tema::BRANCO());
-                        ui.tela.linha(x0 + 9.0, y + 14.0, x0 + 15.0, y + 6.0, 2.0, tema::BRANCO());
+                        y += 8.0;
                     }
-                    ui.tela.texto(x0 + 30.0, y + 15.0, 13.5, tema::TEXTO(), "Entendi: pode apagar esse disco e instalar o Ararinha.");
-                    if ui.clicou(x0, y - 4.0, largura, 30.0) {
-                        self.entendi = !self.entendi;
-                    }
+                    c::caixa_marcar(ui, x0, y, "Entendi: pode apagar esse disco e instalar o Ararinha.", &mut self.entendi);
                 }
-                if Self::botao(ui, bx, by, "Instalar agora", true, self.entendi) {
+                let pode = self.entendi && senha_ok;
+                if c::botao_direita(ui, bx, by, "Instalar agora", c::Estilo::Principal, pode) {
                     self.comecar();
                 }
-                if Self::botao(ui, bx - 170.0, by, "Voltar", false, true) {
+                let lv = c::largura_botao("Instalar agora") + 12.0;
+                if c::botao_direita(ui, bx - lv, by, "Voltar", c::Estilo::Comum, true) {
+                    self.senha = Default::default();
                     self.passo = Passo::Disco;
                 }
             }
@@ -286,7 +334,8 @@ impl App for Instalador {
             }
             Passo::Pronto => {
                 ui.tela.texto(x0, 64.0, 22.0, tema::TEXTO(), "Instalação concluída!");
-                let y = paragrafo(ui, x0, 110.0, largura, "O Ararinha já está no disco. Desligue, tire o pendrive e ligue o computador de novo. Se ele voltar para o pendrive, escolha o disco no menu de inicialização da placa-mãe (geralmente F12, F11 ou Esc ao ligar).");
+                let y = paragrafo(ui, x0, 110.0, largura, if self.cripto { "O Ararinha já está no disco, criptografado. Desligue, tire o pendrive e ligue o computador de novo: a senha do disco será pedida logo no início." } else { "O Ararinha já está no disco. Desligue, tire o pendrive e ligue o computador de novo." });
+                let y = paragrafo(ui, x0, y + 6.0, largura, "Se ele voltar para o pendrive, escolha o disco no menu de inicialização da placa-mãe (geralmente F12, F11 ou Esc ao ligar).");
                 let _ = y;
                 if Self::botao(ui, bx, by, "Desligar agora", true, true) {
                     let _ = Command::new("systemctl").arg("poweroff").spawn();

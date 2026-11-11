@@ -5,7 +5,12 @@
 //! aceita partições nem o disco onde o sistema está rodando, e exige a
 //! palavra de confirmação.
 //!
-//!   ararinha-instalar sda APAGAR-TUDO
+//!   ararinha-instalar sda APAGAR-TUDO [--cripto]
+//!
+//! Com `--cripto`, a senha do disco chega pela entrada padrão; a raiz vira
+//! um volume LUKS2 (AES-XTS de 512 bits, Argon2id) chamado
+//! "ararinha-cripto" e a ESP recebe o kernel com a initramfs que pede a
+//! senha no boot.
 //!
 //! Passos: tabela GPT nova (ESP de 256 MiB + raiz "ararinha-raiz"), cópia da
 //! ESP do pendrive, ext4 novo na raiz e cópia do sistema com `cp -ax`.
@@ -84,6 +89,47 @@ fn rodar(cmd: &mut Command, oque: &str) {
     }
 }
 
+const KERNEL_CRIPTO: &str = "/usr/lib/ararinha/vmlinuz-spix-cripto";
+const MAPA: &str = "ararinha-alvo";
+
+/// Roda um comando do cryptsetup passando a senha pela entrada padrão.
+fn com_senha(cmd: &mut Command, senha: &[u8], oque: &str) {
+    let mut f = cmd
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap_or_else(|e| falhar(&format!("{oque}: {e}")));
+    if let Some(mut e) = f.stdin.take() {
+        let _ = e.write_all(senha);
+    }
+    let saida = f.wait_with_output().unwrap_or_else(|e| falhar(&format!("{oque}: {e}")));
+    if !saida.status.success() {
+        falhar(&format!("{oque}: {}", String::from_utf8_lossy(&saida.stderr).trim()));
+    }
+}
+
+fn fechar_cripto(cripto: bool) {
+    if cripto {
+        let _ = Command::new("cryptsetup").args(["close", MAPA]).status();
+    }
+}
+
+/// Põe na ESP nova o kernel com a initramfs que pede a senha do disco.
+fn trocar_kernel_da_esp(esp: &str) {
+    let dir = "/run/ararinha-instalador/esp";
+    let _ = fs::create_dir_all(dir);
+    rodar(Command::new("mount").args([esp, dir]), "mount da ESP");
+    let nome = if cfg!(target_arch = "aarch64") { "BOOTAA64.EFI" } else { "BOOTX64.EFI" };
+    let destino = format!("{dir}/EFI/BOOT/{nome}");
+    let r = fs::copy(KERNEL_CRIPTO, &destino);
+    unsafe { sync() };
+    let _ = Command::new("umount").arg(dir).status();
+    if let Err(e) = r {
+        falhar(&format!("kernel na ESP: {e}"));
+    }
+}
+
 fn do_grupo_wheel() -> bool {
     let wheel = fs::read_to_string("/etc/group")
         .unwrap_or_default()
@@ -100,8 +146,9 @@ fn do_grupo_wheel() -> bool {
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
-    if args.len() != 3 || args[2] != "APAGAR-TUDO" {
-        eprintln!("uso: ararinha-instalar <disco> APAGAR-TUDO");
+    let cripto = args.len() == 4 && args[3] == "--cripto";
+    if !(args.len() == 3 || cripto) || args[2] != "APAGAR-TUDO" {
+        eprintln!("uso: ararinha-instalar <disco> APAGAR-TUDO [--cripto]");
         exit(2);
     }
     let uid = unsafe { getuid() };
@@ -119,6 +166,22 @@ fn main() {
         std::env::remove_var(k);
     }
     std::env::set_var("PATH", "/usr/sbin:/usr/bin:/sbin:/bin");
+
+    // Senha do disco: lida antes de qualquer mudança no disco.
+    let mut senha = Vec::new();
+    if cripto {
+        use std::io::Read;
+        let _ = std::io::stdin().take(1024).read_to_end(&mut senha);
+        while senha.last().is_some_and(|b| *b == b'\n' || *b == b'\r') {
+            senha.pop();
+        }
+        if senha.len() < 8 {
+            falhar("A senha do disco precisa ter pelo menos 8 caracteres.");
+        }
+        if !discos::existe(KERNEL_CRIPTO) {
+            falhar("Este pendrive não tem o kernel para discos criptografados.");
+        }
+    }
 
     let disco = args[1].trim_start_matches("/dev/").to_string();
     if disco.is_empty() || !disco.chars().all(|c| c.is_ascii_alphanumeric()) {
@@ -149,8 +212,9 @@ fn main() {
     } else {
         "4F68BCE3-E8CD-4DB1-96E7-FBCAF984B709"
     };
+    let nome_raiz = if cripto { "ararinha-cripto" } else { "ararinha-raiz" };
     let tabela = format!(
-        "label: gpt\nsize=256MiB, type=C12A7328-F81F-11D2-BA4B-00A0C93EC93B, name=\"ESP\"\ntype={tipo_raiz}, name=\"ararinha-raiz\"\n"
+        "label: gpt\nsize=256MiB, type=C12A7328-F81F-11D2-BA4B-00A0C93EC93B, name=\"ESP\"\ntype={tipo_raiz}, name=\"{nome_raiz}\"\n"
     );
     let dev = format!("/dev/{disco}");
     let _ = Command::new("wipefs").args(["-a", "-q", &dev]).status();
@@ -187,14 +251,39 @@ fn main() {
         let _ = para.sync_all();
     }
 
+    if cripto {
+        etapa("Instalando o kernel que abre o disco criptografado");
+        trocar_kernel_da_esp(&p1);
+        let _ = Command::new("cryptsetup").args(["close", MAPA]).status();
+        etapa("Criptografando o disco (LUKS2)");
+        progresso(4);
+        com_senha(
+            Command::new("cryptsetup").args([
+                "luksFormat", "--batch-mode", "--type", "luks2",
+                "--cipher", "aes-xts-plain64", "--key-size", "512", "--hash", "sha512",
+                "--pbkdf", "argon2id", "--iter-time", "2000",
+                "--use-urandom", "--label", "ararinha-cripto", "--key-file=-", &p2,
+            ]),
+            &senha,
+            "cryptsetup luksFormat",
+        );
+        com_senha(
+            Command::new("cryptsetup").args(["open", "--allow-discards", "--key-file=-", &p2, MAPA]),
+            &senha,
+            "cryptsetup open",
+        );
+        senha.fill(0);
+    }
+    let raiz = if cripto { format!("/dev/mapper/{MAPA}") } else { p2.clone() };
+
     etapa("Formatando o disco");
     progresso(5);
-    rodar(Command::new("mkfs.ext4").args(["-F", "-q", "-L", "ararinha", &p2]), "mkfs.ext4");
+    rodar(Command::new("mkfs.ext4").args(["-F", "-q", "-L", "ararinha", &raiz]), "mkfs.ext4");
 
     etapa("Copiando o sistema (pode levar alguns minutos)");
     let alvo_dir = "/run/ararinha-instalador/alvo";
     let _ = fs::create_dir_all(alvo_dir);
-    rodar(Command::new("mount").args([&p2, alvo_dir]), "mount");
+    rodar(Command::new("mount").args([&raiz, alvo_dir]), "mount");
     let total = usado("/").max(1);
     let registro = "/run/ararinha-instalador/copia.log";
     let erros = fs::File::create(registro).unwrap_or_else(|e| falhar(&format!("registro: {e}")));
@@ -219,6 +308,7 @@ fn main() {
     if !estado.success() {
         let erro = fs::read_to_string(registro).unwrap_or_default();
         let _ = Command::new("umount").arg(alvo_dir).status();
+        fechar_cripto(cripto);
         falhar(&format!("cópia do sistema: {}", erro.lines().last().unwrap_or("").trim()));
     }
 
@@ -234,8 +324,18 @@ fn main() {
             }
         }
     }
+    if cripto {
+        // A raiz agora é o volume aberto pela initramfs.
+        let _ = fs::write(
+            format!("{alvo_dir}/etc/fstab"),
+            "# Ararinha Azul Linux — raiz criptografada (LUKS2), aberta no boot\n/dev/mapper/raiz  /  ext4  defaults  1 1\n",
+        );
+        // A partição já ocupa o disco todo; o repart não tem o que crescer.
+        let _ = fs::remove_file(format!("{alvo_dir}/usr/lib/repart.d/50-raiz.conf"));
+    }
     unsafe { sync() };
     rodar(Command::new("umount").arg(alvo_dir), "umount");
+    fechar_cripto(cripto);
     progresso(100);
     println!("PRONTO");
 }
