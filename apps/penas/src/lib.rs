@@ -89,6 +89,9 @@ pub struct Ui<'a> {
     pub redesenhar: bool,
     /// Novo título da janela, se o app quiser mudar.
     pub titulo: Option<String>,
+    /// Pede um quadro novo daqui a esse tempo, mesmo sem eventos
+    /// (relógios, gráficos que se atualizam sozinhos).
+    pub acordar_em: Option<Duration>,
 }
 
 impl Ui<'_> {
@@ -181,13 +184,22 @@ pub fn executar(opcoes: Opcoes, app: Box<dyn App>) {
         mods: Modifiers::default(),
         ultimo_clique: None,
         sujo: true,
+        acordar: None,
         titulo: opcoes.titulo,
         tela: Tela::nova(l as i32, a as i32),
     };
 
     while !janela.sair {
-        if event_loop.dispatch(Duration::from_millis(100), &mut janela).is_err() {
+        let espera = janela
+            .acordar
+            .map(|t| t.saturating_duration_since(Instant::now()).min(Duration::from_millis(100)))
+            .unwrap_or(Duration::from_millis(100));
+        if event_loop.dispatch(espera, &mut janela).is_err() {
             break;
+        }
+        if janela.acordar.is_some_and(|t| Instant::now() >= t) {
+            janela.acordar = None;
+            janela.sujo = true;
         }
         if janela.configurada && janela.sujo {
             janela.desenhar(&qh);
@@ -219,6 +231,7 @@ struct Janela {
     mods: Modifiers,
     ultimo_clique: Option<(Instant, (f32, f32))>,
     sujo: bool,
+    acordar: Option<Instant>,
     titulo: String,
     tela: Tela,
 }
@@ -242,9 +255,13 @@ impl Janela {
             fechar: false,
             redesenhar: false,
             titulo: None,
+            acordar_em: None,
         };
         self.app.desenhar(&mut ui);
         let (fechar, redesenhar, titulo) = (ui.fechar, ui.redesenhar, ui.titulo.take());
+        if let Some(d) = ui.acordar_em {
+            self.acordar = Some(Instant::now() + d);
+        }
         if fechar {
             self.sair = true;
         }

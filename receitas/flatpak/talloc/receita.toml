@@ -22,11 +22,12 @@ passos = [
 ./configure --prefix=/usr --disable-python
 ''',
   '''
-make
+# O Makefile do waf chama "which", que o sistema não tem.
+PYTHONHASHSEED=1 python3 buildtools/bin/waf build -j$NUCLEOS
 ''',
 ]
 instalar = [
   '''
-make install
+PYTHONHASHSEED=1 python3 buildtools/bin/waf install
 ''',
 ]

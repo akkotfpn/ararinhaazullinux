@@ -1,0 +1,10 @@
+[package]
+name = "tarefas"
+version = "0.1.0"
+description = "Gerenciador de Tarefas do Ararinha Azul Linux"
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+penas = { path = "../penas" }

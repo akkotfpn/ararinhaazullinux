@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Gerenciador de Tarefas
+Name[en]=Task Manager
+Comment=Veja o que está rodando e o uso do processador e da memória
+Exec=tarefas
+Icon=tarefas
+StartupWMClass=tarefas
+Categories=System;Monitor;
