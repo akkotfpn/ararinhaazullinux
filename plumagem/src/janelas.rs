@@ -424,7 +424,7 @@ impl<B: Backend> AnvilState<B> {
             Alvo::ItemBandeja(i) => {
                 self.painel.menu_aberto = false;
                 if let Some(item) = self.painel.bandeja.get(i) {
-                    let p = pos.to_i32_round();
+                    let p = pos.to_i32_round::<i32>();
                     painel::pedir_bandeja(&format!("ativar {} {} {}", item.n, p.x, p.y));
                 }
             }

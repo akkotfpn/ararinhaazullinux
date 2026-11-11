@@ -22,6 +22,7 @@
 
 #[allow(dead_code)]
 mod discos;
+#[allow(dead_code)]
 mod secureboot;
 
 use std::{

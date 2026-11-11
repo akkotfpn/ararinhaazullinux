@@ -274,14 +274,15 @@ fn atender(con: &Connection, itens: &Itens, linha: &str) {
         ["ativar", n, x, y] | ["secundario", n, x, y] => {
             let Some(it) = item(n) else { return };
             let (x, y): (i32, i32) = (x.parse().unwrap_or(0), y.parse().unwrap_or(0));
-            if let Some(p) = proxy(con, &it) {
+            let px = proxy(con, &it);
+            if let Some(p) = px {
                 let metodo = if partes[0] == "ativar" { "Activate" } else { "SecondaryActivate" };
                 let r: zbus::Result<()> = p.call(metodo, &(x, y));
                 // Sem Activate (só menu): abre o menu.
                 if r.is_err() && partes[0] == "ativar" {
                     atender(con, itens, &format!("menu {n}"));
                 }
-            }
+            };
         }
         ["menu", n] => {
             let Some(it) = item(n) else { return };
@@ -299,12 +300,13 @@ fn atender(con: &Connection, itens: &Itens, linha: &str) {
             let Some(it) = item(n) else { return };
             let Some(p) = proxy(con, &it) else { return };
             let Ok(caminho) = p.get_property::<OwnedObjectPath>("Menu") else { return };
-            if let Ok(menu) = Proxy::new(con, it.servico.as_str(), caminho.as_str(), "com.canonical.dbusmenu") {
+            let menu = Proxy::new(con, it.servico.as_str(), caminho.as_str(), "com.canonical.dbusmenu");
+            if let Ok(menu) = menu {
                 let id: i32 = id.parse().unwrap_or(0);
                 let dado = zbus::zvariant::Value::from(0i32);
                 let agora = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as u32).unwrap_or(0);
                 let _: zbus::Result<()> = menu.call("Event", &(id, "clicked", dado, agora));
-            }
+            };
         }
         _ => {}
     }
