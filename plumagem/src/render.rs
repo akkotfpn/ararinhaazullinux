@@ -218,8 +218,9 @@ where
                 CAMADA_TOTAL.with(|c| {
                     let mut c = c.borrow_mut();
                     c.1 = !c.1;
-                    let b = if c.1 { 0.310 } else { 0.311 };
-                    c.0.update(geo.size, [0.043, 0.165, b, 1.0]);
+                    // Quase transparente: só serve para marcar a tela inteira.
+                    let a = if c.1 { 0.001 } else { 0.002 };
+                    c.0.update(geo.size, [0.0, 0.0, 0.0, a]);
                     output_render_elements.push(OutputRenderElements::Solido(SolidColorRenderElement::from_buffer(
                         &c.0,
                         (0, 0),

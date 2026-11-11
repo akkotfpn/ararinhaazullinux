@@ -791,7 +791,6 @@ impl AnvilState<UdevData> {
             }
             if egl_device.is_software() {
                 warn!("sem aceleração 3D em {node}: desenhando a tela pelo processador");
-                crate::render::REDESENHO_TOTAL.store(true, std::sync::atomic::Ordering::Relaxed);
             }
 
             let render_node = egl_device.try_get_render_node().ok().flatten().unwrap_or(node);
