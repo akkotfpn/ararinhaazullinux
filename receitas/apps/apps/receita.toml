@@ -73,5 +73,6 @@ for app in imagens notas configuracoes central calculadora tarefas paciencia mus
   install -vDm644 $app/recursos/$app.png /usr/share/icons/hicolor/64x64/apps/$app.png
 done
 install -vDm644 configuracoes/recursos/sobre.desktop /usr/share/applications/sobre.desktop
+install -vDm755 target/release/ararinha-som /usr/bin/ararinha-som
 ''',
 ]

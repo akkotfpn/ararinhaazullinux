@@ -87,6 +87,10 @@ if command -v pipewire >/dev/null; then
   sleep 0.3
   wireplumber >>"$XDG_RUNTIME_DIR/som.log" 2>&1 & pids="$pids $!"
   pipewire-pulse >>"$XDG_RUNTIME_DIR/som.log" 2>&1 & pids="$pids $!"
+  # O som de "sessão iniciada", quando o PipeWire já estiver de pé.
+  if command -v ararinha-som >/dev/null; then
+    (sleep 1.5; ararinha-som /usr/share/sounds/ararinha/sessao-iniciada.wav) >/dev/null 2>&1 &
+  fi
 fi
 plumagem "$@" 2>>"$XDG_RUNTIME_DIR/plumagem.log"
 estado=$?
@@ -102,6 +106,20 @@ install -vdm755 /etc/plumagem
 install -vdm755 /usr/share/backgrounds/ararinha
 install -vm644 ../plumagem/resources/fundo-spix.png /usr/share/backgrounds/ararinha/spix.png
 install -vm644 ../plumagem/resources/papeis/*.png /usr/share/backgrounds/ararinha/
+# Sons do sistema (sintetizados por ferramentas/arte/sintetizar-sons.py).
+install -vdm755 /usr/share/sounds/ararinha
+install -vm644 ../plumagem/resources/sons/*.wav /usr/share/sounds/ararinha/
+# ararinha-notificar "Título" "Texto": mostra uma notificação na Plumagem.
+cat > /usr/bin/ararinha-notificar << 'FIM'
+#!/bin/sh
+# Mostra uma notificação no canto da tela (Plumagem).
+[ -n "$1" ] || { echo "uso: ararinha-notificar \"Título\" [\"Texto\"]" >&2; exit 2; }
+d="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/ararinha-avisos"
+mkdir -p "$d" && chmod 700 "$d"
+t="$d/.$$.tmp"
+printf '%s\n%s\n' "$1" "$2" > "$t" && mv "$t" "$d/$(date +%s%N).txt"
+FIM
+chmod 755 /usr/bin/ararinha-notificar
 cat > /etc/plumagem/plumagem.conf << 'FIM'
 # Configuração da Plumagem (vale para todos os usuários; cada um pode ter a
 # sua em ~/.config/plumagem/plumagem.conf). Mudanças valem ao reabrir a sessão.
@@ -115,6 +133,9 @@ papel = spix
 
 # Modo de cor da interface e dos aplicativos: claro ou escuro.
 tema = claro
+
+# Sons do sistema (entrar, notificação, desligar): sim ou nao.
+sons = sim
 FIM
 rm -f /etc/profile.d/plumagem.sh
 ''',

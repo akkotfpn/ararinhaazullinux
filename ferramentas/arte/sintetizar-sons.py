@@ -2,7 +2,7 @@
 # Sintetiza os sons do sistema (Grito) inspirados no chamado da ararinha-azul.
 # Os sons gerados ficam em arte/sons/ sob CC BY-SA 4.0.
 #
-# Uso: python3 ferramentas/arte/sintetizar-sons.py <raiz-do-repo>
+# Uso: python3 ferramentas/arte/sintetizar-sons.py <raiz-do-repo> [pasta-wav]
 # Requer: Python 3 e numpy. Se o ffmpeg existir, também gera .oga (Opus).
 #
 # Ideia: o chamado de araras e ararinhas é um "piado" curto com varredura de
@@ -94,6 +94,14 @@ def gravar_wav(caminho, amostras):
 
 def main():
     raiz = sys.argv[1] if len(sys.argv) > 1 else "."
+    # Com um segundo argumento, grava só os WAV nessa pasta (os que o
+    # sistema toca, pelo ararinha-som).
+    if len(sys.argv) > 2:
+        os.makedirs(sys.argv[2], exist_ok=True)
+        for nome, gerar in SONS.items():
+            gravar_wav(os.path.join(sys.argv[2], nome + ".wav"), gerar())
+            print("gerado:", nome)
+        return
     saida = os.path.join(raiz, "arte", "sons", "grito-padrao")
     os.makedirs(saida, exist_ok=True)
     ffmpeg = shutil.which("ffmpeg")
