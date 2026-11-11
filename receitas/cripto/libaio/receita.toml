@@ -10,7 +10,7 @@ categoria = "cripto"
 tipo      = "toolchain"
 
 [[fonte]]
-url = "https://pagure.io/libaio/archive/libaio-0.3.113/libaio-0.3.113.tar.gz"
+url = "https://codeberg.org/jmoyer/libaio/releases/download/libaio-0.3.113/libaio-0.3.113.tar.gz"
 
 [construcao]
 ambiente = "isolado"

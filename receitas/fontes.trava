@@ -158,3 +158,7 @@ d8a5222828c3adab70adf69a5583f1d32eb5ece04304f7f8392b6a353aa2228c  https://www.x.
 f042a370666815e7b941e9b7019024755bd1c6c2954afbfa515af378251799e2  https://www.x.org/pub/individual/lib/libXfont2-2.0.9.tar.xz
 f9bfe4a9ed8c8ab9d2a3b0d49797f046052dadd06b7a8b45dbffaffb137e8290  https://xorg.freedesktop.org/archive/individual/proto/xorgproto-2026.1.tar.xz
 faafea166bf2451a173d9d593352940ec6404145c5d1da5c213423ce4d359e92  https://www.x.org/pub/individual/lib/xtrans-1.6.0.tar.xz
+352703ef5b72ebb22d4f250284a29b89fe64d4049c6bf64c693f9af486c8081e  https://sourceware.org/ftp/lvm2/LVM2.2.03.42.tgz
+37ad0249902e301bd9052bf712e511fcc6acff4ecaad4b5900aad9ce564e26de  https://s3.amazonaws.com/json-c_releases/releases/json-c-0.19.tar.gz
+3acfa685f2dd7fcc832e0b77bc7093aa7da554a51ce8dafbb4138eaa854eee35  https://www.kernel.org/pub/linux/utils/cryptsetup/v2.8/cryptsetup-2.8.8.tar.xz
+c25a4838fc8e4c1c8aacb8bd620edb3084a3d63bf8987fdad3ca2758c63240f9  https://ftp.osuosl.org/pub/rpm/popt/releases/popt-1.x/popt-1.19.tar.gz
