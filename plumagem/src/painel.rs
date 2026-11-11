@@ -450,6 +450,8 @@ pub struct Painel {
     pub menu_sel: usize,
     /// Foto da conta (~/.face), relida ao abrir o menu.
     foto: Option<image::RgbaImage>,
+    /// Resultados da busca além dos apps (conta, configurações, arquivos).
+    extra: Vec<App>,
     /// As opções do botão de energia estão abertas.
     pub energia_aberta: bool,
     /// Central de notificações: aberta, histórico e "Não perturbe".
@@ -518,6 +520,7 @@ impl Default for Painel {
             menu_rolagem: 0,
             menu_sel: 0,
             foto: None,
+            extra: Vec::new(),
             energia_aberta: false,
             central_aberta: false,
             historico: Vec::new(),
@@ -611,10 +614,10 @@ impl Painel {
     }
 
     /// Apps que combinam com a busca (sem diferenciar acentos e maiúsculas).
-    pub fn apps_visiveis(&self) -> Vec<&App> {
+    pub fn apps_visiveis(&self) -> Vec<App> {
         let apps = self.apps.as_deref().unwrap_or(&[]);
         if self.busca.trim().is_empty() {
-            return apps.iter().collect();
+            return apps.to_vec();
         }
         let b = sem_acento(&self.busca.trim().to_lowercase());
         let mut achados: Vec<(u8, &App)> = apps
@@ -633,7 +636,91 @@ impl Painel {
             })
             .collect();
         achados.sort_by_key(|(r, a)| (*r, a.nome.to_lowercase()));
-        achados.into_iter().map(|(_, a)| a).collect()
+        let mut v: Vec<App> = achados.into_iter().map(|(_, a)| a.clone()).collect();
+        // Depois dos apps: conta, configurações e arquivos.
+        v.extend(self.extra.iter().cloned());
+        v
+    }
+
+    /// Resultados além dos apps, refeitos quando a busca muda: conta,
+    /// páginas das Configurações e arquivos da pasta pessoal.
+    fn atualizar_extra(&mut self) {
+        self.extra.clear();
+        let b = sem_acento(&self.busca.trim().to_lowercase());
+        if b.is_empty() {
+            return;
+        }
+        let icone_de = |trecho: &str| {
+            self.apps
+                .as_ref()
+                .and_then(|v| v.iter().find(|a| a.exec.starts_with(trecho)))
+                .and_then(|a| a.icone.clone())
+        };
+        // Conta: "2+2*3", "100/7".
+        if let Some(r) = calcular(&self.busca) {
+            let r = if (r - r.round()).abs() < 1e-9 { format!("{}", r.round() as i64) } else { format!("{r:.6}").trim_end_matches('0').trim_end_matches('.').to_string() };
+            self.extra.push(App {
+                nome: format!("{} = {}", self.busca.trim(), r.replace('.', ",")),
+                exec: "calculadora".into(),
+                icone: icone_de("calculadora"),
+                ids: Vec::new(),
+            });
+        }
+        const PAGINAS: [(&str, &str, &str); 9] = [
+            ("Rede e Wi-Fi", "rede", "wifi wi-fi rede internet ip cabo"),
+            ("Firewall", "firewall", "firewall porta seguranca protecao"),
+            ("Som", "som", "som volume audio microfone fone caixa"),
+            ("Energia e bloqueio da tela", "energia", "energia bateria bloquear bloqueio suspender plano desempenho"),
+            ("Data e hora", "hora", "data hora fuso relogio ntp"),
+            ("Sua conta (senha e foto)", "conta", "senha conta foto perfil avatar"),
+            ("Outros usuários", "contas", "usuario usuarios conta nova admin administrador familia"),
+            ("Personalização", "personalizacao", "tema escuro claro papel parede fundo cor destaque barra visual"),
+            ("Sobre o computador", "sobre", "sobre versao sistema computador memoria processador"),
+        ];
+        for (nome, pagina, chaves) in PAGINAS {
+            if chaves.split_whitespace().any(|k| k.starts_with(&b) || b.starts_with(k)) || sem_acento(&nome.to_lowercase()).contains(&b) {
+                self.extra.push(App {
+                    nome: format!("Configurações › {nome}"),
+                    exec: format!("configuracoes {pagina}"),
+                    icone: icone_de("configuracoes"),
+                    ids: Vec::new(),
+                });
+            }
+        }
+        // Arquivos: até 6, procurando até 4 níveis na pasta pessoal.
+        if b.chars().count() >= 3 {
+            if let Ok(casa) = std::env::var("HOME") {
+                let mut pilha = vec![(std::path::PathBuf::from(&casa), 0)];
+                let (mut vistos, mut achados) = (0, 0);
+                while let Some((d, nivel)) = pilha.pop() {
+                    let Ok(rd) = std::fs::read_dir(&d) else { continue };
+                    for e in rd.flatten() {
+                        vistos += 1;
+                        let nome = e.file_name().to_string_lossy().to_string();
+                        if nome.starts_with('.') {
+                            continue;
+                        }
+                        let pasta = e.file_type().map(|t| t.is_dir()).unwrap_or(false);
+                        if sem_acento(&nome.to_lowercase()).contains(&b) && achados < 6 {
+                            achados += 1;
+                            let p = e.path();
+                            self.extra.push(App {
+                                nome: format!("{nome}  ·  {}", p.parent().map(|x| x.display().to_string().replace(&casa, "~")).unwrap_or_default()),
+                                exec: format!("explorador {}", aspas(&p.display().to_string())),
+                                icone: icone_de("explorador"),
+                                ids: Vec::new(),
+                            });
+                        }
+                        if pasta && nivel < 4 {
+                            pilha.push((e.path(), nivel + 1));
+                        }
+                    }
+                    if vistos > 4000 || achados >= 6 {
+                        break;
+                    }
+                }
+            }
+        }
     }
 
     /// Abre o menu Iniciar limpo.
@@ -642,6 +729,7 @@ impl Painel {
         self.busca.clear();
         self.menu_rolagem = 0;
         self.menu_sel = 0;
+        self.extra.clear();
         self.energia_aberta = false;
         self.foto = std::env::var("HOME").ok().and_then(|h| desenho::foto_da_conta(&h, 32));
         self.menu = None;
@@ -718,6 +806,7 @@ impl Painel {
                 self.busca.pop();
                 self.menu_sel = 0;
                 self.menu_rolagem = 0;
+                self.atualizar_extra();
             }
             K::Down => {
                 if n > 0 {
@@ -731,6 +820,7 @@ impl Painel {
                         self.busca.push(c);
                         self.menu_sel = 0;
                         self.menu_rolagem = 0;
+                        self.atualizar_extra();
                     }
                 }
             }
@@ -2311,6 +2401,65 @@ fn hora_local() -> (String, String) {
         format!("{:02}:{:02}", tm.hora, tm.min)
     };
     (hora, format!("{:02}/{:02}/{}", tm.dia, tm.mes + 1, tm.ano + 1900))
+}
+
+/// Conta simples digitada no menu: + - * / ( ), vírgula ou ponto decimal.
+/// Só responde se houver pelo menos uma operação.
+fn calcular(texto: &str) -> Option<f64> {
+    let t: Vec<char> = texto.chars().filter(|c| !c.is_whitespace()).map(|c| match c {
+        ',' => '.',
+        'x' | '×' => '*',
+        '÷' => '/',
+        o => o,
+    }).collect();
+    if t.is_empty() || !t.iter().all(|c| c.is_ascii_digit() || "+-*/().".contains(*c)) {
+        return None;
+    }
+    if !t.iter().skip(1).any(|c| "+-*/".contains(*c)) {
+        return None;
+    }
+    fn expr(t: &[char], i: &mut usize) -> Option<f64> {
+        let mut v = termo(t, i)?;
+        while *i < t.len() && (t[*i] == '+' || t[*i] == '-') {
+            let op = t[*i];
+            *i += 1;
+            let d = termo(t, i)?;
+            v = if op == '+' { v + d } else { v - d };
+        }
+        Some(v)
+    }
+    fn termo(t: &[char], i: &mut usize) -> Option<f64> {
+        let mut v = fator(t, i)?;
+        while *i < t.len() && (t[*i] == '*' || t[*i] == '/') {
+            let op = t[*i];
+            *i += 1;
+            let d = fator(t, i)?;
+            v = if op == '*' { v * d } else { v / d };
+        }
+        Some(v)
+    }
+    fn fator(t: &[char], i: &mut usize) -> Option<f64> {
+        if *i < t.len() && t[*i] == '-' {
+            *i += 1;
+            return fator(t, i).map(|v| -v);
+        }
+        if *i < t.len() && t[*i] == '(' {
+            *i += 1;
+            let v = expr(t, i)?;
+            if *i < t.len() && t[*i] == ')' {
+                *i += 1;
+            }
+            return Some(v);
+        }
+        let ini = *i;
+        while *i < t.len() && (t[*i].is_ascii_digit() || t[*i] == '.') {
+            *i += 1;
+        }
+        t[ini..*i].iter().collect::<String>().parse().ok()
+    }
+    let mut i = 0;
+    let v = expr(&t, &mut i)?;
+    (i == t.len() && v.is_finite()).then_some(v)
 }
 
 /// Tira os acentos mais comuns do português (para a busca).

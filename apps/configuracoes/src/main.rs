@@ -638,6 +638,7 @@ fn main() {
     let mut app = Configuracoes::novo();
     match std::env::args().nth(1).as_deref() {
         Some("sobre") => app.pagina = Pagina::Sobre,
+        Some("personalizacao") => app.pagina = Pagina::Personalizacao,
         Some("energia") => app.pagina = Pagina::Energia,
         Some("conta") => app.pagina = Pagina::Conta,
         Some("firewall") => app.pagina = Pagina::Firewall,
