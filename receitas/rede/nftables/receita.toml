@@ -44,8 +44,10 @@ table inet ararinha {
     ct state established,related accept
     ct state invalid drop
     iif "lo" accept
-    # Ping e as mensagens de controle (o IPv6 precisa delas).
-    meta l4proto { icmp, ipv6-icmp } accept
+    # Mensagens de controle (o IPv6 precisa delas). Responder ao ping só no
+    # perfil "rede de casa" (regra em /etc/ararinha/firewall.nft).
+    icmp type != echo-request accept
+    icmpv6 type != echo-request accept
     # Respostas de DHCP (IPv4 e IPv6).
     udp sport 67 udp dport 68 accept
     udp sport 547 udp dport 546 accept
@@ -57,6 +59,9 @@ table inet ararinha {
     type filter hook output priority filter; policy accept;
   }
 }
+
+# Perfil e portas liberadas (Configurações > Firewall, pelo ararinha-sistema).
+include "/etc/ararinha/firewall*.nft"
 FIM
 chmod 600 /etc/nftables.conf
 cat > /usr/lib/systemd/system/nftables.service << 'FIM'

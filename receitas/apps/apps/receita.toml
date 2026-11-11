@@ -57,6 +57,52 @@ install -vDm4755 target/release/ararinha-senha /usr/bin/ararinha-senha
 # Planos de energia: setuid root, só escreve em arquivos fixos do /sys.
 install -vDm4755 target/release/ararinha-energia /usr/bin/ararinha-energia
 install -vdm755 /usr/lib/systemd/system
+# Serviço do sistema: ações de administrador por socket (SO_PEERCRED),
+# no lugar de mais ajudantes setuid. Ativado só quando alguém pede.
+install -vDm755 target/release/ararinha-sistema /usr/libexec/ararinha-sistema
+install -vdm755 /etc/ararinha
+cat > /usr/lib/systemd/system/ararinha-sistema.socket << 'FIM'
+[Unit]
+Description=Serviço do sistema do Ararinha (socket)
+
+[Socket]
+ListenStream=/run/ararinha/sistema.sock
+SocketMode=0666
+DirectoryMode=0755
+Accept=no
+
+[Install]
+WantedBy=sockets.target
+FIM
+cat > /usr/lib/systemd/system/ararinha-sistema.service << 'FIM'
+[Unit]
+Description=Serviço do sistema do Ararinha
+Requires=ararinha-sistema.socket
+
+[Service]
+ExecStart=/usr/libexec/ararinha-sistema
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ReadWritePaths=/etc/ararinha
+ProtectHome=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectKernelLogs=yes
+ProtectKernelModules=no
+ProtectControlGroups=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+CapabilityBoundingSet=CAP_NET_ADMIN
+RestrictAddressFamilies=AF_UNIX AF_NETLINK
+FIM
+systemctl enable ararinha-sistema.socket
 cat > /usr/lib/systemd/system/ararinha-energia.service << 'FIM'
 [Unit]
 Description=Aplica o plano de energia escolhido nas Configurações

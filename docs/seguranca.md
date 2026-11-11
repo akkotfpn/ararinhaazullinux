@@ -121,6 +121,30 @@ constrói o Ararinha guarda a chave privada. Com o Secure Boot ligado, o
 kernel entra sozinho em lockdown "integrity" e recusa módulos sem essa
 assinatura.
 
+## Serviço do sistema (no lugar de setuid)
+
+`ararinha-sistema` é um serviço root pequeno, ativado pelo systemd só
+quando alguém pede (socket `/run/ararinha/sistema.sock`) e encerrado
+depois de 60 s parado. Cada pedido é uma linha; o serviço sabe quem pediu
+pelo `SO_PEERCRED` (uid e pid informados pelo kernel, impossíveis de
+falsificar), exige o grupo wheel para ações de administrador e registra
+cada pedido no journal (`journalctl -u ararinha-sistema`). Ele mesmo roda
+confinado: `ProtectSystem=strict` (só escreve em `/etc/ararinha`), sem
+dispositivos, só `CAP_NET_ADMIN`, só sockets Unix e netlink.
+
+Hoje cuida do firewall. Os ajudantes setuid que ainda existem
+(`ararinha-senha`, `ararinha-energia`, `ararinha-unidade`,
+`ararinha-instalar`) passam para ele aos poucos.
+
+## Firewall com perfis
+
+Configurações > Firewall mostra se o firewall está ligado e escolhe o tipo
+de rede: "pública" (padrão; não responde nem ao ping) ou "de casa"
+(responde ao ping). Dá para liberar uma porta TCP/UDP para um programa e
+bloqueá-la de novo. O estado fica em `/etc/ararinha/firewall.conf` e as
+regras extras em `/etc/ararinha/firewall.nft`, incluído pelo
+`/etc/nftables.conf`.
+
 ## Serviços endurecidos e sem core dumps
 
 - `nftables.service` e `ararinha-energia.service` rodam com
