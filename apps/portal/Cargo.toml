@@ -18,3 +18,8 @@ path = "src/main.rs"
 [[bin]]
 name = "ararinha-bandeja"
 path = "src/bandeja.rs"
+
+# Chaveiro de senhas (Secret Service / org.freedesktop.secrets).
+[[bin]]
+name = "ararinha-chaveiro"
+path = "src/chaveiro.rs"
