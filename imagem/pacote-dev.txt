@@ -1,0 +1,70 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# O que fica FORA da imagem e vai para o pacote de desenvolvimento
+# (ararinha-dev-<arq>.tar.zst): compiladores, cabeçalhos e bibliotecas
+# estáticas. Quem usa o computador no dia a dia não precisa disso, e a
+# imagem fica bem menor. Um padrão por linha, relativo à raiz (globs do bash).
+
+# Rust (a Plumagem e os apps já vêm compilados)
+usr/lib/rustlib
+usr/lib/librustc_driver-*.so
+usr/bin/rustc
+usr/bin/rustdoc
+usr/bin/cargo*
+usr/bin/rust-*
+usr/bin/clippy-driver
+usr/bin/rustfmt
+usr/share/doc/rust*
+usr/share/doc/cargo*
+usr/etc/bash_completion.d/cargo
+
+# LLVM e Clang (a libLLVM.so fica: o Mesa usa no llvmpipe)
+usr/bin/clang*
+usr/bin/llvm-*
+usr/bin/llc
+usr/bin/lli
+usr/bin/opt
+usr/bin/ld.lld
+usr/bin/lld*
+usr/bin/bugpoint
+usr/bin/dsymutil
+usr/bin/sancov
+usr/bin/verify-uselistorder
+usr/lib/clang
+usr/lib/libclang*.so*
+usr/lib/libLTO.so*
+usr/lib/libRemarks.so*
+usr/lib/cmake
+usr/share/clang
+usr/share/opt-viewer
+usr/share/scan-*
+
+# GCC (compilador; a libgcc_s e a libstdc++ ficam)
+usr/libexec/gcc
+usr/bin/gcc*
+usr/bin/g++*
+usr/bin/c++
+usr/bin/cpp
+usr/bin/*-linux-gnu-g*
+usr/bin/*-linux-gnu-c*
+usr/lib/gcc/*/*/plugin
+usr/lib/gcc/*/*/include*
+
+# CMake, Meson, Ninja e afins
+usr/bin/cmake
+usr/bin/ctest
+usr/bin/cpack
+usr/share/cmake-*
+usr/bin/meson
+usr/bin/ninja
+
+# Cabeçalhos, bibliotecas estáticas e documentação de programador
+usr/include
+usr/lib/*.a
+usr/lib/*/*.a
+usr/share/doc
+usr/share/info
+usr/share/gtk-doc
+usr/share/devhelp
+usr/share/aclocal
+usr/share/gettext/archive.dir.tar*
+usr/src
