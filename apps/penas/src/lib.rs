@@ -222,6 +222,7 @@ pub fn executar(opcoes: Opcoes, app: Box<dyn App>) {
         ultimo_clique: None,
         sujo: true,
         acordar: None,
+        repetir: None,
         titulo: opcoes.titulo,
         tela: Tela::nova(l as i32, a as i32),
     };
@@ -238,12 +239,22 @@ pub fn executar(opcoes: Opcoes, app: Box<dyn App>) {
             }
             config = (Instant::now(), v);
         }
-        let espera = janela
-            .acordar
+        let proximo = match (janela.acordar, janela.repetir.as_ref().map(|r| r.2)) {
+            (Some(a), Some(b)) => Some(a.min(b)),
+            (a, b) => a.or(b),
+        };
+        let espera = proximo
             .map(|t| t.saturating_duration_since(Instant::now()).min(Duration::from_millis(100)))
             .unwrap_or(Duration::from_millis(100));
         if event_loop.dispatch(espera, &mut janela).is_err() {
             break;
+        }
+        if let Some((_, tecla, quando)) = janela.repetir.as_mut() {
+            if Instant::now() >= *quando {
+                janela.teclas.push(tecla.clone());
+                *quando = Instant::now() + Duration::from_millis(33);
+                janela.sujo = true;
+            }
         }
         if janela.acordar.is_some_and(|t| Instant::now() >= t) {
             janela.acordar = None;
@@ -282,6 +293,8 @@ struct Janela {
     ultimo_clique: Option<(Instant, (f32, f32))>,
     sujo: bool,
     acordar: Option<Instant>,
+    /// Tecla segurada: código, tecla e quando repetir.
+    repetir: Option<(u32, Tecla, Instant)>,
     titulo: String,
     tela: Tela,
 }
@@ -447,7 +460,9 @@ impl KeyboardHandler for Janela {
         _: &[Keysym],
     ) {
     }
-    fn leave(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_keyboard::WlKeyboard, _: &wl_surface::WlSurface, _: u32) {}
+    fn leave(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_keyboard::WlKeyboard, _: &wl_surface::WlSurface, _: u32) {
+        self.repetir = None;
+    }
     fn press_key(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_keyboard::WlKeyboard, _: u32, ev: KeyEvent) {
         let alt = self.mods.alt;
         let tecla = match ev.keysym {
@@ -466,10 +481,34 @@ impl KeyboardHandler for Janela {
                 _ => Tecla::Outra(outra),
             },
         };
+        // Repetição da tecla segurada (atraso de 450 ms, depois 30 por segundo).
+        let modificadora = matches!(
+            ev.keysym,
+            Keysym::Shift_L
+                | Keysym::Shift_R
+                | Keysym::Control_L
+                | Keysym::Control_R
+                | Keysym::Alt_L
+                | Keysym::Alt_R
+                | Keysym::Super_L
+                | Keysym::Super_R
+                | Keysym::ISO_Level3_Shift
+                | Keysym::Caps_Lock
+                | Keysym::Num_Lock
+        );
+        self.repetir = if modificadora || tecla == Tecla::Esc {
+            None
+        } else {
+            Some((ev.raw_code, tecla.clone(), Instant::now() + Duration::from_millis(450)))
+        };
         self.teclas.push(tecla);
         self.sujo = true;
     }
-    fn release_key(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_keyboard::WlKeyboard, _: u32, _: KeyEvent) {}
+    fn release_key(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_keyboard::WlKeyboard, _: u32, ev: KeyEvent) {
+        if self.repetir.as_ref().map(|(c, _, _)| *c == ev.raw_code).unwrap_or(false) {
+            self.repetir = None;
+        }
+    }
     fn update_modifiers(
         &mut self,
         _: &Connection,
