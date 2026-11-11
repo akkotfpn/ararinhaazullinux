@@ -179,7 +179,12 @@ pub enum Alvo {
     Aviso(usize),
     /// Item do menu do botão direito (área de trabalho ou barra).
     Contexto(usize),
+    /// O cantinho depois do relógio: mostra a área de trabalho.
+    CantoArea,
 }
+
+/// Largura do cantinho "Mostrar área de trabalho", como no Windows.
+const CANTO_L: i32 = 10;
 
 /// Menu do botão direito: onde abriu e os itens (rótulo, ação). A ação é um
 /// comando ou, começando com '#', algo da própria Plumagem.
@@ -494,6 +499,9 @@ impl Painel {
         let fx = Self::fixados_x();
         if x >= fx && x < fx + FIXADOS.len() as i32 * FIXADO_L {
             return Some(Alvo::Fixado(((x - fx) / FIXADO_L) as usize));
+        }
+        if x >= tela.w - CANTO_L {
+            return Some(Alvo::CantoArea);
         }
         let bx = tela.w - RELOGIO_L - BANDEJA_L;
         if (bx..bx + ICONE_BANDEJA).contains(&x) {
@@ -1334,6 +1342,13 @@ impl Painel {
             tema::TEXTO(),
         );
 
+        // Cantinho "Mostrar área de trabalho" e o tracinho que o separa.
+        let cx = l - CANTO_L as f32;
+        t.retangulo(cx, 8.0, 1.0, hf - 16.0, 0.0, tema::TEXTO_SECUNDARIO().com_alfa(90));
+        if hover == Some(Alvo::CantoArea) {
+            t.retangulo(cx + 1.0, 0.0, CANTO_L as f32 - 1.0, hf, 0.0, tema::BRANCO().com_alfa(120));
+        }
+        let l = cx;
         // Relógio à direita (uma linha só na barra pequena).
         let (hora, data) = (&self.relogio.1, &self.relogio.2);
         if h < 42 {

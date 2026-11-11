@@ -11,7 +11,7 @@ use xcursor::{
 fn seta_plumagem() -> Image {
     const LADO: i32 = 32;
     let mut t = crate::desenho::Tela::nova(LADO, LADO);
-    let e = 1.15; // escala da seta (≈ 21 px de altura)
+    let e = 0.95; // escala da seta (≈ 17 px de altura, como o Windows a 100%)
     let base = [
         (0.0, 0.0),
         (0.0, 16.0),
@@ -213,7 +213,8 @@ fn seta_dupla(t: &mut Tela, angulo: f32) {
     ];
     let (s, c) = angulo.to_radians().sin_cos();
     let m = LADO as f32 / 2.0;
-    let pts: Vec<(f32, f32)> = base.iter().map(|(x, y)| (m + x * c - y * s, m + x * s + y * c)).collect();
+    let k = 0.85;
+    let pts: Vec<(f32, f32)> = base.iter().map(|(x, y)| (m + (x * c - y * s) * k, m + (x * s + y * c) * k)).collect();
     contornado(t, &pts);
 }
 

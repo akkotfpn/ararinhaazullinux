@@ -49,6 +49,14 @@ impl<BackendData: Backend> XdgShellHandler for AnvilState<BackendData> {
         // the surface is not already configured
         let window = WindowElement(Window::new_wayland_window(surface.clone()));
         place_new_window(&mut self.space, self.pointer.current_location(), &window, true);
+        // Janela nova vem para a frente e recebe o teclado.
+        if let Some(teclado) = self.seat.get_keyboard() {
+            teclado.set_focus(
+                self,
+                Some(crate::focus::KeyboardFocusTarget::from(window.clone())),
+                smithay::utils::SERIAL_COUNTER.next_serial(),
+            );
+        }
 
         compositor::add_post_commit_hook(surface.wl_surface(), |state: &mut Self, _, surface| {
             handle_toplevel_commit(&mut state.space, surface);

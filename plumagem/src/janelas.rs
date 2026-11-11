@@ -28,6 +28,15 @@ use crate::{
     state::{AnvilState, Backend},
 };
 
+/// Para onde a janela vai com Win+setas.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Encaixe {
+    Esquerda,
+    Direita,
+    Cima,
+    Baixo,
+}
+
 /// Posição e tamanho antes de maximizar, guardados na própria janela.
 struct GeometriaAnterior(RefCell<Option<(Point<i32, Logical>, Option<Size<i32, Logical>>)>>);
 
@@ -56,8 +65,26 @@ impl<B: Backend> AnvilState<B> {
         }
     }
 
-    pub fn focar_janela(&mut self, w: &WindowElement) {
+    /// Põe a janela na frente, com as janelas filhas dela (diálogos como o
+    /// "Adicionar fonte" do OBS) sempre por cima.
+    pub fn elevar_com_filhos(&mut self, w: &WindowElement) {
         self.space.raise_element(w, true);
+        let Some(sup) = w.wl_surface().map(|s| s.into_owned()) else { return };
+        let filhos: Vec<WindowElement> = self
+            .space
+            .elements()
+            .filter(|e| e.0.toplevel().and_then(|t| t.parent()).as_ref() == Some(&sup))
+            .cloned()
+            .collect();
+        for f in filhos {
+            if &f != w {
+                self.elevar_com_filhos(&f);
+            }
+        }
+    }
+
+    pub fn focar_janela(&mut self, w: &WindowElement) {
+        self.elevar_com_filhos(w);
         let teclado = self.seat.get_keyboard().unwrap();
         teclado.set_focus(self, Some(KeyboardFocusTarget::from(w.clone())), SERIAL_COUNTER.next_serial());
     }
@@ -124,6 +151,67 @@ impl<B: Backend> AnvilState<B> {
         }
     }
 
+    /// Encaixa a janela ativa (Win+setas): metade esquerda/direita, maximizar,
+    /// e para baixo restaura ou minimiza, como no Windows.
+    pub fn encaixar(&mut self, lado: Encaixe) {
+        let Some(w) = self.space.elements().last().cloned() else { return };
+        match lado {
+            Encaixe::Cima => {
+                if !self.esta_maximizada(&w) {
+                    self.maximizar(&w);
+                }
+                return;
+            }
+            Encaixe::Baixo => {
+                if self.esta_maximizada(&w) || self.esta_encaixada(&w) {
+                    self.restaurar(&w);
+                } else {
+                    self.minimizar(&w);
+                }
+                return;
+            }
+            _ => {}
+        }
+        let Some(t) = w.0.toplevel().cloned() else { return };
+        let output = self.space.outputs_for_element(&w).first().cloned().or_else(|| self.space.outputs().next().cloned());
+        let Some(area) = output.and_then(|o| area_util(&self.space, &o)) else { return };
+        // Guarda o tamanho de antes (se ainda não está maximizada/encaixada).
+        if !self.esta_maximizada(&w) && !self.esta_encaixada(&w) {
+            if let Some(loc) = self.space.element_location(&w) {
+                let tamanho = t.current_state().size;
+                w.0.user_data().insert_if_missing(|| GeometriaAnterior(RefCell::new(None)));
+                if let Some(g) = w.0.user_data().get::<GeometriaAnterior>() {
+                    *g.0.borrow_mut() = Some((loc, tamanho));
+                }
+            }
+        }
+        let meia = area.size.w / 2;
+        let x = if lado == Encaixe::Esquerda { area.loc.x } else { area.loc.x + meia };
+        let mut tamanho: Size<i32, Logical> = (meia, area.size.h).into();
+        let y = area.loc.y;
+        if w.decoration_state().is_ssd {
+            tamanho.h -= HEADER_BAR_HEIGHT;
+        }
+        t.with_pending_state(|s| {
+            s.states.unset(xdg_toplevel::State::Maximized);
+            s.states.set(xdg_toplevel::State::TiledLeft);
+            s.states.set(xdg_toplevel::State::TiledRight);
+            s.states.set(xdg_toplevel::State::TiledTop);
+            s.states.set(xdg_toplevel::State::TiledBottom);
+            s.size = Some(tamanho);
+        });
+        self.space.map_element(w.clone(), (x, y), true);
+        if t.is_initial_configure_sent() {
+            t.send_configure();
+        }
+    }
+
+    fn esta_encaixada(&self, w: &WindowElement) -> bool {
+        w.0.toplevel()
+            .map(|t| t.with_pending_state(|s| s.states.contains(xdg_toplevel::State::TiledLeft)))
+            .unwrap_or(false)
+    }
+
     /// Volta ao tamanho e lugar de antes de maximizar.
     pub fn restaurar(&mut self, w: &WindowElement) {
         let Some(t) = w.0.toplevel().cloned() else { return };
@@ -134,6 +222,14 @@ impl<B: Backend> AnvilState<B> {
             .and_then(|g| g.0.borrow_mut().take());
         t.with_pending_state(|s| {
             s.states.unset(xdg_toplevel::State::Maximized);
+            for e in [
+                xdg_toplevel::State::TiledLeft,
+                xdg_toplevel::State::TiledRight,
+                xdg_toplevel::State::TiledTop,
+                xdg_toplevel::State::TiledBottom,
+            ] {
+                s.states.unset(e);
+            }
             s.size = anterior.and_then(|(_, tam)| tam);
         });
         if let Some((loc, _)) = anterior {
@@ -275,6 +371,7 @@ impl<B: Backend> AnvilState<B> {
             Alvo::SomBarra(f) => self.painel.definir_volume(f as f32 / 1000.0),
             Alvo::SomMudo => self.painel.alternar_mudo(),
             Alvo::Barra | Alvo::Menu | Alvo::SomPainel | Alvo::Contexto(_) => {}
+            Alvo::CantoArea => self.mostrar_area_de_trabalho(),
         }
         true
     }

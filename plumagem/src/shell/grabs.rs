@@ -67,7 +67,25 @@ impl<BackendData: Backend> PointerGrab<AnvilState<BackendData>> for PointerMoveS
         handle.button(data, event);
         if handle.current_pressed().is_empty() {
             // No more buttons are pressed, release the grab.
+            let pos = handle.current_location();
             handle.unset_grab(self, data, event.serial, event.time, true);
+            // Aero Snap: soltar a janela na borda da tela encaixa.
+            let geo = data.space.output_under(pos).next().and_then(|o| data.space.output_geometry(o));
+            if let Some(g) = geo {
+                let lado = if pos.x <= (g.loc.x + 2) as f64 {
+                    Some(crate::janelas::Encaixe::Esquerda)
+                } else if pos.x >= (g.loc.x + g.size.w - 3) as f64 {
+                    Some(crate::janelas::Encaixe::Direita)
+                } else if pos.y <= (g.loc.y + 2) as f64 {
+                    Some(crate::janelas::Encaixe::Cima)
+                } else {
+                    None
+                };
+                if let Some(lado) = lado {
+                    data.space.raise_element(&self.window, true);
+                    data.encaixar(lado);
+                }
+            }
         }
     }
 

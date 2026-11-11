@@ -75,6 +75,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             KeyAction::FecharJanela => self.fechar_janela_ativa(),
             KeyAction::MostrarAreaDeTrabalho => self.mostrar_area_de_trabalho(),
             KeyAction::Captura => crate::captura::pedir(),
+            KeyAction::Encaixar(lado) => self.encaixar(lado),
 
             KeyAction::Quit => {
                 info!("Quitting.");
@@ -395,7 +396,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             }
 
             if let Some((window, _)) = self.space.element_under(location).map(|(w, p)| (w.clone(), p)) {
-                self.space.raise_element(&window, true);
+                self.elevar_com_filhos(&window);
                 #[cfg(feature = "xwayland")]
                 if let Some(surface) = window.0.x11_surface() {
                     self.xwm.as_mut().unwrap().raise_window(surface).unwrap();
@@ -608,6 +609,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                     | KeyAction::FecharJanela
                     | KeyAction::MostrarAreaDeTrabalho
                     | KeyAction::Captura
+                    | KeyAction::Encaixar(_)
                     | KeyAction::TogglePreview
                     | KeyAction::ToggleDecorations => self.process_common_key_action(action),
 
@@ -828,6 +830,7 @@ impl AnvilState<UdevData> {
                     | KeyAction::FecharJanela
                     | KeyAction::MostrarAreaDeTrabalho
                     | KeyAction::Captura
+                    | KeyAction::Encaixar(_)
                     | KeyAction::TogglePreview
                     | KeyAction::ToggleDecorations => self.process_common_key_action(action),
 
@@ -1401,6 +1404,8 @@ enum KeyAction {
     MostrarAreaDeTrabalho,
     /// Print Screen: captura de tela
     Captura,
+    /// Win+setas: encaixar a janela
+    Encaixar(crate::janelas::Encaixe),
     /// Switch the current screen
     Screen(usize),
     ScaleUp,
@@ -1419,6 +1424,14 @@ fn process_keyboard_shortcut(modifiers: ModifiersState, keysym: Keysym) -> Optio
         Some(KeyAction::Quit)
     } else if modifiers.alt && !modifiers.ctrl && (keysym == Keysym::Tab || keysym == Keysym::ISO_Left_Tab) {
         Some(KeyAction::ProximaJanela)
+    } else if modifiers.logo && keysym == Keysym::Left {
+        Some(KeyAction::Encaixar(crate::janelas::Encaixe::Esquerda))
+    } else if modifiers.logo && keysym == Keysym::Right {
+        Some(KeyAction::Encaixar(crate::janelas::Encaixe::Direita))
+    } else if modifiers.logo && keysym == Keysym::Up {
+        Some(KeyAction::Encaixar(crate::janelas::Encaixe::Cima))
+    } else if modifiers.logo && keysym == Keysym::Down {
+        Some(KeyAction::Encaixar(crate::janelas::Encaixe::Baixo))
     } else if keysym == Keysym::Print {
         // Print Screen: salva a tela em Imagens/Capturas de Tela
         Some(KeyAction::Captura)
