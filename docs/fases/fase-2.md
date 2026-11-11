@@ -102,3 +102,28 @@ Win+E / Ctrl+Alt+E, Ctrl+Esc (menu), Ctrl+Alt+T (terminal) e Print Screen
   bloqueio.
 - **Bandeja do sistema**: `ararinha-bandeja` (StatusNotifierWatcher) e os
   ícones dos apps ao lado de rede e som, com clique e menu.
+
+### Pedidos do teste de 11/11 (tarde) e o que um sistema completo tem
+
+Detalhe e estado de cada item em `docs/roteiro.md`.
+
+- **Energia**: botão de energia no menu Iniciar com Dormir, Hibernar (com
+  área de troca suficiente), Sair, Reiniciar e Desligar, tudo pelo
+  `ararinha-sistema` (`CAP_SYS_BOOT`).
+- **Disco criptografado** no instalador; initramfs com `/dev/console`.
+- **Primeiro Voo** com a escolha de tema claro/escuro e cor de destaque,
+  com prévia ao vivo; seis cores de destaque nas Configurações.
+- **Firewall** pode ser desligado (com aviso e confirmação).
+- **Central de Apps**: progresso de verdade (% e MB), Cancelar e erro em
+  vez de travar.
+- **Steam**: Mesa com GLX para o Xwayland, regras `steam-devices`,
+  `uinput` e drivers de controle no kernel.
+- **Configurações**: páginas Tela (escala aplicada na hora), Som, Data e
+  hora, Outros usuários e Armazenamento.
+- **Área de trabalho**: Alt+Tab com alternador, central de notificações
+  com Não perturbe e ações rápidas, recorte de tela (Win+Shift+S),
+  Win+V, teclas de volume/brilho com indicador, busca de arquivos,
+  configurações e contas no menu Iniciar.
+- **Explorador**: "Extrair aqui"/"Compactar", painel de visualização,
+  pendrives com Ejetar; seletor de arquivos abre com um clique.
+- **Chaveiro** (Secret Service) para os apps guardarem senhas.

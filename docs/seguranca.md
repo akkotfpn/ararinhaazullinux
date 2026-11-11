@@ -132,8 +132,20 @@ cada pedido no journal (`journalctl -u ararinha-sistema`). Ele mesmo roda
 confinado: `ProtectSystem=strict` (só escreve em `/etc/ararinha`), sem
 dispositivos, só `CAP_NET_ADMIN`, só sockets Unix e netlink.
 
-Hoje cuida do firewall e do plano de energia (o `ararinha-energia` deixou
-de ser setuid). Os ajudantes setuid que ainda existem (`ararinha-senha`,
+Hoje cuida do firewall (perfis, portas, ligar/desligar), do plano de
+energia (o `ararinha-energia` deixou de ser setuid), de desligar,
+reiniciar, dormir e hibernar (`CAP_SYS_BOOT`; qualquer um com sessão
+aberta pode), do brilho da tela, das contas (criar, apagar,
+administrador/padrão: só administradores; a senha nova chega em hex e
+some do log), do fuso e da hora pela internet, e de abrir e ejetar
+pendrives (`/run/media/<usuário>`, `nosuid,nodev`, arquivos FAT/exFAT/NTFS
+só do dono; o disco do sistema nunca aparece como removível).
+
+O que precisa escrever fora de `/etc/ararinha` (useradd, timedatectl,
+mount, blkid) o serviço não faz: ele confere o pedido e entrega o comando
+exato ao systemd numa unidade passageira (`systemd-run --wait --pipe`,
+sem rede), que aparece no journal. Senhas vão pela entrada padrão, nunca
+na linha de comando. Os ajudantes setuid que ainda existem (`ararinha-senha`,
 `ararinha-unidade`, `ararinha-instalar`) passam para ele aos poucos.
 
 ## Firewall com perfis
@@ -155,6 +167,27 @@ regras extras em `/etc/ararinha/firewall.nft`, incluído pelo
 - Nenhum programa gera core dump (`Storage=none` no systemd-coredump e
   `DefaultLimitCORE=0`): a memória de um programa que travou pode ter
   senhas ou chaves.
+
+## Chaveiro e área de transferência
+
+- `ararinha-chaveiro` implementa o Secret Service (o que Chromium, Steam e
+  outros usam para guardar senhas). Os segredos ficam num arquivo 0600 na
+  pasta da conta; ainda sem cifra própria — quem protege é o disco
+  criptografado e a sessão bloqueada. Cifrar com a senha da conta está na
+  lista.
+- O histórico do Win+V guarda só texto, até 25 itens, só na memória da
+  Plumagem: some ao sair da sessão e nunca vai para o disco.
+
+## Firewall desligado
+
+Desligar o firewall pede confirmação com aviso de risco; o estado fica no
+marcador `/etc/ararinha/firewall-desligado` (o `nftables.service` não sobe
+enquanto ele existir) e as Configurações mostram o aviso em vermelho.
+
+## Tela de bloqueio
+
+Depois de 3 senhas erradas, espera crescente: 5 s, dobrando a cada erro
+até 5 minutos.
 
 ## Bloqueio automático
 

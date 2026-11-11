@@ -35,39 +35,49 @@ Imagem: ~630 MB (qcow2). Boot até a tela de entrada: ~3,4 s.
 ## Parte 2 — O que um sistema completo tem
 
 ### Base que os apps esperam
-- [a fazer] Chaveiro de senhas (Secret Service), destravado no login
+- [em teste] Chaveiro de senhas (Secret Service): ararinha-chaveiro, arquivo 0600 na pasta da conta (ainda sem cifra própria; o disco criptografado protege)
 - [a fazer] Pedido de administrador no estilo UAC (ararinha-sistema)
 - [a fazer] Apps padrão e "Abrir com…"
 - [a fazer] Impressoras (CUPS) e scanner
 - [a fazer] Bluetooth (BlueZ)
 
 ### Configurações
-- [a fazer] Tela: resolução, escala, monitores, luz noturna
-- [a fazer] Som: saída/entrada, volume por app, teste de microfone
-- [a fazer] Data e hora: fuso, NTP, formato
+- [em teste] Tela: monitores, resolução e escala (100–200%, aplicada na hora)
+- [a fazer] Tela: escolher resolução, posição dos monitores, luz noturna
+- [em teste] Som: saída/entrada padrão, volume de cada uma e de cada app, mudo, testar
+- [em teste] Data e hora: fuso, hora pela internet (NTP), relógio de 24 h
 - [a fazer] Idioma e teclado
-- [a fazer] Contas: criar usuário, administrador/padrão, convidado
+- [em teste] Outros usuários: criar, administrador/padrão, apagar (pelo ararinha-sistema + systemd-run)
+- [a fazer] Conta de convidado
 - [a fazer] Atualizações (sistema e Flatpak) com histórico e volta
 - [a fazer] Privacidade: câmera, microfone, localização por app
 - [a fazer] Acessibilidade
-- [a fazer] Armazenamento
+- [em teste] Armazenamento: uso do disco, o que ocupa, esvaziar Lixeira, remover partes de apps sem uso
 
 ### Área de trabalho e produtividade
-- [a fazer] Alt+Tab com miniaturas, Visão de Tarefas, várias áreas de trabalho
+- [em teste] Alt+Tab com alternador na tela (ícones, ordem de uso, inclui minimizadas)
+- [a fazer] Miniaturas no Alt+Tab, Visão de Tarefas, várias áreas de trabalho
 - [a fazer] Layouts de encaixe
-- [a fazer] Central de notificações e ações rápidas
-- [a fazer] Captura com recorte (Win+Shift+S) e gravação de tela
-- [a fazer] Histórico da área de transferência (Win+V) e emoji (Win+.)
-- [a fazer] Busca de arquivos, configurações e cálculos no menu Iniciar
-- [a fazer] Teclas de mídia com indicador na tela; gestos de touchpad
-- [a fazer] Trocar de usuário; hibernar
+- [em teste] Central de notificações (clique no relógio): histórico, Não perturbe, ações rápidas
+- [em teste] Captura com recorte (Win+Shift+S ou Shift+Print)
+- [a fazer] Gravação de tela
+- [em teste] Histórico da área de transferência (Win+V): texto, cola com um clique
+- [a fazer] Emoji (Win+.) — precisa de fonte de emoji colorida
+- [em teste] Busca no menu Iniciar: apps, páginas das Configurações, arquivos da pasta pessoal e contas (2+3*4)
+- [em teste] Teclas de volume, mudo e brilho com indicador na tela
+- [a fazer] Gestos de touchpad
+- [em teste] Hibernar (aparece no menu de energia quando há área de troca do tamanho da memória)
+- [a fazer] Trocar de usuário
 
 ### Apps essenciais
-- [a fazer] PDF, vídeo, compactador, câmera
-- [a fazer] Explorador: abas, miniaturas, visualização, USB com Ejetar
+- [em teste] Compactador no Explorador: "Extrair aqui" e "Compactar em .zip"
+- [a fazer] PDF, vídeo, câmera
+- [em teste] Explorador: painel de visualização (imagens e textos), pendrives e HDs externos (abrir e Ejetar)
+- [a fazer] Explorador: abas, miniaturas na lista
 
 ### Segurança e confiabilidade
 - [em teste] Desligar o firewall com aviso
+- [em teste] Tela de bloqueio com espera crescente depois de 3 senhas erradas
 - [a fazer] Backup e pontos de restauração
 - [a fazer] Modo de recuperação no boot
 - [a fazer] Senha do disco em tela gráfica; TPM2
