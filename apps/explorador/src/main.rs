@@ -1076,8 +1076,11 @@ impl Explorador {
                 "txt", "md", "log", "conf", "cfg", "ini", "toml", "json", "csv", "sh", "rs", "py", "c", "h",
                 "desktop", "xml",
             ];
+            const AUDIOS: [&str; 9] = ["mp3", "flac", "ogg", "oga", "opus", "wav", "m4a", "aac", "mp4"];
             let programa = if IMAGENS.contains(&ext.as_str()) {
                 Some("imagens")
+            } else if AUDIOS.contains(&ext.as_str()) {
+                Some("musicas")
             } else if TEXTOS.contains(&ext.as_str()) || (ext.is_empty() && e.tamanho < 1_000_000) {
                 Some("notas")
             } else {

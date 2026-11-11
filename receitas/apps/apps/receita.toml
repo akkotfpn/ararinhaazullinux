@@ -12,7 +12,7 @@ categoria = "apps"
 tipo      = "toolchain"
 
 [dependencias]
-construcao = ["rust", "libxkbcommon", "wayland", "fonte-inter", "cifs-utils", "systemd"]
+construcao = ["rust", "libxkbcommon", "wayland", "fonte-inter", "cifs-utils", "systemd", "alsa-lib"]
 
 [construcao]
 ambiente = "isolado"
@@ -67,7 +67,7 @@ ExecStart=/usr/bin/ararinha-energia aplicar
 WantedBy=multi-user.target
 FIM
 systemctl enable ararinha-energia.service
-for app in imagens notas configuracoes central calculadora tarefas paciencia; do
+for app in imagens notas configuracoes central calculadora tarefas paciencia musicas; do
   install -vDm755 target/release/$app /usr/bin/$app
   install -vDm644 $app/recursos/$app.desktop /usr/share/applications/$app.desktop
   install -vDm644 $app/recursos/$app.png /usr/share/icons/hicolor/64x64/apps/$app.png

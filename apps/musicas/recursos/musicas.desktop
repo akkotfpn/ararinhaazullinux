@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Músicas
+Name[en]=Music
+Comment=Ouça as músicas da sua pasta Músicas (MP3, FLAC, OGG, WAV, M4A)
+Exec=musicas %F
+Icon=musicas
+StartupWMClass=musicas
+Categories=AudioVideo;Audio;Player;
+MimeType=audio/mpeg;audio/flac;audio/ogg;audio/x-wav;audio/mp4;

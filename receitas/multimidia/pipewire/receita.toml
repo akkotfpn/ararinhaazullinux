@@ -21,7 +21,7 @@ construcao = ["meson", "alsa-lib", "dbus", "systemd", "readline"]
 ambiente = "isolado"
 passos = [
   '''
-mkdir -p build && cd build && meson setup --prefix=/usr --buildtype=release --wrap-mode=nofallback -D session-managers=[] -D examples=disabled -D tests=disabled -D man=disabled -D docs=disabled -D gstreamer=disabled -D jack=disabled -D pipewire-jack=disabled -D bluez5=disabled -D libcamera=disabled -D x11=disabled -D x11-xfixes=disabled -D avahi=disabled -D sndfile=disabled -D libpulse=disabled -D roc=disabled -D vulkan=disabled -D selinux=disabled ..
+mkdir -p build && cd build && meson setup --prefix=/usr --buildtype=release --wrap-mode=nofallback -D session-managers=[] -D examples=disabled -D tests=disabled -D man=disabled -D docs=disabled -D gstreamer=disabled -D jack=disabled -D pipewire-jack=disabled -D bluez5=disabled -D libcamera=disabled -D x11=disabled -D x11-xfixes=disabled -D avahi=disabled -D sndfile=disabled -D libpulse=disabled -D roc=disabled -D vulkan=disabled -D selinux=disabled -D pipewire-alsa=enabled ..
 ''',
   '''
 cd build && ninja
@@ -30,5 +30,13 @@ cd build && ninja
 instalar = [
   '''
 cd build && ninja install
+''',
+  # Programas que falam ALSA (como o app Músicas) saem pelo PipeWire.
+  '''
+install -vdm755 /etc/alsa/conf.d
+for c in 50-pipewire.conf 99-pipewire-default.conf; do
+  [ -f /usr/share/alsa/alsa.conf.d/$c ] && ln -sfv /usr/share/alsa/alsa.conf.d/$c /etc/alsa/conf.d/$c
+done
+true
 ''',
 ]

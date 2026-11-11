@@ -23,7 +23,7 @@ jobs:
       - name: Bibliotecas de sistema
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq --no-install-recommends libxkbcommon-dev libwayland-dev pkg-config
+          sudo apt-get install -y -qq --no-install-recommends libxkbcommon-dev libwayland-dev libasound2-dev pkg-config
 
       - name: Compilar
         working-directory: apps

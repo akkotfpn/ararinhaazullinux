@@ -1,0 +1,12 @@
+[package]
+name = "musicas"
+version = "0.1.0"
+description = "Músicas: o tocador de músicas do Ararinha Azul Linux"
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+penas = { path = "../penas" }
+alsa = "0.9"
+symphonia = { version = "0.5", default-features = false, features = ["mp3", "flac", "ogg", "vorbis", "wav", "pcm", "aac", "isomp4"] }
