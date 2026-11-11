@@ -119,12 +119,17 @@ fn versao_config() -> Vec<Option<std::time::SystemTime>> {
         .collect()
 }
 
-const MENU_L: i32 = 380;
-const MENU_A: i32 = 470;
+const MENU_L: i32 = 400;
+const MENU_A: i32 = 540;
 const MENU_MARGEM: i32 = 8;
-const APPS_Y: i32 = 112;
-const APP_A: i32 = 44;
+/// Campo de busca no topo do menu Iniciar.
+const BUSCA_Y: i32 = 16;
+const BUSCA_A: i32 = 40;
+const APPS_Y: i32 = 98;
+const APP_A: i32 = 42;
 const RODAPE_A: i32 = 64;
+/// Botões de energia no rodapé do menu (quadrados).
+const ENERGIA_L: i32 = 40;
 const INICIAR_X: i32 = 6;
 const TAREFA_MAX: i32 = 220;
 const RELOGIO_L: i32 = 120;
@@ -220,6 +225,9 @@ pub enum Alvo {
     Sair,
     Reiniciar,
     Desligar,
+    Bloquear,
+    /// Avatar e nome do usuário no rodapé do menu (abre a Conta).
+    Usuario,
     Menu,
     /// Ícone de som na bandeja.
     Som,
@@ -357,6 +365,12 @@ pub struct Painel {
     /// Quantos ícones cabem numa coluna (calculado ao desenhar).
     area_linhas: usize,
     pub apps: Option<Vec<App>>,
+    /// Texto digitado no menu Iniciar (filtra os apps).
+    pub busca: String,
+    /// Primeira linha visível da lista de apps.
+    pub menu_rolagem: usize,
+    /// App escolhido pelo teclado (índice na lista filtrada).
+    pub menu_sel: usize,
     relogio: (u64, String, String),
     barra: Option<(String, MemoryRenderBuffer)>,
     menu: Option<(String, MemoryRenderBuffer)>,
@@ -405,6 +419,9 @@ impl Default for Painel {
             area_visto: (std::time::Instant::now() - std::time::Duration::from_secs(10), None),
             area_linhas: 6,
             apps: None,
+            busca: String::new(),
+            menu_rolagem: 0,
+            menu_sel: 0,
             relogio: (0, String::new(), String::new()),
             barra: None,
             menu: None,
@@ -485,7 +502,101 @@ impl Painel {
     }
 
     fn max_apps() -> usize {
-        ((MENU_A - RODAPE_A - APPS_Y) / APP_A).max(0) as usize
+        ((MENU_A - RODAPE_A - APPS_Y - 4) / APP_A).max(0) as usize
+    }
+
+    /// Apps que combinam com a busca (sem diferenciar acentos e maiúsculas).
+    pub fn apps_visiveis(&self) -> Vec<&App> {
+        let apps = self.apps.as_deref().unwrap_or(&[]);
+        if self.busca.trim().is_empty() {
+            return apps.iter().collect();
+        }
+        let b = sem_acento(&self.busca.trim().to_lowercase());
+        let mut achados: Vec<(u8, &App)> = apps
+            .iter()
+            .filter_map(|a| {
+                let nome = sem_acento(&a.nome.to_lowercase());
+                if nome.starts_with(&b) {
+                    Some((0, a))
+                } else if nome.split_whitespace().any(|p| p.starts_with(&b)) {
+                    Some((1, a))
+                } else if nome.contains(&b) || a.exec.to_lowercase().contains(&b) {
+                    Some((2, a))
+                } else {
+                    None
+                }
+            })
+            .collect();
+        achados.sort_by_key(|(r, a)| (*r, a.nome.to_lowercase()));
+        achados.into_iter().map(|(_, a)| a).collect()
+    }
+
+    /// Abre o menu Iniciar limpo.
+    pub fn abrir_menu(&mut self) {
+        self.menu_aberto = true;
+        self.busca.clear();
+        self.menu_rolagem = 0;
+        self.menu_sel = 0;
+        self.carregar_apps();
+    }
+
+    /// Rola a lista do menu (positivo = para baixo).
+    pub fn rolar_menu(&mut self, linhas: i32) {
+        let n = self.apps_visiveis().len();
+        let max = n.saturating_sub(Self::max_apps());
+        self.menu_rolagem = (self.menu_rolagem as i32 + linhas).clamp(0, max as i32) as usize;
+    }
+
+    /// Tecla com o menu aberto. Devolve o comando a rodar, se houver, e se
+    /// o menu deve fechar.
+    pub fn tecla_menu(&mut self, sym: smithay::input::keyboard::Keysym) -> (Option<String>, bool) {
+        use smithay::input::keyboard::Keysym as K;
+        let n = self.apps_visiveis().len();
+        match sym {
+            K::Escape | K::Super_L | K::Super_R => return (None, true),
+            K::Return | K::KP_Enter => {
+                let cmd = self.apps_visiveis().get(self.menu_sel).map(|a| a.exec.clone());
+                return (cmd, true);
+            }
+            K::BackSpace => {
+                self.busca.pop();
+                self.menu_sel = 0;
+                self.menu_rolagem = 0;
+            }
+            K::Down => {
+                if n > 0 {
+                    self.menu_sel = (self.menu_sel + 1).min(n - 1);
+                }
+            }
+            K::Up => self.menu_sel = self.menu_sel.saturating_sub(1),
+            s => {
+                if let Some(c) = s.key_char() {
+                    if !c.is_control() && self.busca.chars().count() < 40 {
+                        self.busca.push(c);
+                        self.menu_sel = 0;
+                        self.menu_rolagem = 0;
+                    }
+                }
+            }
+        }
+        // A seleção sempre visível.
+        let m = Self::max_apps();
+        if self.menu_sel < self.menu_rolagem {
+            self.menu_rolagem = self.menu_sel;
+        } else if m > 0 && self.menu_sel >= self.menu_rolagem + m {
+            self.menu_rolagem = self.menu_sel + 1 - m;
+        }
+        (None, false)
+    }
+
+    /// O mouse está sobre o menu Iniciar aberto?
+    pub fn sobre_menu(&self, p: Point<f64, Logical>, tela: Size<i32, Logical>) -> bool {
+        let o = Self::menu_origem(tela);
+        self.menu_aberto
+            && p.x >= o.x as f64
+            && p.y >= o.y as f64
+            && p.x < (o.x + MENU_L) as f64
+            && p.y < (o.y + MENU_A) as f64
     }
 
     /// O que está em `p` (coordenadas da tela), se for a interface.
@@ -535,18 +646,25 @@ impl Painel {
             let (mx, my) = (x - o.x, y - o.y);
             if mx >= 0 && my >= 0 && mx < MENU_L && my < MENU_A {
                 if my >= MENU_A - RODAPE_A + 12 && my < MENU_A - 12 {
-                    let bl = (MENU_L - 24) / 3;
-                    return Some(match ((mx - 12) / bl).clamp(0, 2) {
-                        0 => Alvo::Sair,
-                        1 => Alvo::Reiniciar,
-                        _ => Alvo::Desligar,
-                    });
+                    // Botões de energia, da direita para a esquerda.
+                    let botoes = [Alvo::Desligar, Alvo::Reiniciar, Alvo::Sair, Alvo::Bloquear];
+                    let dx = MENU_L - 12 - mx;
+                    if dx >= 0 {
+                        let i = (dx / (ENERGIA_L + 4)) as usize;
+                        if i < botoes.len() && dx % (ENERGIA_L + 4) < ENERGIA_L {
+                            return Some(botoes[i]);
+                        }
+                    }
+                    if mx >= 12 && mx < MENU_L - 12 - 4 * (ENERGIA_L + 4) {
+                        return Some(Alvo::Usuario);
+                    }
+                    return Some(Alvo::Menu);
                 }
-                if my >= APPS_Y && mx >= 8 && mx < MENU_L - 8 {
+                if my >= APPS_Y && my < MENU_A - RODAPE_A && mx >= 8 && mx < MENU_L - 8 {
                     let i = ((my - APPS_Y) / APP_A) as usize;
-                    let n = self.apps.as_ref().map(|a| a.len()).unwrap_or(0).min(Self::max_apps());
+                    let n = self.apps_visiveis().len().saturating_sub(self.menu_rolagem).min(Self::max_apps());
                     if i < n {
-                        return Some(Alvo::App(i));
+                        return Some(Alvo::App(self.menu_rolagem + i));
                     }
                 }
                 return Some(Alvo::Menu);
@@ -1276,7 +1394,13 @@ impl Painel {
         }
 
         if self.menu_aberto {
-            let chave = format!("{hover:?}|{:?}", self.apps.as_ref().map(|a| a.len()));
+            let chave = format!(
+                "{hover:?}|{:?}|{}|{}|{}",
+                self.apps.as_ref().map(|a| a.len()),
+                self.busca,
+                self.menu_rolagem,
+                self.menu_sel
+            );
             if self.menu.as_ref().map(|(c, _)| c != &chave).unwrap_or(true) {
                 let tela_menu = self.desenhar_menu(hover, Self::menu_origem(tela));
                 self.menu = Some((chave, tela_menu.em_buffer()));
@@ -1478,55 +1602,174 @@ impl Painel {
         let mut t = Tela::nova(MENU_L, MENU_A);
         let (l, a) = (MENU_L as f32, MENU_A as f32);
         // Vidro com tinta mais forte que a da barra: o menu tem muito texto.
-        t.vidro(0.0, 0.0, l, a, 12.0, (origem.x, origem.y), tema::FUNDO().com_alfa(175));
+        t.vidro(0.0, 0.0, l, a, 12.0, (origem.x, origem.y), tema::FUNDO().com_alfa(185));
+        t.contorno(0.5, 0.5, l - 1.0, a - 1.0, 1.0, tema::BORDA().com_alfa(160));
 
-        // Cabeçalho com o Mingau.
-        if let Some(m) = &self.mingau {
-            t.imagem(16, 12, m);
+        // Busca: digitar com o menu aberto já filtra.
+        let (bx, by, bl, ba) = (16.0, BUSCA_Y as f32, l - 32.0, BUSCA_A as f32);
+        t.retangulo(bx, by, bl, ba, ba / 2.0, tema::BORDA());
+        t.retangulo(bx + 1.0, by + 1.0, bl - 2.0, ba - 2.0, ba / 2.0 - 1.0, tema::SUPERFICIE());
+        if !self.busca.is_empty() {
+            t.retangulo(bx + 1.0, by + ba - 3.0, bl - 2.0, 2.0, 1.0, tema::DESTAQUE());
         }
-        t.texto(72.0, 36.0, 17.0, tema::TEXTO(), "Ararinha Azul Linux");
-        t.texto(72.0, 56.0, 12.5, tema::TEXTO_SECUNDARIO(), "O Mingau te ajuda a começar.");
-        t.retangulo(12.0, 76.0, l - 24.0, 1.0, 0.0, tema::BORDA());
+        // Lupa
+        let (lx, ly) = (bx + 22.0, by + ba / 2.0 - 2.0);
+        t.retangulo(lx - 7.0, ly - 7.0, 14.0, 14.0, 7.0, tema::TEXTO_SECUNDARIO());
+        t.retangulo(lx - 5.5, ly - 5.5, 11.0, 11.0, 5.5, tema::SUPERFICIE());
+        t.linha(lx + 4.5, ly + 4.5, lx + 9.0, ly + 9.0, 2.0, tema::TEXTO_SECUNDARIO());
+        if self.busca.is_empty() {
+            t.texto(bx + 42.0, by + 25.0, 13.0, tema::TEXTO_SECUNDARIO(), "Digite para pesquisar aplicativos");
+        } else {
+            let fim = t.texto(bx + 42.0, by + 25.0, 14.0, tema::TEXTO(), &desenho::encurtar(14.0, &self.busca, bl - 60.0));
+            t.retangulo(bx + 43.0 + fim, by + 11.0, 1.5, 18.0, 0.0, tema::DESTAQUE());
+        }
 
-        t.texto(16.0, 100.0, 12.0, tema::TEXTO_SECUNDARIO(), "Aplicativos");
-        let apps = self.apps.as_deref().unwrap_or(&[]);
-        if apps.is_empty() {
-            t.texto(16.0, (APPS_Y + 26) as f32, 13.0, tema::TEXTO_SECUNDARIO(), "Nenhum aplicativo instalado.");
+        let visiveis = self.apps_visiveis();
+        let titulo = if self.busca.is_empty() { "Todos os aplicativos".to_string() } else { format!("Resultados ({})", visiveis.len()) };
+        t.texto(20.0, 84.0, 12.0, tema::TEXTO_SECUNDARIO(), &titulo);
+        if visiveis.is_empty() {
+            let msg = if self.apps.as_ref().map(|a| a.is_empty()).unwrap_or(true) {
+                "Nenhum aplicativo instalado."
+            } else {
+                "Nenhum aplicativo com esse nome."
+            };
+            t.texto(20.0, (APPS_Y + 26) as f32, 13.0, tema::TEXTO_SECUNDARIO(), msg);
         }
-        for (i, app) in apps.iter().take(Self::max_apps()).enumerate() {
+        let max = Self::max_apps();
+        for (i, app) in visiveis.iter().skip(self.menu_rolagem).take(max).enumerate() {
+            let idx = self.menu_rolagem + i;
             let y = (APPS_Y + i as i32 * APP_A) as f32;
-            if hover == Some(Alvo::App(i)) {
-                t.retangulo(8.0, y, l - 16.0, (APP_A - 4) as f32, 8.0, tema::DESTAQUE_SUAVE());
+            let sel = idx == self.menu_sel && !self.busca.is_empty();
+            if hover == Some(Alvo::App(idx)) || sel {
+                t.retangulo(8.0, y, l - 24.0, (APP_A - 4) as f32, 8.0, if sel { tema::DESTAQUE_SUAVE() } else { tema::SUPERFICIE_ALTA().com_alfa(200) });
             }
-            self.desenhar_icone(&mut t, Some(app), &app.nome, 16.0, y + 6.0, 28.0);
-            let nome = desenho::encurtar(14.0, &app.nome, l - 80.0);
-            t.texto(56.0, y + 26.0, 14.0, tema::TEXTO(), &nome);
+            if sel {
+                t.retangulo(8.0, y + 10.0, 3.0, (APP_A - 24) as f32, 1.5, tema::DESTAQUE());
+            }
+            self.desenhar_icone(&mut t, Some(app), &app.nome, 18.0, y + 6.0, 28.0);
+            let nome = desenho::encurtar(14.0, &app.nome, l - 90.0);
+            t.texto(58.0, y + 25.0, 14.0, tema::TEXTO(), &nome);
+        }
+        // Barra de rolagem fina quando não cabe tudo.
+        if visiveis.len() > max && max > 0 {
+            let area = (MENU_A - RODAPE_A - APPS_Y - 8) as f32;
+            let h = (area * max as f32 / visiveis.len() as f32).max(24.0);
+            let topo = APPS_Y as f32 + (area - h) * self.menu_rolagem as f32 / (visiveis.len() - max) as f32;
+            t.retangulo(l - 10.0, topo, 4.0, h, 2.0, tema::TEXTO_SECUNDARIO().com_alfa(140));
         }
 
-        // Rodapé: Sair, Reiniciar, Desligar.
+        // Rodapé: usuário à esquerda, energia à direita.
         let ry = a - RODAPE_A as f32;
-        t.retangulo(12.0, ry, l - 24.0, 1.0, 0.0, tema::BORDA());
-        let bl = ((MENU_L - 24) / 3) as f32;
-        for (i, (alvo, nome)) in [(Alvo::Sair, "Sair"), (Alvo::Reiniciar, "Reiniciar"), (Alvo::Desligar, "Desligar")]
-            .iter()
-            .enumerate()
-        {
-            let x = 12.0 + i as f32 * bl;
+        t.retangulo(0.0, ry, l, RODAPE_A as f32, 0.0, tema::SUPERFICIE_ALTA().com_alfa(110));
+        t.retangulo(0.0, ry, l, 1.0, 0.0, tema::BORDA());
+        let usuario = std::env::var("USER").unwrap_or_else(|_| "você".into());
+        let nome_conta = nome_completo(&usuario).unwrap_or_else(|| usuario.clone());
+        let fim_usuario = l - 12.0 - 4.0 * (ENERGIA_L + 4) as f32;
+        if hover == Some(Alvo::Usuario) {
+            t.retangulo(10.0, ry + 12.0, fim_usuario - 14.0, 40.0, 8.0, tema::SUPERFICIE().com_alfa(200));
+        }
+        t.retangulo(18.0, ry + 16.0, 32.0, 32.0, 16.0, tema::DESTAQUE());
+        let ini = letra(&nome_conta);
+        let li = desenho::medir(15.0, &ini);
+        t.texto(34.0 - li / 2.0, ry + 37.5, 15.0, tema::BRANCO(), &ini);
+        let rotulo_hover = match hover {
+            Some(Alvo::Bloquear) => Some("Bloquear (Win+L)"),
+            Some(Alvo::Sair) => Some("Sair da sessão"),
+            Some(Alvo::Reiniciar) => Some("Reiniciar"),
+            Some(Alvo::Desligar) => Some("Desligar"),
+            _ => None,
+        };
+        let texto_usuario = rotulo_hover.map(str::to_string).unwrap_or(nome_conta);
+        t.texto(60.0, ry + 37.0, 13.5, tema::TEXTO(), &desenho::encurtar(13.5, &texto_usuario, fim_usuario - 70.0));
+
+        for (i, alvo) in [Alvo::Desligar, Alvo::Reiniciar, Alvo::Sair, Alvo::Bloquear].iter().enumerate() {
+            let x = l - 12.0 - ((i + 1) as i32 * (ENERGIA_L + 4) - 4) as f32;
+            let y = ry + 12.0;
             let sobre = hover == Some(*alvo);
             if sobre {
-                let cor = if *alvo == Alvo::Desligar { tema::ERRO() } else { tema::SUPERFICIE_ALTA() };
-                t.retangulo(x + 2.0, ry + 12.0, bl - 4.0, 40.0, 8.0, cor);
+                let cor = if *alvo == Alvo::Desligar { tema::ERRO() } else { tema::SUPERFICIE().com_alfa(220) };
+                t.retangulo(x, y, ENERGIA_L as f32, 40.0, 8.0, cor);
             }
-            let cor_txt = match (*alvo, sobre) {
-                (Alvo::Desligar, true) => tema::BRANCO(),
-                (Alvo::Desligar, false) => tema::ERRO(),
-                _ => tema::TEXTO(),
-            };
-            let lt = desenho::medir(13.0, nome);
-            t.texto(x + bl / 2.0 - lt / 2.0, ry + 37.0, 13.0, cor_txt, nome);
+            let cor = if sobre && *alvo == Alvo::Desligar { tema::BRANCO() } else { tema::TEXTO() };
+            icone_energia(&mut t, *alvo, x + ENERGIA_L as f32 / 2.0, y + 20.0, cor);
         }
         t
     }
+}
+
+/// Ícones de traço simples do rodapé do menu, centrados em (cx, cy).
+fn icone_energia(t: &mut Tela, alvo: Alvo, cx: f32, cy: f32, cor: desenho::Cor) {
+    let e = 1.8;
+    match alvo {
+        Alvo::Desligar => {
+            // Arco com abertura em cima + traço vertical.
+            arco(t, cx, cy + 1.0, 7.0, 0.32, 1.18, e, cor);
+            t.linha(cx, cy - 8.0, cx, cy - 1.0, e, cor);
+        }
+        Alvo::Reiniciar => {
+            arco(t, cx, cy, 7.0, 0.12, 1.0, e, cor);
+            // Ponta da seta.
+            let (px, py) = (cx + 7.0 * (0.12f32 * std::f32::consts::TAU).cos(), cy - 7.0 * (0.12f32 * std::f32::consts::TAU).sin());
+            t.linha(px, py, px - 4.0, py - 1.0, e, cor);
+            t.linha(px, py, px + 1.0, py - 4.5, e, cor);
+        }
+        Alvo::Sair => {
+            // Porta + seta saindo.
+            t.linha(cx - 6.0, cy - 7.0, cx - 6.0, cy + 7.0, e, cor);
+            t.linha(cx - 6.0, cy - 7.0, cx + 1.0, cy - 7.0, e, cor);
+            t.linha(cx - 6.0, cy + 7.0, cx + 1.0, cy + 7.0, e, cor);
+            t.linha(cx - 2.0, cy, cx + 8.0, cy, e, cor);
+            t.linha(cx + 8.0, cy, cx + 4.5, cy - 3.5, e, cor);
+            t.linha(cx + 8.0, cy, cx + 4.5, cy + 3.5, e, cor);
+        }
+        _ => {
+            // Cadeado.
+            t.retangulo(cx - 6.5, cy - 1.0, 13.0, 9.0, 2.0, cor);
+            arco(t, cx, cy - 3.0, 4.0, 0.0, 0.5, e, cor);
+            t.linha(cx - 4.0, cy - 3.0, cx - 4.0, cy - 1.0, e, cor);
+            t.linha(cx + 4.0, cy - 3.0, cx + 4.0, cy - 1.0, e, cor);
+        }
+    }
+}
+
+/// Arco de circunferência de `ini` a `fim` voltas (0 = direita, 0,25 = em
+/// cima, sentido anti-horário), feito com segmentos de reta.
+#[allow(clippy::too_many_arguments)]
+fn arco(t: &mut Tela, cx: f32, cy: f32, r: f32, ini: f32, fim: f32, esp: f32, cor: desenho::Cor) {
+    let passos = 24;
+    let tau = std::f32::consts::TAU;
+    let mut ant = None;
+    for k in 0..=passos {
+        let ang = (ini + (fim - ini) * k as f32 / passos as f32) * tau;
+        let p = (cx + r * ang.cos(), cy - r * ang.sin());
+        if let Some((x0, y0)) = ant {
+            t.linha(x0, y0, p.0, p.1, esp, cor);
+        }
+        ant = Some(p);
+    }
+}
+
+/// Nome completo do usuário (campo GECOS do /etc/passwd), se houver.
+fn nome_completo(usuario: &str) -> Option<String> {
+    let passwd = std::fs::read_to_string("/etc/passwd").ok()?;
+    let linha = passwd.lines().find(|l| l.split(':').next() == Some(usuario))?;
+    let gecos = linha.split(':').nth(4)?.split(',').next()?.trim().to_string();
+    (!gecos.is_empty()).then_some(gecos)
+}
+
+/// Tira os acentos mais comuns do português (para a busca).
+fn sem_acento(s: &str) -> String {
+    s.chars()
+        .map(|c| match c {
+            'á' | 'à' | 'â' | 'ã' | 'ä' => 'a',
+            'é' | 'è' | 'ê' | 'ë' => 'e',
+            'í' | 'ì' | 'î' | 'ï' => 'i',
+            'ó' | 'ò' | 'ô' | 'õ' | 'ö' => 'o',
+            'ú' | 'ù' | 'û' | 'ü' => 'u',
+            'ç' => 'c',
+            outro => outro,
+        })
+        .collect()
 }
 
 /// Lê Name, Exec, Icon e StartupWMClass de um arquivo .desktop

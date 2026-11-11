@@ -355,9 +355,17 @@ impl<B: Backend> AnvilState<B> {
             }
             Alvo::App(i) => {
                 self.painel.menu_aberto = false;
-                if let Some(app) = self.painel.apps.as_ref().and_then(|a| a.get(i)).cloned() {
-                    self.executar_programa(&app.exec);
+                if let Some(exec) = self.painel.apps_visiveis().get(i).map(|a| a.exec.clone()) {
+                    self.executar_programa(&exec);
                 }
+            }
+            Alvo::Bloquear => {
+                self.painel.menu_aberto = false;
+                self.bloquear();
+            }
+            Alvo::Usuario => {
+                self.painel.menu_aberto = false;
+                self.executar_programa("configuracoes conta");
             }
             Alvo::Sair => {
                 info!("saindo pela opção do menu");
@@ -400,9 +408,10 @@ impl<B: Backend> AnvilState<B> {
     }
 
     pub fn alternar_menu(&mut self) {
-        self.painel.menu_aberto = !self.painel.menu_aberto;
         if self.painel.menu_aberto {
-            self.painel.carregar_apps();
+            self.painel.menu_aberto = false;
+        } else {
+            self.painel.abrir_menu();
         }
     }
 

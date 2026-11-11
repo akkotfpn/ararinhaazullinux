@@ -178,6 +178,29 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             return KeyAction::None;
         }
 
+        // Menu Iniciar aberto: digitar pesquisa, setas escolhem, Enter abre.
+        if self.painel.menu_aberto {
+            let mut pedido: Option<(Option<String>, bool)> = None;
+            keyboard.input::<(), _>(self, keycode, state, serial, time, |data, mods, handle| {
+                if let KeyState::Pressed = state {
+                    let sym = handle.modified_sym();
+                    if !mods.alt && (!mods.ctrl || sym == Keysym::Escape) {
+                        pedido = Some(data.painel.tecla_menu(sym));
+                    }
+                }
+                FilterResult::Intercept(())
+            });
+            if let Some((cmd, fechar)) = pedido {
+                if fechar {
+                    self.painel.menu_aberto = false;
+                }
+                if let Some(cmd) = cmd {
+                    self.executar_programa(&cmd);
+                }
+            }
+            return KeyAction::None;
+        }
+
         for layer in self.layer_shell_state.layer_surfaces().rev() {
             let data = with_states(layer.wl_surface(), |states| {
                 *states.cached_state.get::<LayerSurfaceCachedState>().current()
@@ -525,6 +548,21 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             .unwrap_or_else(|| evt.amount_v120(input::Axis::Vertical).unwrap_or(0.0) * 15.0 / 120.);
         let horizontal_amount_discrete = evt.amount_v120(input::Axis::Horizontal);
         let vertical_amount_discrete = evt.amount_v120(input::Axis::Vertical);
+
+        // Rolagem sobre o menu Iniciar rola a lista de apps.
+        if self.painel.menu_aberto && vertical_amount != 0.0 {
+            let pos = self.pointer.current_location();
+            if let Some(o) = self.space.output_under(pos).next().cloned() {
+                if let Some(geo) = self.space.output_geometry(&o) {
+                    if self.painel.sobre_menu(pos - geo.loc.to_f64(), geo.size) {
+                        let linhas = if vertical_amount > 0.0 { 1 } else { -1 };
+                        let linhas = linhas * (vertical_amount.abs() / 15.0).ceil().max(1.0) as i32;
+                        self.painel.rolar_menu(linhas);
+                        return;
+                    }
+                }
+            }
+        }
 
         {
             let mut frame = AxisFrame::new(evt.time_msec()).source(evt.source());
