@@ -80,6 +80,10 @@ case $(uname -m) in
   aarch64) cp -v arch/arm64/boot/Image  /usr/lib/ararinha/vmlinuz-spix-cripto ;;
 esac
 du -h /usr/lib/ararinha/vmlinuz-spix-cripto
+# Ferramentas para o Secure Boot (assinar o .efi e cadastrar as chaves).
+for f in /usr/bin/systemd-sbsign /usr/lib/systemd/systemd-sbsign /usr/bin/openssl /usr/bin/sbsign; do
+  [ -e "$f" ] && echo "secure-boot: tem $f" || echo "secure-boot: falta $f"
+done
 ''',
   '''
 # A chave privada que assinou os módulos não sai da pasta de construção
