@@ -131,6 +131,11 @@ fn atender(quem: &Quem, pedido: &str) -> Result<String, String> {
             Ok(format!("{pct}"))
         }
         ["hora", "estado"] => Ok(contas::hora_estado()),
+        ["idioma", "estado"] => Ok(contas::idioma()),
+        ["idioma", "definir", id] => {
+            admin()?;
+            contas::definir_idioma(id)
+        }
         ["hora", "fuso", z] => {
             admin()?;
             contas::fuso(z)

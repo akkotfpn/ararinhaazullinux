@@ -173,3 +173,20 @@ pub fn ntp(sim: bool) -> Result<String, String> {
     rodar_fora(&["/usr/bin/timedatectl", "set-ntp", if sim { "true" } else { "false" }], None)?;
     Ok(hora_estado())
 }
+
+/// LANG do /etc/locale.conf.
+pub fn idioma() -> String {
+    std::fs::read_to_string("/etc/locale.conf")
+        .unwrap_or_default()
+        .lines()
+        .find_map(|l| l.strip_prefix("LANG=").map(|v| v.trim_matches('"').to_string()))
+        .unwrap_or_else(|| "pt_BR.UTF-8".into())
+}
+
+pub fn definir_idioma(id: &str) -> Result<String, String> {
+    if !["pt_BR.UTF-8", "en_US.UTF-8"].contains(&id) {
+        return Err("idioma não disponível".into());
+    }
+    rodar_fora(&["/usr/bin/localectl", "set-locale", &format!("LANG={id}")], None)?;
+    Ok(idioma())
+}

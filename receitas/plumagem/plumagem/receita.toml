@@ -65,6 +65,8 @@ if [ -z "$XDG_SESSION_ID" ] && [ "$(id -u)" = 0 ]; then
   export LIBSEAT_BACKEND="${LIBSEAT_BACKEND:-builtin}"
 fi
 export XDG_SESSION_TYPE=wayland XDG_CURRENT_DESKTOP=Plumagem
+# Idioma do sistema (Configurações › Idioma e teclado grava no locale.conf).
+[ -r /etc/locale.conf ] && . /etc/locale.conf && export LANG
 # Barramento D-Bus da sessão (o som e os apps usam).
 if [ -z "$DBUS_SESSION_BUS_ADDRESS" ] && command -v dbus-run-session >/dev/null; then
   exec dbus-run-session -- "$0" "$@"

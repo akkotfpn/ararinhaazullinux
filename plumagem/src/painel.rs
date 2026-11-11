@@ -714,7 +714,8 @@ impl Painel {
                 ids: Vec::new(),
             });
         }
-        const PAGINAS: [(&str, &str, &str); 11] = [
+        const PAGINAS: [(&str, &str, &str); 12] = [
+            ("Idioma e teclado", "idioma", "idioma teclado layout abnt abnt2 lingua ingles portugues"),
             ("Tela", "tela", "tela monitor resolucao escala tamanho zoom dpi"),
             ("Armazenamento", "armazenamento", "armazenamento disco espaco lixeira limpar hd ssd"),
             ("Rede e Wi-Fi", "rede", "wifi wi-fi rede internet ip cabo"),

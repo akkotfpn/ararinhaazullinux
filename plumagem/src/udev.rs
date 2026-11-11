@@ -315,6 +315,7 @@ pub fn run_udev() {
         .handle()
         .insert_source(Timer::from_duration(std::time::Duration::from_secs(2)), |_, _, data| {
             data.aplicar_escala();
+            data.aplicar_teclado();
             TimeoutAction::ToDuration(std::time::Duration::from_secs(2))
         })
         .unwrap();
@@ -1441,6 +1442,29 @@ impl AnvilState<UdevData> {
                 self.render_surface(node, crtc, frame_target);
             }
         };
+    }
+
+    /// Aplica a chave "teclado" ("layout variante", ex. "us intl") da
+    /// conta; sem ela fica o teclado escolhido no Primeiro Voo.
+    pub fn aplicar_teclado(&mut self) {
+        static ATUAL: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+        let Some(quer) = crate::painel::ler_chave("teclado") else { return };
+        let mut atual = ATUAL.lock().unwrap();
+        if atual.as_deref() == Some(quer.as_str()) {
+            return;
+        }
+        *atual = Some(quer.clone());
+        drop(atual);
+        let mut p = quer.split_whitespace();
+        let layout = p.next().unwrap_or("br").to_string();
+        let variante = p.next().unwrap_or("").to_string();
+        let ok = layout.chars().all(|c| c.is_ascii_lowercase()) && variante.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
+        if let (true, Some(teclado)) = (ok, self.seat.get_keyboard()) {
+            let xkb = smithay::input::keyboard::XkbConfig { layout: &layout, variant: &variante, ..Default::default() };
+            if let Err(e) = teclado.set_xkb_config(self, xkb) {
+                warn!(?e, "teclado {quer} não aplicado");
+            }
+        }
     }
 
     /// Aplica a chave "escala" (100, 125, 150, 175, 200 %) em todas as telas.
