@@ -15,15 +15,35 @@ tipo      = "toolchain"
 url = "https://www.freedesktop.org/software/appstream/releases/AppStream-1.2.0.tar.xz"
 
 [dependencias]
-construcao = ["glib", "curl", "libxml2", "libxmlb", "libfyaml", "itstool", "gperf", "systemd", "zstd", "meson"]
+construcao = ["glib", "curl", "libxml2", "libxmlb", "libfyaml", "gperf", "systemd", "zstd", "meson"]
 
 [construcao]
 ambiente = "isolado"
 passos = [
+  # itstool só serve para juntar traduções no metainfo do próprio AppStream;
+  # no lugar dele, um substituto que copia o arquivo sem traduzir.
   '''
+mkdir -p ../bin
+cat > ../bin/itstool << 'FIM'
+#!/bin/sh
+ent=; sai=
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -j) ent=$2; shift ;;
+    -o) sai=$2; shift ;;
+  esac
+  shift
+done
+[ -n "$ent" ] && [ -n "$sai" ] && cp "$ent" "$sai"
+FIM
+chmod 755 ../bin/itstool
+''',
+  '''
+export PATH=$PWD/../bin:$PATH
 mkdir -p build && cd build && meson setup --prefix=/usr --buildtype=release --wrap-mode=nofallback -D apidocs=false -D docs=false -D install-docs=false -D man=false -D bash-completion=false -D stemming=false -D gir=false -D vapi=false -D compose=false -D qt=false -D systemd=true ..
 ''',
   '''
+export PATH=$PWD/../bin:$PATH
 cd build && ninja
 ''',
 ]

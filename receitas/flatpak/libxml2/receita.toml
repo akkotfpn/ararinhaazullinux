@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Flatpak (aplicativos do Flathub): BLFS, libxml2 (com o módulo Python, usado pelo itstool)
+# Flatpak (aplicativos do Flathub): BLFS, libxml2
+# Diferença do BLFS: sem o módulo Python (na 2.15 ele exige doxygen).
 # Compilado no ambiente isolado, sobre o sistema base.
 
 [pacote]
@@ -23,7 +24,7 @@ passos = [
 sed -i "/'git'/,+3d" meson.build
 ''',
   '''
-mkdir -p build && cd build && meson setup --prefix=/usr --buildtype=release --wrap-mode=nofallback -D history=enabled -D icu=disabled -D python=enabled ..
+mkdir -p build && cd build && meson setup --prefix=/usr --buildtype=release --wrap-mode=nofallback -D history=enabled -D icu=disabled -D python=disabled -D docs=disabled ..
 ''',
   '''
 cd build && ninja
