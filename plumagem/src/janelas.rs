@@ -384,7 +384,7 @@ impl<B: Backend> AnvilState<B> {
             Alvo::Dormir => {
                 self.painel.menu_aberto = false;
                 // O gancho do system-sleep bloqueia a tela antes de dormir.
-                self.executar_programa("systemctl suspend");
+                pedir_sistema("dormir", None);
             }
             Alvo::Bloquear => {
                 self.painel.menu_aberto = false;
@@ -398,12 +398,14 @@ impl<B: Backend> AnvilState<B> {
                 info!("saindo pela opção do menu");
                 self.running.store(false, Ordering::SeqCst);
             }
-            Alvo::Reiniciar => self.executar_programa(
-                "sh -c 'ararinha-som /usr/share/sounds/ararinha/desligar.wav; systemctl reboot'",
-            ),
-            Alvo::Desligar => self.executar_programa(
-                "sh -c 'ararinha-som /usr/share/sounds/ararinha/desligar.wav; systemctl poweroff'",
-            ),
+            Alvo::Reiniciar => {
+                self.painel.menu_aberto = false;
+                pedir_sistema("reiniciar", Some("/usr/share/sounds/ararinha/desligar.wav"));
+            }
+            Alvo::Desligar => {
+                self.painel.menu_aberto = false;
+                pedir_sistema("desligar", Some("/usr/share/sounds/ararinha/desligar.wav"));
+            }
             Alvo::Rede => {
                 self.painel.menu_aberto = false;
                 self.painel.rede_aberta = !self.painel.rede_aberta;
@@ -587,4 +589,28 @@ impl<B: Backend> AnvilState<B> {
             }
         }
     }
+}
+
+/// Pede ao serviço do sistema (ararinha-sistema, root) para desligar,
+/// reiniciar ou dormir: a sessão do usuário não tem permissão para chamar
+/// o systemctl. Toca o som antes, numa thread, sem travar a tela.
+pub fn pedir_sistema(pedido: &'static str, som: Option<&'static str>) {
+    std::thread::spawn(move || {
+        if let Some(s) = som {
+            let _ = std::process::Command::new("ararinha-som").arg(s).status();
+        }
+        use std::io::{Read, Write};
+        match std::os::unix::net::UnixStream::connect("/run/ararinha/sistema.sock") {
+            Ok(mut c) => {
+                let _ = c.write_all(format!("{pedido}\n").as_bytes());
+                let _ = c.shutdown(std::net::Shutdown::Write);
+                let mut r = String::new();
+                let _ = c.read_to_string(&mut r);
+                if !r.starts_with("OK") {
+                    tracing::warn!("ararinha-sistema recusou {pedido}: {}", r.trim());
+                }
+            }
+            Err(e) => tracing::warn!("ararinha-sistema indisponível: {e}"),
+        }
+    });
 }

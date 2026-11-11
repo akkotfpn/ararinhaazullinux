@@ -214,6 +214,18 @@ fn ler_status(pid: u32) -> (u64, u32) {
     (rss, uid)
 }
 
+/// Memória "proporcional" (PSS): a memória compartilhada entre processos
+/// (bibliotecas, a mesma aba do Chromium em vários processos) é dividida
+/// entre eles, em vez de contada uma vez para cada. Assim a soma dos
+/// processos bate com o total em uso, como no Windows.
+fn ler_pss(pid: u32) -> Option<u64> {
+    let t = fs::read_to_string(format!("/proc/{pid}/smaps_rollup")).ok()?;
+    t.lines()
+        .find(|l| l.starts_with("Pss:"))
+        .and_then(|l| l.split_whitespace().nth(1))
+        .and_then(|v| v.parse().ok())
+}
+
 /// Nome amigável: o nome do executável completo quando o "comm" foi cortado.
 fn nome_bonito(pid: u32, comm: String) -> String {
     if comm.len() >= 15 {
@@ -321,7 +333,8 @@ impl Tarefas {
                     _ => 0.0,
                 };
                 novos.insert(pid, tempo);
-                lista.push(Processo { pid, ppid, nome: nome_bonito(pid, comm), usuario: uid, cpu, memoria_kb: rss });
+                let mem = ler_pss(pid).filter(|p| *p > 0).unwrap_or(rss);
+                lista.push(Processo { pid, ppid, nome: nome_bonito(pid, comm), usuario: uid, cpu, memoria_kb: mem });
             }
         }
         self.tempos_ant = novos;

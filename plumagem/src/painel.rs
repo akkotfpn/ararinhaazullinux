@@ -159,11 +159,20 @@ fn icones_fixos() -> Vec<IconeArea> {
         desenho::icone(include_bytes!("../resources/logo-64.png"), 48, 48),
         desenho::icone(LIXEIRA_PNG, 48, 48),
     ];
-    ICONES_AREA
+    let mut v: Vec<IconeArea> = ICONES_AREA
         .iter()
         .zip(imgs)
         .map(|((n, c), img)| IconeArea { nome: n.to_string(), cmd: c.to_string(), img, arquivo: None })
-        .collect()
+        .collect();
+    // Rodando do pendrive (ainda não instalado): atalho do instalador.
+    if !std::path::Path::new("/etc/ararinha/instalado").exists() && std::path::Path::new("/usr/bin/instalador").exists() {
+        let img = std::fs::read("/usr/share/icons/hicolor/128x128/apps/instalador.png")
+            .or_else(|_| std::fs::read("/usr/share/icons/hicolor/64x64/apps/instalador.png"))
+            .ok()
+            .and_then(|b| desenho::icone(&b, 48, 48));
+        v.push(IconeArea { nome: "Instalar o Ararinha".into(), cmd: "instalador".into(), img, arquivo: None });
+    }
+    v
 }
 
 /// Pasta "Área de Trabalho" do usuário.

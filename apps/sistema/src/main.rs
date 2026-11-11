@@ -119,6 +119,28 @@ fn atender(quem: &Quem, pedido: &str) -> Result<String, String> {
                 Err(String::from_utf8_lossy(&s.stderr).trim().to_string())
             }
         }
+        // Desligar, reiniciar e dormir: quem está logado no computador pode
+        // (como no Windows). "Logado" = tem sessão aberta (/run/user/<uid>).
+        [acao @ ("desligar" | "reiniciar" | "dormir")] => {
+            let logado = quem.uid == 0 || std::path::Path::new(&format!("/run/user/{}", quem.uid)).is_dir();
+            if !logado {
+                return Err("só quem está usando o computador pode fazer isso".into());
+            }
+            let verbo = match *acao {
+                "desligar" => "poweroff",
+                "reiniciar" => "reboot",
+                _ => "suspend",
+            };
+            let s = std::process::Command::new("/usr/bin/systemctl")
+                .arg(verbo)
+                .output()
+                .map_err(|e| format!("systemctl: {e}"))?;
+            if s.status.success() {
+                Ok(String::new())
+            } else {
+                Err(String::from_utf8_lossy(&s.stderr).trim().to_string())
+            }
+        }
         _ => Err("pedido desconhecido".into()),
     }
 }

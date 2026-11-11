@@ -332,6 +332,9 @@ fn main() {
             }
         }
     }
+    // Marca de sistema instalado (some o atalho "Instalar o Ararinha").
+    let _ = fs::create_dir_all(format!("{alvo_dir}/etc/ararinha"));
+    let _ = fs::write(format!("{alvo_dir}/etc/ararinha/instalado"), "");
     if cripto {
         // A raiz agora é o volume aberto pela initramfs.
         let _ = fs::write(

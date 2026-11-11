@@ -365,7 +365,7 @@ impl App for Instalador {
                 let y = paragrafo(ui, x0, y + 6.0, largura, "Se ele voltar para o pendrive, escolha o disco no menu de inicialização da placa-mãe (geralmente F12, F11 ou Esc ao ligar).");
                 let _ = y;
                 if Self::botao(ui, bx, by, "Desligar agora", true, true) {
-                    let _ = Command::new("systemctl").arg("poweroff").spawn();
+                    std::thread::spawn(|| penas::sistema::pedir("desligar"));
                 }
             }
             Passo::Falhou(msg) => {
