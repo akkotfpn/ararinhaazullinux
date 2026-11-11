@@ -148,6 +148,8 @@ pub enum Alvo {
     /// Ícone de rede na bandeja e o painel dele.
     Rede,
     RedePainel,
+    /// "Configurações de rede e Wi-Fi" no painel de rede.
+    RedeConfig,
 }
 
 /// Estado da rede (lido de /sys e /proc, a cada 5 s).
@@ -173,6 +175,7 @@ const ICONE_BANDEJA: i32 = 38;
 const BANDEJA_L: i32 = 2 * ICONE_BANDEJA;
 const SOM_L: i32 = 280;
 const SOM_A: i32 = 104;
+const REDE_A: i32 = 150;
 const SOM_BARRA_X0: f32 = 64.0;
 const SOM_BARRA_X1: f32 = 220.0;
 
@@ -204,6 +207,8 @@ pub struct Painel {
     painel_som: Option<(String, MemoryRenderBuffer)>,
     pub rede: Rede,
     pub rede_aberta: bool,
+    /// Há uma placa Wi-Fi (mesmo desconectada).
+    wifi_disponivel: bool,
     painel_rede: Option<(String, MemoryRenderBuffer)>,
     /// Ícone selecionado na área de trabalho e o último clique (clique duplo).
     pub icone_sel: Option<usize>,
@@ -245,6 +250,7 @@ impl Default for Painel {
             painel_som: None,
             rede: Rede::default(),
             rede_aberta: false,
+            wifi_disponivel: false,
             painel_rede: None,
             icone_sel: None,
             ultimo_clique_icone: None,
@@ -342,8 +348,11 @@ impl Painel {
     pub fn alvo(&self, p: Point<f64, Logical>, tela: Size<i32, Logical>) -> Option<Alvo> {
         let (x, y) = (p.x as i32, p.y as i32);
         if self.rede_aberta {
-            let o = Self::som_origem(tela);
-            if x >= o.x && y >= o.y && x < o.x + SOM_L && y < o.y + SOM_A {
+            let o = Self::rede_origem(tela);
+            if x >= o.x && y >= o.y && x < o.x + SOM_L && y < o.y + REDE_A {
+                if y >= o.y + REDE_A - 46 {
+                    return Some(Alvo::RedeConfig);
+                }
                 return Some(Alvo::RedePainel);
             }
         }
@@ -409,6 +418,10 @@ impl Painel {
             }
         }
         Some(Alvo::Barra)
+    }
+
+    fn rede_origem(tela: Size<i32, Logical>) -> Point<i32, Logical> {
+        (tela.w - SOM_L - 8, tela.h - altura() - 8 - REDE_A).into()
     }
 
     fn som_origem(tela: Size<i32, Logical>) -> Point<i32, Logical> {
@@ -503,12 +516,15 @@ impl Painel {
                 .unwrap_or_default();
             r.sem_fio = std::path::Path::new(&format!("/sys/class/net/{}/wireless", r.interface)).exists();
         }
+        self.wifi_disponivel = std::fs::read_dir("/sys/class/net")
+            .map(|d| d.flatten().any(|e| e.path().join("wireless").exists()))
+            .unwrap_or(false);
         self.rede = r;
     }
 
-    fn desenhar_rede(&self, origem: Point<i32, Logical>) -> Tela {
-        let mut t = Tela::nova(SOM_L, SOM_A);
-        let (l, a) = (SOM_L as f32, SOM_A as f32);
+    fn desenhar_rede(&self, origem: Point<i32, Logical>, sobre_config: bool) -> Tela {
+        let mut t = Tela::nova(SOM_L, REDE_A);
+        let (l, a) = (SOM_L as f32, REDE_A as f32);
         t.vidro(0.0, 0.0, l, a, 12.0, (origem.x, origem.y), tema::FUNDO().com_alfa(175));
         let tipo = if self.rede.sem_fio { "Wi-Fi" } else { "Rede cabeada" };
         t.texto(16.0, 28.0, 13.0, tema::TEXTO(), tipo);
@@ -527,6 +543,14 @@ impl Painel {
             };
             t.texto(60.0, 80.0, 12.0, tema::TEXTO_SECUNDARIO(), &desenho::encurtar(12.0, &det, l - 76.0));
         }
+        // Atalho para a página de rede das Configurações (lista de Wi-Fi).
+        let by = a - 42.0;
+        t.retangulo(12.0, by - 6.0, l - 24.0, 1.0, 0.0, tema::BORDA().com_alfa(160));
+        if sobre_config {
+            t.retangulo(8.0, by, l - 16.0, 34.0, 8.0, tema::BRANCO().com_alfa(90));
+        }
+        let rotulo = if self.rede.sem_fio || self.wifi_disponivel { "Redes Wi-Fi e configurações" } else { "Configurações de rede" };
+        t.texto(18.0, by + 22.0, 13.0, tema::DESTAQUE(), rotulo);
         t
     }
 
@@ -789,10 +813,11 @@ impl Painel {
         let mut elementos = Vec::new();
 
         if self.rede_aberta {
-            let o = Self::som_origem(tela);
-            let chave = format!("{:?}|{o:?}", self.rede);
+            let o = Self::rede_origem(tela);
+            let sobre_config = hover == Some(Alvo::RedeConfig);
+            let chave = format!("{:?}|{o:?}|{sobre_config}|{}", self.rede, desenho::tema::escuro());
             if self.painel_rede.as_ref().map(|(c, _)| c != &chave).unwrap_or(true) {
-                let t = self.desenhar_rede(o);
+                let t = self.desenhar_rede(o, sobre_config);
                 self.painel_rede = Some((chave, t.em_buffer()));
             }
             if let Some((_, buf)) = &self.painel_rede {

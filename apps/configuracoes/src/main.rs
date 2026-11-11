@@ -4,6 +4,8 @@
 //! ~/.config/plumagem/plumagem.conf, que a Plumagem relê sozinha; o plano
 //! de energia vai pelo ajudante `ararinha-energia`.
 
+mod rede;
+
 use std::{
     fs,
     path::PathBuf,
@@ -29,6 +31,7 @@ const NOMES_PAPEIS: [(&str, &str); 5] = [
 #[derive(Clone, Copy, PartialEq)]
 enum Pagina {
     Personalizacao,
+    Rede,
     Energia,
     Sobre,
 }
@@ -50,6 +53,7 @@ struct Configuracoes {
     sobre: Vec<(String, String)>,
     aviso: Option<String>,
     rolagem: f32,
+    rede: Option<rede::PaginaRede>,
     mingau: Option<penas::desenho::Imagem>,
 }
 
@@ -193,6 +197,7 @@ impl Configuracoes {
             sobre: ler_sobre(),
             aviso: None,
             rolagem: 0.0,
+            rede: None,
             mingau: desenho::icone(MINGAU_PNG, 120, 141),
         }
     }
@@ -417,6 +422,13 @@ impl App for Configuracoes {
         ui.tela.limpar(tema::JANELA());
         match self.pagina {
             Pagina::Personalizacao => self.personalizacao(ui, LATERAL_L, l - LATERAL_L),
+            Pagina::Rede => {
+                let r = self.rede.get_or_insert_with(rede::PaginaRede::nova);
+                r.desenhar(ui, LATERAL_L, l - LATERAL_L);
+                if let Some(av) = r.aviso.take() {
+                    self.aviso = Some(av);
+                }
+            }
             Pagina::Energia => self.energia(ui, LATERAL_L, l - LATERAL_L),
             Pagina::Sobre => self.sobre(ui, LATERAL_L, l - LATERAL_L),
         }
@@ -424,7 +436,12 @@ impl App for Configuracoes {
         ui.tela.retangulo(0.0, 0.0, LATERAL_L, a, 0.0, tema::FUNDO());
         ui.tela.retangulo(LATERAL_L - 1.0, 0.0, 1.0, a, 0.0, tema::BORDA());
         ui.tela.texto(20.0, 40.0, 17.0, tema::TEXTO(), "Configurações");
-        let paginas = [(Pagina::Personalizacao, "Personalização"), (Pagina::Energia, "Energia"), (Pagina::Sobre, "Sobre")];
+        let paginas = [
+            (Pagina::Personalizacao, "Personalização"),
+            (Pagina::Rede, "Rede e Internet"),
+            (Pagina::Energia, "Energia"),
+            (Pagina::Sobre, "Sobre"),
+        ];
         for (i, (p, nome)) in paginas.iter().enumerate() {
             let y = 64.0 + i as f32 * 36.0;
             if self.pagina == *p {
@@ -454,6 +471,12 @@ fn main() {
     match std::env::args().nth(1).as_deref() {
         Some("sobre") => app.pagina = Pagina::Sobre,
         Some("energia") => app.pagina = Pagina::Energia,
+        Some("rede") => {
+            app.pagina = Pagina::Rede;
+            let mut r = rede::PaginaRede::nova();
+            r.pedida = std::env::args().nth(2);
+            app.rede = Some(r);
+        }
         _ => {}
     }
     penas::executar(

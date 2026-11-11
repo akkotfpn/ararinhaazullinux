@@ -179,7 +179,7 @@ impl<B: Backend> AnvilState<B> {
         if !matches!(alvo, Alvo::Som | Alvo::SomBarra(_) | Alvo::SomMudo | Alvo::SomPainel) {
             self.painel.som_aberto = false;
         }
-        if !matches!(alvo, Alvo::Rede | Alvo::RedePainel) {
+        if !matches!(alvo, Alvo::Rede | Alvo::RedePainel | Alvo::RedeConfig) {
             self.painel.rede_aberta = false;
         }
         self.painel.segurando = true;
@@ -224,6 +224,10 @@ impl<B: Backend> AnvilState<B> {
                 self.painel.rede_aberta = !self.painel.rede_aberta;
             }
             Alvo::RedePainel => {}
+            Alvo::RedeConfig => {
+                self.painel.rede_aberta = false;
+                self.executar_programa("configuracoes rede");
+            }
             Alvo::Som => {
                 self.painel.menu_aberto = false;
                 self.painel.som_aberto = !self.painel.som_aberto;

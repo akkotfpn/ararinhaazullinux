@@ -486,7 +486,7 @@ impl Ninho {
         }
         // Grupos de acesso: tela/teclado (seat), vídeo, som, entrada e admin.
         let grupos_existentes = std::fs::read_to_string("/etc/group").unwrap_or_default();
-        let grupos: Vec<&str> = ["seat", "video", "audio", "input", "render", "wheel"]
+        let grupos: Vec<&str> = ["seat", "video", "audio", "input", "render", "wheel", "netdev"]
             .into_iter()
             .filter(|g| grupos_existentes.lines().any(|l| l.split(':').next() == Some(*g)))
             .collect();
