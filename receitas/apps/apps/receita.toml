@@ -157,6 +157,9 @@ install -vDm644 portal/recursos/org.freedesktop.FileManager1.service /usr/share/
 # Bandeja do sistema (StatusNotifierWatcher): a sessão inicia; o D-Bus
 # religa se alguém procurar e ela não estiver lá.
 install -vDm755 target/release/ararinha-bandeja /usr/libexec/ararinha-bandeja
+# Chaveiro de senhas (Secret Service): o D-Bus inicia quando um app pede.
+install -vDm755 target/release/ararinha-chaveiro /usr/libexec/ararinha-chaveiro
+printf '[D-BUS Service]\nName=org.freedesktop.secrets\nExec=/usr/libexec/ararinha-chaveiro\n' > /usr/share/dbus-1/services/org.freedesktop.secrets.service
 printf '[D-BUS Service]\nName=org.kde.StatusNotifierWatcher\nExec=/usr/libexec/ararinha-bandeja\n' > /usr/share/dbus-1/services/org.kde.StatusNotifierWatcher.service
 # Apps padrão (pastas no Explorador, imagens, textos e músicas nos nossos).
 cat > /usr/share/applications/mimeapps.list << 'FIM'

@@ -163,3 +163,7 @@ faafea166bf2451a173d9d593352940ec6404145c5d1da5c213423ce4d359e92  https://www.x.
 3acfa685f2dd7fcc832e0b77bc7093aa7da554a51ce8dafbb4138eaa854eee35  https://www.kernel.org/pub/linux/utils/cryptsetup/v2.8/cryptsetup-2.8.8.tar.xz
 c25a4838fc8e4c1c8aacb8bd620edb3084a3d63bf8987fdad3ca2758c63240f9  https://ftp.osuosl.org/pub/rpm/popt/releases/popt-1.x/popt-1.19.tar.gz
 2c44d1c5fd0d43752287c9ae1eb9c023f04ef848ea8d4aafa46e9aedb678200b  https://codeberg.org/jmoyer/libaio/releases/download/libaio-0.3.113/libaio-0.3.113.tar.gz
+3fe88c609df6782e1e7af2e4de36b2563d70cd70ff7dcb1cda561ad64912bb64  https://www.x.org/pub/individual/lib/libXrender-0.9.13.tar.xz
+72b922c2e765434e9e9f0960148070bd4504b288263e2868a4ccce1b7cf2767a  https://www.x.org/pub/individual/lib/libXrandr-1.5.5.tar.xz
+ae50c0f669e0af5a67cc4cd0f54f21d64a64d2660af883e80e95d3fe51b945d8  https://www.x.org/pub/individual/lib/libXxf86vm-1.1.7.tar.xz
+ca8d13d1ad744c495a10be95ab75deff27045208c5e22d799642863c1a65d0a1  https://github.com/ValveSoftware/steam-devices/archive/22ec85e5ff5ea2e15c56d71a41bcbef46356cd60.tar.gz
