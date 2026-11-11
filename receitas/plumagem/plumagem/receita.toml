@@ -74,6 +74,18 @@ fi
 if command -v flatpak >/dev/null; then
   export XDG_DATA_DIRS="$HOME/.local/share/flatpak/exports/share:/var/lib/flatpak/exports/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
   flatpak remote-add --user --if-not-exists flathub /usr/share/flatpak/flathub.flatpakrepo >/dev/null 2>&1 &
+  # A Plumagem é só Wayland (sem X): Chromium e apps Electron usam o Wayland.
+  if [ ! -f "$HOME/.local/share/flatpak/overrides/global" ] || ! grep -q OZONE "$HOME/.local/share/flatpak/overrides/global" 2>/dev/null; then
+    flatpak override --user --env=ELECTRON_OZONE_PLATFORM_HINT=auto >/dev/null 2>&1 &
+  fi
+  for app in org.chromium.Chromium com.google.Chrome com.brave.Browser; do
+    f="$HOME/.var/app/$app/config/chromium-flags.conf"
+    [ "$app" = com.google.Chrome ] && f="$HOME/.var/app/$app/config/chrome-flags.conf"
+    [ "$app" = com.brave.Browser ] && f="$HOME/.var/app/$app/config/brave-flags.conf"
+    if [ ! -f "$f" ]; then
+      mkdir -p "$(dirname "$f")" && printf '%s\n' --ozone-platform-hint=auto --enable-features=WaylandWindowDecorations > "$f"
+    fi
+  done
 fi
 # Unidades de rede marcadas para reconectar ao entrar.
 if [ -s "$HOME/.config/ararinha/unidades" ] && command -v explorador >/dev/null; then
