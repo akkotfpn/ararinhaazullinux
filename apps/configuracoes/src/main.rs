@@ -5,7 +5,10 @@
 //! de energia vai pelo serviço do sistema (ararinha-sistema).
 
 mod conta;
+mod contas;
 mod firewall;
+mod hora;
+mod som;
 mod rede;
 
 use std::{
@@ -35,8 +38,11 @@ enum Pagina {
     Personalizacao,
     Rede,
     Firewall,
+    Som,
     Energia,
+    Hora,
     Conta,
+    Contas,
     Sobre,
 }
 
@@ -61,6 +67,9 @@ struct Configuracoes {
     rede: Option<rede::PaginaRede>,
     conta: conta::PaginaConta,
     firewall: firewall::PaginaFirewall,
+    hora: hora::PaginaHora,
+    contas: contas::PaginaContas,
+    som: som::PaginaSom,
     mingau: Option<penas::desenho::Imagem>,
 }
 
@@ -69,7 +78,7 @@ fn arquivo_config() -> PathBuf {
     PathBuf::from(casa).join(".config/plumagem/plumagem.conf")
 }
 
-fn ler_chave(chave: &str) -> Option<String> {
+pub(crate) fn ler_chave(chave: &str) -> Option<String> {
     for c in [arquivo_config(), PathBuf::from("/etc/plumagem/plumagem.conf")] {
         if let Ok(t) = fs::read_to_string(&c) {
             for l in t.lines() {
@@ -88,7 +97,7 @@ fn ler_chave(chave: &str) -> Option<String> {
 }
 
 /// Grava `chave = valor` no arquivo do usuário, mantendo o resto.
-fn gravar_chave(chave: &str, valor: &str) -> std::io::Result<()> {
+pub(crate) fn gravar_chave(chave: &str, valor: &str) -> std::io::Result<()> {
     let p = arquivo_config();
     if let Some(d) = p.parent() {
         fs::create_dir_all(d)?;
@@ -253,6 +262,9 @@ impl Configuracoes {
             rede: None,
             conta: conta::PaginaConta::default(),
             firewall: firewall::PaginaFirewall::default(),
+            hora: Default::default(),
+            contas: Default::default(),
+            som: Default::default(),
             mingau: desenho::icone(MINGAU_PNG, 120, 141),
         }
     }
@@ -562,6 +574,19 @@ impl App for Configuracoes {
                 }
             }
             Pagina::Energia => self.energia(ui, LATERAL_L, l - LATERAL_L),
+            Pagina::Som => self.som.desenhar(ui, LATERAL_L, l - LATERAL_L),
+            Pagina::Hora => {
+                self.hora.desenhar(ui, LATERAL_L, l - LATERAL_L);
+                if let Some(av) = self.hora.aviso.take() {
+                    self.aviso = Some(av);
+                }
+            }
+            Pagina::Contas => {
+                self.contas.desenhar(ui, LATERAL_L, l - LATERAL_L);
+                if let Some(av) = self.contas.aviso.take() {
+                    self.aviso = Some(av);
+                }
+            }
             Pagina::Conta => {
                 self.conta.desenhar(ui, LATERAL_L, l - LATERAL_L);
                 if let Some(av) = self.conta.aviso.take() {
@@ -578,8 +603,11 @@ impl App for Configuracoes {
             (Pagina::Personalizacao, "Personalização"),
             (Pagina::Rede, "Rede e Internet"),
             (Pagina::Firewall, "Firewall"),
+            (Pagina::Som, "Som"),
             (Pagina::Energia, "Energia"),
-            (Pagina::Conta, "Conta"),
+            (Pagina::Hora, "Data e hora"),
+            (Pagina::Conta, "Sua conta"),
+            (Pagina::Contas, "Outros usuários"),
             (Pagina::Sobre, "Sobre"),
         ];
         for (i, (p, nome)) in paginas.iter().enumerate() {
@@ -613,6 +641,9 @@ fn main() {
         Some("energia") => app.pagina = Pagina::Energia,
         Some("conta") => app.pagina = Pagina::Conta,
         Some("firewall") => app.pagina = Pagina::Firewall,
+        Some("som") => app.pagina = Pagina::Som,
+        Some("hora") => app.pagina = Pagina::Hora,
+        Some("contas") => app.pagina = Pagina::Contas,
         Some("rede") => {
             app.pagina = Pagina::Rede;
             let mut r = rede::PaginaRede::nova();

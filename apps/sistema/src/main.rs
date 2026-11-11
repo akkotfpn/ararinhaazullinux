@@ -11,6 +11,7 @@
 //! Ações de administrador exigem o grupo wheel.
 //! Sai sozinho depois de 60 s sem pedidos (o socket o acorda de novo).
 
+mod contas;
 mod firewall;
 mod hardware;
 
@@ -93,6 +94,28 @@ fn atender(quem: &Quem, pedido: &str) -> Result<String, String> {
         ["ping"] => Ok("ararinha-sistema".into()),
         ["firewall", "estado"] => Ok(firewall::estado()),
         ["hardware", "memoria"] => hardware::memoria(),
+        ["contas", "listar"] => Ok(contas::listar()),
+        ["contas", "criar", login, tipo, nome, senha] => {
+            admin()?;
+            contas::criar(login, tipo, nome, senha)
+        }
+        ["contas", "remover", login] => {
+            admin()?;
+            contas::remover(login, &quem.usuario)
+        }
+        ["contas", "admin", login, sim] => {
+            admin()?;
+            contas::tipo(login, *sim == "sim", &quem.usuario)
+        }
+        ["hora", "estado"] => Ok(contas::hora_estado()),
+        ["hora", "fuso", z] => {
+            admin()?;
+            contas::fuso(z)
+        }
+        ["hora", "ntp", sim] => {
+            admin()?;
+            contas::ntp(*sim == "sim")
+        }
         ["firewall", "perfil", p] => {
             admin()?;
             firewall::definir_perfil(p)
@@ -159,11 +182,17 @@ fn servir(mut s: UnixStream) {
     let Some(quem) = credenciais(&s) else { return };
     let mut linha = String::new();
     // Pedido: uma linha de no máximo 512 bytes.
-    let lido = BufReader::new((&s).take(512)).read_line(&mut linha);
+    let lido = BufReader::new((&s).take(1024)).read_line(&mut linha);
     if lido.is_err() {
         return;
     }
     let pedido: String = linha.trim().chars().filter(|c| !c.is_control()).collect();
+    // No journal, a senha da conta nova não aparece.
+    let registro = if pedido.starts_with("contas criar ") {
+        pedido.split_whitespace().take(4).collect::<Vec<_>>().join(" ") + " …"
+    } else {
+        pedido.clone()
+    };
     let resposta = atender(&quem, &pedido);
     // Registro no journal (a saída de erro do serviço vai para ele).
     eprintln!(
@@ -171,7 +200,7 @@ fn servir(mut s: UnixStream) {
         quem.usuario,
         quem.uid,
         quem.pid,
-        pedido,
+        registro,
         match &resposta {
             Ok(_) => "feito".to_string(),
             Err(e) => format!("recusado ({e})"),

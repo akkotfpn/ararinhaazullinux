@@ -5,6 +5,7 @@
 //! janela aberta e o relógio. O menu lista os aplicativos instalados (arquivos
 //! .desktop) e tem Sair, Reiniciar e Desligar.
 
+use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use smithay::{
@@ -2018,6 +2019,7 @@ extern "C" {
     fn freeifaddrs(lista: *mut IfAddrs);
     fn time(t: *mut i64) -> i64;
     fn localtime_r(t: *const i64, saida: *mut Tm) -> *mut Tm;
+    fn tzset();
 }
 
 /// IPv4 da interface pelo getifaddrs (sem chamar o `ip`).
@@ -2051,6 +2053,20 @@ fn ipv4_de(iface: &str) -> Option<String> {
 
 /// "HH:MM" e "dd/mm/aaaa" no fuso local (localtime_r, sem chamar o `date`).
 fn hora_local() -> (String, String) {
+    // O fuso mudou (Configurações › Data e hora)? A glibc não relê o
+    // /etc/localtime sozinha: aponta o TZ para o arquivo novo.
+    static FUSO: Mutex<Option<std::path::PathBuf>> = Mutex::new(None);
+    if let Ok(alvo) = std::fs::canonicalize("/etc/localtime") {
+        let mut f = FUSO.lock().unwrap();
+        if f.as_ref() != Some(&alvo) {
+            if f.is_some() {
+                std::env::set_var("TZ", format!(":{}", alvo.display()));
+            }
+            // SAFETY: tzset só relê o fuso da glibc.
+            unsafe { tzset() };
+            *f = Some(alvo);
+        }
+    }
     let mut tm = Tm::default();
     // SAFETY: time e localtime_r só escrevem nas variáveis passadas.
     let ok = unsafe {
@@ -2060,10 +2076,14 @@ fn hora_local() -> (String, String) {
     if !ok {
         return (String::new(), String::new());
     }
-    (
-        format!("{:02}:{:02}", tm.hora, tm.min),
-        format!("{:02}/{:02}/{}", tm.dia, tm.mes + 1, tm.ano + 1900),
-    )
+    // Relógio de 12 horas (Configurações › Data e hora).
+    let hora = if ler_chave("relogio_12h").as_deref() == Some("sim") {
+        let h = if tm.hora % 12 == 0 { 12 } else { tm.hora % 12 };
+        format!("{h}:{:02} {}", tm.min, if tm.hora < 12 { "AM" } else { "PM" })
+    } else {
+        format!("{:02}:{:02}", tm.hora, tm.min)
+    };
+    (hora, format!("{:02}/{:02}/{}", tm.dia, tm.mes + 1, tm.ano + 1900))
 }
 
 /// Tira os acentos mais comuns do português (para a busca).
