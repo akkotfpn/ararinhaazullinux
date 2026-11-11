@@ -767,7 +767,11 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
 
         use smithay::wayland::compositor::CompositorHandler;
 
-        let (xwayland, client) = XWayland::spawn(
+        // Sem o Xwayland instalado, a Plumagem segue só com Wayland.
+        if std::env::var_os("PLUMAGEM_NINHO").is_some() || !std::path::Path::new("/usr/bin/Xwayland").exists() {
+            return;
+        }
+        let (xwayland, client) = match XWayland::spawn(
             &self.display_handle,
             None,
             std::iter::empty::<(String, String)>(),
@@ -775,8 +779,13 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             Stdio::null(),
             Stdio::null(),
             |_| (),
-        )
-        .expect("failed to start XWayland");
+        ) {
+            Ok(x) => x,
+            Err(e) => {
+                warn!("não deu para iniciar o Xwayland: {e}");
+                return;
+            }
+        };
 
         let ret = self
             .handle
@@ -791,19 +800,29 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
                         .unwrap_or(1.);
                     data.client_compositor_state(&client)
                         .set_client_scale(xwayland_scale);
-                    let mut wm = X11Wm::start_wm(data.handle.clone(), x11_socket, client.clone())
-                        .expect("Failed to attach X11 Window Manager");
+                    let mut wm = match X11Wm::start_wm(data.handle.clone(), x11_socket, client.clone()) {
+                        Ok(wm) => wm,
+                        Err(e) => {
+                            warn!("não deu para gerenciar as janelas X11: {e}");
+                            return;
+                        }
+                    };
 
                     let cursor = Cursor::load();
                     let image = cursor.get_image(1, Duration::ZERO);
-                    wm.set_cursor(
+                    let _ = wm.set_cursor(
                         &image.pixels_rgba,
                         Size::from((image.width as u16, image.height as u16)),
                         Point::from((image.xhot as u16, image.yhot as u16)),
-                    )
-                    .expect("Failed to set xwayland default cursor");
+                    );
                     data.xwm = Some(wm);
                     data.xdisplay = Some(display_number);
+                    // Apps X11 (Steam, jogos antigos) e serviços do D-Bus
+                    // precisam do DISPLAY.
+                    std::env::set_var("DISPLAY", format!(":{display_number}"));
+                    let _ = std::process::Command::new("dbus-update-activation-environment")
+                        .arg(format!("DISPLAY=:{display_number}"))
+                        .spawn();
                 }
                 XWaylandEvent::Error => {
                     warn!("XWayland crashed on startup");

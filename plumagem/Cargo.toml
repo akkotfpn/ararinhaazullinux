@@ -41,7 +41,7 @@ features = [
 
 
 [features]
-default = ["egl", "udev", "renderer_sync"]
+default = ["egl", "udev", "renderer_sync", "xwayland"]
 # Espera a GPU (ou o llvmpipe) terminar o quadro antes de mostrá-lo. Sem
 # isso, com renderização por software aparecem quadros pela metade
 # (rastros do cursor, pedaços pretos).
