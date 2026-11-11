@@ -5,7 +5,10 @@
 //! "Este Computador", Disco Local (C:), unidades D:, E:..., pastas do
 //! usuário com os nomes de sempre e navegação com Voltar, Avançar e Subir.
 
+mod tipos;
+
 use std::{
+    collections::BTreeSet,
     fs,
     path::{Path, PathBuf},
     process::Command,
@@ -13,6 +16,7 @@ use std::{
 };
 
 use penas::{desenho, tema, App, Cor, Keysym, Opcoes, Tecla, Tela, Ui};
+use tipos::Propriedades;
 
 const BARRA_A: f32 = 52.0;
 const LATERAL_L: f32 = 210.0;
@@ -155,6 +159,21 @@ struct Explorador {
     mapear: Option<Mapear>,
     /// Menu do botão direito numa unidade de rede: posição e letra.
     menu_unidade: Option<(f32, f32, char)>,
+    /// Itens marcados (Ctrl/Shift+clique, Ctrl+A); `selecionado` é o foco.
+    selecionados: BTreeSet<usize>,
+    /// Todas as entradas da pasta, antes do filtro da busca.
+    todas: Vec<Entrada>,
+    busca: String,
+    busca_ativa: bool,
+    /// Os resultados são de uma busca nas subpastas.
+    busca_funda: bool,
+    /// Arraste: onde o botão foi apertado e se já virou arraste.
+    arraste: Option<(f32, f32, bool)>,
+    /// Ao soltar sem arrastar, a seleção vira só este item.
+    colapsar: Option<usize>,
+    /// Pasta sob o mouse durante o arraste.
+    alvo_soltar: Option<PathBuf>,
+    propriedades: Option<Propriedades>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -168,6 +187,10 @@ enum Acao {
     NovaPasta,
     Atualizar,
     Ocultos,
+    Propriedades,
+    Restaurar,
+    EsvaziarLixeira,
+    SelecionarTudo,
 }
 
 const MENU_L: f32 = 210.0;
@@ -329,6 +352,15 @@ impl Explorador {
             renomeando: None,
             mapear: None,
             menu_unidade: None,
+            selecionados: BTreeSet::new(),
+            todas: Vec::new(),
+            busca: String::new(),
+            busca_ativa: false,
+            busca_funda: false,
+            arraste: None,
+            colapsar: None,
+            alvo_soltar: None,
+            propriedades: None,
         };
         // Abre numa pasta passada como argumento, se houver.
         if let Some(p) = std::env::args().nth(1).map(PathBuf::from).filter(|p| p.is_dir()) {
@@ -340,7 +372,9 @@ impl Explorador {
 
     fn recarregar(&mut self) {
         self.selecionado = None;
+        self.selecionados.clear();
         self.rolagem = 0.0;
+        self.busca_funda = false;
         match &self.local {
             Local::EsteComputador => {
                 self.unidades = ler_unidades();
@@ -372,15 +406,117 @@ impl Explorador {
                     }
                 };
                 v.sort_by(|a, b| b.pasta.cmp(&a.pasta).then(a.nome.to_lowercase().cmp(&b.nome.to_lowercase())));
-                self.entradas = v;
+                self.todas = v;
+                self.filtrar();
             }
         }
+    }
+
+    /// Aplica o texto da busca às entradas da pasta (filtro na hora).
+    fn filtrar(&mut self) {
+        let termo = self.busca.to_lowercase();
+        self.entradas = if termo.is_empty() {
+            self.todas.clone()
+        } else {
+            self.todas.iter().filter(|e| e.nome.to_lowercase().contains(&termo)).cloned().collect()
+        };
+        self.selecionado = None;
+        self.selecionados.clear();
+    }
+
+    /// Enter na busca: procura também nas subpastas.
+    fn buscar_fundo(&mut self) {
+        let Some(raiz) = self.pasta_atual() else { return };
+        if self.busca.trim().is_empty() {
+            return;
+        }
+        let achados = tipos::buscar(&raiz, self.busca.trim(), self.mostrar_ocultos, 500);
+        self.entradas = achados
+            .into_iter()
+            .map(|caminho| {
+                let meta = fs::metadata(&caminho).ok();
+                Entrada {
+                    nome: caminho.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default(),
+                    pasta: caminho.is_dir(),
+                    tamanho: meta.as_ref().map(|m| m.len()).unwrap_or(0),
+                    modificado: meta.and_then(|m| m.modified().ok()),
+                    caminho,
+                }
+            })
+            .collect();
+        self.busca_funda = true;
+        self.selecionado = None;
+        self.selecionados.clear();
+        self.rolagem = 0.0;
+        self.aviso = Some(if self.entradas.is_empty() {
+            format!("Nada encontrado para \"{}\".", self.busca.trim())
+        } else {
+            format!("{} resultado(s) para \"{}\" nesta pasta e nas subpastas.", self.entradas.len(), self.busca.trim())
+        });
+    }
+
+    /// Itens marcados (ou o item em foco, se nada estiver marcado).
+    fn marcados(&self) -> Vec<Entrada> {
+        let mut idx: BTreeSet<usize> = self.selecionados.clone();
+        if let Some(i) = self.selecionado {
+            if idx.is_empty() {
+                idx.insert(i);
+            }
+        }
+        idx.into_iter().filter_map(|i| self.entradas.get(i).cloned()).collect()
+    }
+
+    fn selecionar_so(&mut self, i: usize) {
+        self.selecionado = Some(i);
+        self.selecionados.clear();
+        self.selecionados.insert(i);
+    }
+
+    fn na_lixeira(&self) -> bool {
+        matches!(&self.local, Local::Pasta(p) if *p == self.lixeira().join("files"))
+    }
+
+    /// Move (ou copia, com Ctrl) os itens marcados para outra pasta.
+    fn soltar_em(&mut self, destino: PathBuf, copiar: bool) {
+        let itens = self.marcados();
+        if itens.is_empty() || !destino.is_dir() {
+            return;
+        }
+        let mut feitos = 0;
+        let mut falhas = 0;
+        for e in &itens {
+            // Não deixa mover uma pasta para dentro dela mesma.
+            if destino.starts_with(&e.caminho) || e.caminho.parent() == Some(destino.as_path()) && !copiar {
+                continue;
+            }
+            let alvo = Self::nome_livre(&destino, &e.nome, if copiar { " - Cópia" } else { "" });
+            let ok = if copiar {
+                Command::new("cp").arg("-a").arg("--").arg(&e.caminho).arg(&alvo).status().map(|s| s.success()).unwrap_or(false)
+            } else {
+                fs::rename(&e.caminho, &alvo).is_ok()
+                    || Command::new("mv").arg("--").arg(&e.caminho).arg(&alvo).status().map(|s| s.success()).unwrap_or(false)
+            };
+            if ok {
+                feitos += 1;
+            } else {
+                falhas += 1;
+            }
+        }
+        let nome_destino = destino.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "/".into());
+        self.aviso = Some(if falhas > 0 {
+            format!("{falhas} item(ns) não puderam ser {}.", if copiar { "copiados" } else { "movidos" })
+        } else {
+            format!("{feitos} item(ns) {} para \"{nome_destino}\".", if copiar { "copiados" } else { "movidos" })
+        });
+        self.recarregar();
     }
 
     fn ir(&mut self, novo: Local) {
         if novo == self.local {
             return;
         }
+        self.busca.clear();
+        self.busca_ativa = false;
         let antigo = std::mem::replace(&mut self.local, novo);
         self.voltar.push(antigo);
         self.avancar.clear();
@@ -389,6 +525,7 @@ impl Explorador {
     }
 
     fn ir_voltar(&mut self) {
+        self.busca.clear();
         if let Some(l) = self.voltar.pop() {
             let atual = std::mem::replace(&mut self.local, l);
             self.avancar.push(atual);
@@ -397,6 +534,7 @@ impl Explorador {
     }
 
     fn ir_avancar(&mut self) {
+        self.busca.clear();
         if let Some(l) = self.avancar.pop() {
             let atual = std::mem::replace(&mut self.local, l);
             self.voltar.push(atual);
@@ -660,7 +798,7 @@ impl Explorador {
     }
 
     fn lixeira(&self) -> PathBuf {
-        self.casa.join(".local/share/Trash")
+        tipos::lixeira(&self.casa)
     }
 
     /// Nome que ainda não existe na pasta: "Nova pasta", "Nova pasta (2)"...
@@ -681,24 +819,41 @@ impl Explorador {
 
     fn itens_menu(&self, alvo: Option<usize>) -> Vec<(&'static str, Acao, bool)> {
         let na_pasta = self.pasta_atual().is_some();
+        let lixeira = self.na_lixeira();
+        let varios = self.marcados().len() > 1;
         match alvo {
-            Some(_) => vec![
-                ("Abrir", Acao::Abrir, true),
-                ("Recortar", Acao::Recortar, true),
-                ("Copiar", Acao::Copiar, true),
-                ("Renomear", Acao::Renomear, true),
-                ("Excluir", Acao::Excluir, true),
-            ],
-            None => vec![
-                ("Nova pasta", Acao::NovaPasta, na_pasta),
-                ("Colar", Acao::Colar, na_pasta && self.transferencia.is_some()),
-                ("Atualizar", Acao::Atualizar, true),
-                (
-                    if self.mostrar_ocultos { "Esconder arquivos ocultos" } else { "Mostrar arquivos ocultos" },
-                    Acao::Ocultos,
-                    na_pasta,
-                ),
-            ],
+            Some(_) => {
+                let mut v = vec![("Abrir", Acao::Abrir, !varios)];
+                if lixeira {
+                    v.push(("Restaurar", Acao::Restaurar, true));
+                }
+                v.extend([
+                    ("Recortar", Acao::Recortar, true),
+                    ("Copiar", Acao::Copiar, true),
+                    ("Renomear", Acao::Renomear, !varios),
+                    (if lixeira { "Excluir de vez" } else { "Excluir" }, Acao::Excluir, true),
+                    ("Propriedades", Acao::Propriedades, true),
+                ]);
+                v
+            }
+            None => {
+                let mut v = vec![
+                    ("Nova pasta", Acao::NovaPasta, na_pasta && !lixeira),
+                    ("Colar", Acao::Colar, na_pasta && self.transferencia.is_some()),
+                    ("Selecionar tudo", Acao::SelecionarTudo, !self.entradas.is_empty()),
+                    ("Atualizar", Acao::Atualizar, true),
+                    (
+                        if self.mostrar_ocultos { "Esconder arquivos ocultos" } else { "Mostrar arquivos ocultos" },
+                        Acao::Ocultos,
+                        na_pasta,
+                    ),
+                ];
+                if lixeira {
+                    v.push(("Esvaziar Lixeira", Acao::EsvaziarLixeira, !self.todas.is_empty()));
+                }
+                v.push(("Propriedades", Acao::Propriedades, na_pasta));
+                v
+            }
         }
     }
 
@@ -711,11 +866,16 @@ impl Explorador {
                 }
             }
             Acao::Copiar | Acao::Recortar => {
-                if let Some(e) = entrada {
+                let itens = self.marcados();
+                if !itens.is_empty() {
                     let corte = acao == Acao::Recortar;
-                    self.transferencia = Some((vec![e.caminho.clone()], corte));
+                    self.transferencia = Some((itens.iter().map(|e| e.caminho.clone()).collect(), corte));
                     let verbo = if corte { "recortado" } else { "copiado" };
-                    self.aviso = Some(format!("\"{}\" {verbo}. Use Colar na pasta de destino.", e.nome));
+                    self.aviso = Some(if itens.len() == 1 {
+                        format!("\"{}\" {verbo}. Use Colar na pasta de destino.", itens[0].nome)
+                    } else {
+                        format!("{} itens: {verbo}s. Use Colar na pasta de destino.", itens.len())
+                    });
                 }
             }
             Acao::Colar => self.colar(),
@@ -726,9 +886,67 @@ impl Explorador {
                 }
             }
             Acao::Excluir => {
-                if let Some(e) = entrada {
-                    self.excluir(&e);
+                let itens = self.marcados();
+                let n = itens.len();
+                for e in &itens {
+                    self.excluir(e);
                 }
+                if n > 1 {
+                    self.aviso = Some(if self.na_lixeira() {
+                        format!("{n} itens apagados de vez.")
+                    } else {
+                        format!("{n} itens foram para a Lixeira.")
+                    });
+                }
+            }
+            Acao::Propriedades => {
+                let caminhos: Vec<PathBuf> = if alvo.is_some() {
+                    self.marcados().into_iter().map(|e| e.caminho).collect()
+                } else {
+                    self.pasta_atual().into_iter().collect()
+                };
+                if !caminhos.is_empty() {
+                    self.propriedades = Some(tipos::propriedades(&caminhos, tamanho_legivel, data_legivel));
+                }
+            }
+            Acao::Restaurar => {
+                let mut falhas = 0;
+                let itens = self.marcados();
+                for e in &itens {
+                    match tipos::origem_na_lixeira(&self.casa, &e.nome) {
+                        Some(orig) => {
+                            let pai = orig.parent().map(Path::to_path_buf).unwrap_or_else(|| self.casa.clone());
+                            let _ = fs::create_dir_all(&pai);
+                            let nome = orig.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or(e.nome.clone());
+                            let destino = Self::nome_livre(&pai, &nome, "");
+                            let ok = fs::rename(&e.caminho, &destino).is_ok()
+                                || Command::new("mv").arg("--").arg(&e.caminho).arg(&destino).status().map(|s| s.success()).unwrap_or(false);
+                            if ok {
+                                let _ = fs::remove_file(self.lixeira().join("info").join(format!("{}.trashinfo", e.nome)));
+                            } else {
+                                falhas += 1;
+                            }
+                        }
+                        None => falhas += 1,
+                    }
+                }
+                self.aviso = Some(if falhas > 0 {
+                    format!("{falhas} item(ns) não puderam ser restaurados.")
+                } else {
+                    format!("{} item(ns) restaurados para o lugar de antes.", itens.len())
+                });
+                self.recarregar();
+            }
+            Acao::EsvaziarLixeira => {
+                match tipos::esvaziar_lixeira(&self.casa) {
+                    Ok(n) => self.aviso = Some(format!("Lixeira esvaziada ({n} itens apagados de vez).")),
+                    Err(e) => self.aviso = Some(format!("Não deu para esvaziar a Lixeira: {e}")),
+                }
+                self.recarregar();
+            }
+            Acao::SelecionarTudo => {
+                self.selecionados = (0..self.entradas.len()).collect();
+                self.selecionado = if self.entradas.is_empty() { None } else { Some(0) };
             }
             Acao::NovaPasta => {
                 if let Some(dir) = self.pasta_atual() {
@@ -929,6 +1147,18 @@ fn icone_arquivo(t: &mut Tela, x: f32, y: f32, s: f32) {
     }
 }
 
+fn icone_lixeira(t: &mut Tela, x: f32, y: f32, s: f32) {
+    let cor = Cor::hex(0x6B8FB5);
+    t.retangulo(x + 0.2 * s, y + 0.12 * s, 0.6 * s, 0.1 * s, 0.03 * s, cor);
+    t.retangulo(x + 0.4 * s, y + 0.05 * s, 0.2 * s, 0.08 * s, 0.03 * s, cor);
+    t.retangulo(x + 0.25 * s, y + 0.26 * s, 0.5 * s, 0.66 * s, 0.06 * s, cor);
+    t.retangulo(x + 0.29 * s, y + 0.3 * s, 0.42 * s, 0.58 * s, 0.04 * s, Cor::hex(0xD6E8F7));
+    for k in 0..3 {
+        let lx = x + (0.38 + 0.12 * k as f32) * s;
+        t.linha(lx, y + 0.38 * s, lx, y + 0.8 * s, (0.04 * s).max(1.0), cor);
+    }
+}
+
 fn icone_unidade(t: &mut Tela, x: f32, y: f32, s: f32, sistema: bool) {
     if desenhar_icone(t, if sistema { "unidade-sistema" } else { "unidade-disco" }, x, y, s) {
         return;
@@ -973,6 +1203,44 @@ impl App for Explorador {
                 self.tecla_mapear(tecla);
                 continue;
             }
+            if self.propriedades.is_some() {
+                if matches!(tecla, Tecla::Esc | Tecla::Enter) {
+                    self.propriedades = None;
+                }
+                continue;
+            }
+            if self.busca_ativa {
+                match tecla {
+                    Tecla::Texto(t) => {
+                        self.busca.push_str(&t);
+                        if !self.busca_funda {
+                            self.filtrar();
+                        }
+                    }
+                    Tecla::Apagar => {
+                        self.busca.pop();
+                        if self.busca_funda {
+                            self.recarregar();
+                        } else {
+                            self.filtrar();
+                        }
+                    }
+                    Tecla::Enter => self.buscar_fundo(),
+                    Tecla::Esc => {
+                        self.busca.clear();
+                        self.busca_ativa = false;
+                        self.recarregar();
+                    }
+                    Tecla::Baixo => {
+                        self.busca_ativa = false;
+                        if !self.entradas.is_empty() {
+                            self.selecionar_so(0);
+                        }
+                    }
+                    _ => {}
+                }
+                continue;
+            }
             if self.renomeando.is_some() {
                 match tecla {
                     Tecla::Texto(t) => {
@@ -1011,19 +1279,45 @@ impl App for Explorador {
                     self.executar(Acao::NovaPasta, None)
                 }
                 Tecla::Outra(k) if ui.ctrl && (k == Keysym::h || k == Keysym::H) => self.executar(Acao::Ocultos, None),
-                Tecla::Esc => self.menu = None,
+                Tecla::Outra(k) if ui.ctrl && (k == Keysym::a || k == Keysym::A) => {
+                    self.executar(Acao::SelecionarTudo, None)
+                }
+                Tecla::Outra(k) if ui.ctrl && (k == Keysym::f || k == Keysym::F) => {
+                    if self.pasta_atual().is_some() {
+                        self.busca_ativa = true;
+                    }
+                }
+                Tecla::Outra(Keysym::F3) => {
+                    if self.pasta_atual().is_some() {
+                        self.busca_ativa = true;
+                    }
+                }
+                Tecla::Outra(Keysym::Menu) => {
+                    self.menu = Some((LATERAL_L + 60.0, BARRA_A + 60.0, self.selecionado));
+                }
+                Tecla::Esc => {
+                    self.menu = None;
+                    if !self.busca.is_empty() {
+                        self.busca.clear();
+                        self.recarregar();
+                    }
+                }
                 Tecla::Voltar | Tecla::Apagar => self.ir_voltar(),
                 Tecla::Avancar => self.ir_avancar(),
                 Tecla::Subir => self.subir(),
                 Tecla::Baixo => {
                     let n = self.entradas.len();
                     if n > 0 {
-                        self.selecionado = Some(self.selecionado.map(|i| (i + 1).min(n - 1)).unwrap_or(0));
+                        let i = self.selecionado.map(|i| (i + 1).min(n - 1)).unwrap_or(0);
+                        self.selecionar_so(i);
                     }
                 }
                 Tecla::Cima => {
-                    self.selecionado = self.selecionado.map(|i| i.saturating_sub(1));
+                    if let Some(i) = self.selecionado {
+                        self.selecionar_so(i.saturating_sub(1));
+                    }
                 }
+                Tecla::Enter if ui.alt => self.executar(Acao::Propriedades, self.selecionado),
                 Tecla::Enter => {
                     if let Some(e) = self.selecionado.and_then(|i| self.entradas.get(i)).cloned() {
                         self.abrir(&e);
@@ -1038,6 +1332,25 @@ impl App for Explorador {
         let (l_tela, a_tela) = (ui.largura(), ui.altura());
         if self.mapear.is_some() {
             self.clique_mapear(ui, l_tela, a_tela);
+        }
+        // Propriedades: modal também.
+        if self.propriedades.is_some() {
+            let (x, y, cl, ca) = self.caixa_propriedades(l_tela, a_tela);
+            if ui.clicou(x + cl - 120.0, y + ca - 54.0, 100.0, 36.0) {
+                self.propriedades = None;
+            }
+            ui.clique = false;
+            ui.duplo = false;
+            ui.clique_direito = false;
+            ui.rolagem = 0.0;
+        }
+        self.alvo_soltar = None;
+        // Arraste: vira arraste quando o mouse anda uns pixels apertado.
+        if let (Some((ax, ay, ativo)), Some((mx, my))) = (self.arraste, ui.mouse) {
+            if !ativo && ui.pressionado && ((mx - ax).abs() > 6.0 || (my - ay).abs() > 6.0) {
+                self.arraste = Some((ax, ay, true));
+                self.colapsar = None;
+            }
         }
         // Menu de uma unidade de rede.
         if let Some((mx, my, letra)) = self.menu_unidade {
@@ -1133,13 +1446,89 @@ impl App for Explorador {
             ui.tela.texto(mx + 16.0, my + 26.0, 13.0, tema::TEXTO(), &format!("Desconectar {letra}:"));
         }
 
+        // Fim do arraste: solta na pasta sob o mouse (Ctrl copia).
+        if let Some((_, _, ativo)) = self.arraste {
+            if ativo {
+                if let Some((mx, my)) = ui.mouse {
+                    let n = self.marcados().len();
+                    let copiar = ui.ctrl;
+                    let txt = match &self.alvo_soltar {
+                        Some(d) => format!(
+                            "{} {n} item(ns) para \"{}\"",
+                            if copiar { "Copiar" } else { "Mover" },
+                            d.file_name().map(|x| x.to_string_lossy().to_string()).unwrap_or_else(|| "/".into())
+                        ),
+                        None => format!("{n} item(ns)"),
+                    };
+                    let lt = desenho::medir(12.5, &txt);
+                    ui.tela.retangulo(mx + 14.0, my + 16.0, lt + 20.0, 28.0, 6.0, tema::BORDA());
+                    ui.tela.retangulo(mx + 15.0, my + 17.0, lt + 18.0, 26.0, 5.0, tema::JANELA());
+                    ui.tela.texto(mx + 24.0, my + 35.0, 12.5, tema::TEXTO(), &txt);
+                }
+            }
+            if ui.soltou || !ui.pressionado {
+                if ativo {
+                    if let Some(d) = self.alvo_soltar.clone() {
+                        self.soltar_em(d, ui.ctrl);
+                    }
+                } else if let Some(i) = self.colapsar.take() {
+                    self.selecionar_so(i);
+                }
+                self.arraste = None;
+                ui.redesenhar = true;
+            }
+        }
+
         if self.mapear.is_some() {
             self.desenhar_mapear(ui, l, a);
+        }
+        if self.propriedades.is_some() {
+            self.desenhar_propriedades(ui, l, a);
         }
     }
 }
 
 impl Explorador {
+    fn caixa_propriedades(&self, l: f32, a: f32) -> (f32, f32, f32, f32) {
+        let n = self.propriedades.as_ref().map(|p| p.linhas.len()).unwrap_or(0) as f32;
+        let (cl, ca) = (460.0_f32.min(l - 20.0), (150.0 + n * 30.0 + 70.0).min(a - 20.0));
+        ((l - cl) / 2.0, (a - ca) / 2.0, cl, ca)
+    }
+
+    fn desenhar_propriedades(&mut self, ui: &mut Ui, l: f32, a: f32) {
+        let (x, y, cl, ca) = self.caixa_propriedades(l, a);
+        let Some(p) = &self.propriedades else { return };
+        ui.tela.retangulo(0.0, 0.0, l, a, 0.0, Cor(11, 26, 46, 90));
+        ui.tela.retangulo(x + 3.0, y + 6.0, cl, ca, 12.0, Cor(0, 0, 0, 50));
+        ui.tela.retangulo(x, y, cl, ca, 12.0, tema::BORDA());
+        ui.tela.retangulo(x + 1.0, y + 1.0, cl - 2.0, ca - 2.0, 11.0, tema::JANELA());
+        ui.tela.texto(x + 24.0, y + 36.0, 15.0, tema::TEXTO(), "Propriedades");
+        // Ícone e nome
+        if p.pasta {
+            icone_pasta(ui.tela, x + 24.0, y + 56.0, 48.0);
+        } else {
+            match p.categoria {
+                Some(c) => tipos::icone_tipo(ui.tela, c, x + 24.0, y + 56.0, 48.0),
+                None => icone_arquivo(ui.tela, x + 24.0, y + 56.0, 48.0),
+            }
+        }
+        ui.tela.retangulo(x + 88.0, y + 64.0, cl - 112.0, 32.0, 5.0, tema::BORDA());
+        ui.tela.retangulo(x + 89.0, y + 65.0, cl - 114.0, 30.0, 4.0, tema::SUPERFICIE());
+        ui.tela.texto(x + 98.0, y + 85.0, 13.5, tema::TEXTO(), &desenho::encurtar(13.5, &p.titulo, cl - 130.0));
+        ui.tela.retangulo(x + 24.0, y + 118.0, cl - 48.0, 1.0, 0.0, tema::BORDA());
+        let mut ly = y + 146.0;
+        for (k, v) in &p.linhas {
+            ui.tela.texto(x + 24.0, ly, 12.5, tema::TEXTO_SECUNDARIO(), &format!("{k}:"));
+            ui.tela.texto(x + 140.0, ly, 12.5, tema::TEXTO(), &desenho::encurtar(12.5, v, cl - 164.0));
+            ly += 30.0;
+        }
+        let (bx, by) = (x + cl - 120.0, y + ca - 54.0);
+        let sobre = ui.sobre(bx, by, 100.0, 36.0);
+        ui.tela.retangulo(bx, by, 100.0, 36.0, 8.0, if sobre { tema::DESTAQUE_FORTE() } else { tema::DESTAQUE() });
+        let lt = desenho::medir(13.5, "OK");
+        ui.tela.texto(bx + 50.0 - lt / 2.0, by + 23.0, 13.5, tema::BRANCO(), "OK");
+    }
+
     fn desenhar_barra(&mut self, ui: &mut Ui, l: f32) {
         let t = &mut *ui.tela;
         t.retangulo(0.0, 0.0, l, BARRA_A, 0.0, tema::FUNDO());
@@ -1171,7 +1560,33 @@ impl Explorador {
 
         // Barra de endereço com as "migalhas" clicáveis.
         let ex = 122.0;
-        let el = l - ex - 12.0;
+        // Caixa de busca à direita (só dentro de pastas).
+        let busca_l = if matches!(self.local, Local::Pasta(_)) && l > 640.0 { 240.0 } else { 0.0 };
+        let el = l - ex - 12.0 - if busca_l > 0.0 { busca_l + 10.0 } else { 0.0 };
+        if busca_l > 0.0 {
+            let bx = l - 12.0 - busca_l;
+            let foco = self.busca_ativa;
+            ui.tela.retangulo(bx, 10.0, busca_l, 32.0, 6.0, if foco { tema::DESTAQUE() } else { tema::BORDA() });
+            ui.tela.retangulo(bx + 1.0, 11.0, busca_l - 2.0, 30.0, 5.0, tema::JANELA());
+            // Lupa
+            let (lx, ly) = (bx + 18.0, 24.0);
+            ui.tela.retangulo(lx - 6.0, ly - 6.0, 12.0, 12.0, 6.0, tema::TEXTO_SECUNDARIO());
+            ui.tela.retangulo(lx - 4.5, ly - 4.5, 9.0, 9.0, 4.5, tema::JANELA());
+            ui.tela.linha(lx + 4.0, ly + 4.0, lx + 8.0, ly + 8.0, 1.8, tema::TEXTO_SECUNDARIO());
+            if self.busca.is_empty() && !foco {
+                let nome = format!("Pesquisar em {}", self.titulo());
+                ui.tela.texto(bx + 34.0, 31.0, 13.0, tema::TEXTO_SECUNDARIO(), &desenho::encurtar(13.0, &nome, busca_l - 44.0));
+            } else {
+                let vis = desenho::encurtar(13.0, &self.busca, busca_l - 50.0);
+                let fim = ui.tela.texto(bx + 34.0, 31.0, 13.0, tema::TEXTO(), &vis);
+                if foco {
+                    ui.tela.retangulo(bx + 35.0 + fim, 16.0, 1.5, 20.0, 0.0, tema::DESTAQUE());
+                }
+            }
+            if ui.clique {
+                self.busca_ativa = ui.sobre(bx, 10.0, busca_l, 32.0);
+            }
+        }
         ui.tela.retangulo(ex, 10.0, el, 32.0, 6.0, tema::BORDA());
         ui.tela.retangulo(ex + 1.0, 11.0, el - 2.0, 30.0, 5.0, tema::JANELA());
         icone_computador(ui.tela, ex + 8.0, 14.0, 22.0);
@@ -1210,23 +1625,36 @@ impl Explorador {
             itens.push((nome.into(), Local::Pasta(self.casa.join(pasta)), 1));
         }
         itens.push(("Pasta pessoal".into(), Local::Pasta(self.casa.clone()), 1));
+        let arquivos_lixeira = self.lixeira().join("files");
+        let _ = fs::create_dir_all(&arquivos_lixeira);
+        itens.push(("Lixeira".into(), Local::Pasta(arquivos_lixeira), 2));
         let mut y = BARRA_A + 10.0;
         let mut ir = None;
+        let arrastando = matches!(self.arraste, Some((_, _, true)));
         for (i, (nome, destino, tipo)) in itens.iter().enumerate() {
             if i == 1 {
                 ui.tela.texto(16.0, y + 18.0, 11.5, tema::TEXTO_SECUNDARIO(), "Acesso rápido");
                 y += 26.0;
             }
+            if *tipo == 2 {
+                y += 10.0;
+            }
             let ativo = &self.local == destino;
-            if ativo {
+            let sobre = ui.sobre(8.0, y, LATERAL_L - 16.0, 30.0);
+            if arrastando && sobre && *tipo == 1 {
+                if let Local::Pasta(p) = destino {
+                    self.alvo_soltar = Some(p.clone());
+                }
+                ui.tela.retangulo(8.0, y, LATERAL_L - 16.0, 30.0, 6.0, tema::DESTAQUE());
+            } else if ativo {
                 ui.tela.retangulo(8.0, y, LATERAL_L - 16.0, 30.0, 6.0, tema::DESTAQUE_SUAVE());
-            } else if ui.sobre(8.0, y, LATERAL_L - 16.0, 30.0) {
+            } else if sobre {
                 ui.tela.retangulo(8.0, y, LATERAL_L - 16.0, 30.0, 6.0, tema::SUPERFICIE_ALTA());
             }
-            if *tipo == 0 {
-                icone_computador(ui.tela, 16.0, y + 4.0, 22.0);
-            } else {
-                icone_pasta(ui.tela, 16.0, y + 4.0, 22.0);
+            match tipo {
+                0 => icone_computador(ui.tela, 16.0, y + 4.0, 22.0),
+                2 => icone_lixeira(ui.tela, 16.0, y + 4.0, 22.0),
+                _ => icone_pasta(ui.tela, 16.0, y + 4.0, 22.0),
             }
             ui.tela.texto(46.0, y + 20.0, 13.0, tema::TEXTO(), nome);
             if ui.clicou(8.0, y, LATERAL_L - 16.0, 30.0) {
@@ -1336,20 +1764,52 @@ impl Explorador {
         }
     }
 
-    fn desenhar_pasta(&mut self, ui: &mut Ui, x0: f32, y0: f32, l: f32, a: f32) {
-        // Cabeçalho das colunas.
-        let col_data = x0 + l - 330.0;
-        let col_tam = x0 + l - 140.0;
-        ui.tela.retangulo(x0, y0, l, 30.0, 0.0, tema::SUPERFICIE());
-        ui.tela.texto(x0 + 52.0, y0 + 20.0, 12.0, tema::TEXTO_SECUNDARIO(), "Nome");
+    fn cabecalho(t: &mut Tela, c: [f32; 6], largo: bool, rotulo_data: &str) {
+        let [x0, y0, l, col_data, col_tipo, col_tam] = c;
+        t.retangulo(x0, y0, l, 30.0, 0.0, tema::SUPERFICIE());
+        t.texto(x0 + 52.0, y0 + 20.0, 12.0, tema::TEXTO_SECUNDARIO(), "Nome");
         if l > 520.0 {
-            ui.tela.texto(col_data, y0 + 20.0, 12.0, tema::TEXTO_SECUNDARIO(), "Data de modificação");
-            ui.tela.texto(col_tam, y0 + 20.0, 12.0, tema::TEXTO_SECUNDARIO(), "Tamanho");
+            t.texto(col_data, y0 + 20.0, 12.0, tema::TEXTO_SECUNDARIO(), rotulo_data);
+            if largo {
+                t.texto(col_tipo, y0 + 20.0, 12.0, tema::TEXTO_SECUNDARIO(), "Tipo");
+            }
+            t.texto(col_tam, y0 + 20.0, 12.0, tema::TEXTO_SECUNDARIO(), "Tamanho");
         }
-        ui.tela.retangulo(x0 + 12.0, y0 + 29.0, l - 24.0, 1.0, 0.0, tema::BORDA());
+        t.retangulo(x0 + 12.0, y0 + 29.0, l - 24.0, 1.0, 0.0, tema::BORDA());
+    }
+
+    fn desenhar_pasta(&mut self, ui: &mut Ui, x0: f32, y0: f32, l: f32, a: f32) {
+        // Na Lixeira, uma faixa com "Esvaziar Lixeira" em cima da lista.
+        let lixeira = self.na_lixeira();
+        let (y0, a) = if lixeira {
+            ui.tela.retangulo(x0, y0, l, 44.0, 0.0, tema::FUNDO());
+            ui.tela.texto(x0 + 20.0, y0 + 27.0, 13.0, tema::TEXTO_SECUNDARIO(), "Itens na Lixeira podem ser restaurados com o botão direito.");
+            let (bx, bl) = (x0 + l - 170.0, 154.0);
+            let ativo = !self.todas.is_empty();
+            let sobre = ativo && ui.sobre(bx, y0 + 7.0, bl, 30.0);
+            ui.tela.retangulo(bx, y0 + 7.0, bl, 30.0, 6.0, if !ativo { tema::SUPERFICIE_ALTA() } else if sobre { tema::DESTAQUE_FORTE() } else { tema::DESTAQUE() });
+            let lt = desenho::medir(13.0, "Esvaziar Lixeira");
+            ui.tela.texto(bx + bl / 2.0 - lt / 2.0, y0 + 27.0, 13.0, if ativo { tema::BRANCO() } else { tema::TEXTO_SECUNDARIO() }, "Esvaziar Lixeira");
+            if ativo && ui.clicou(bx, y0 + 7.0, bl, 30.0) {
+                self.executar(Acao::EsvaziarLixeira, None);
+                ui.clique = false;
+            }
+            (y0 + 44.0, a - 44.0)
+        } else {
+            (y0, a)
+        };
+        // Cabeçalho das colunas: Nome | Data (ou Pasta, na busca) | Tipo | Tamanho.
+        let largo = l > 760.0;
+        let col_tam = x0 + l - 110.0;
+        let col_tipo = x0 + l - 290.0;
+        let col_data = if largo { x0 + l - 440.0 } else { x0 + l - 260.0 };
+        let rotulo_data = if self.busca_funda { "Pasta" } else { "Data de modificação" };
+        let colunas = [x0, y0, l, col_data, col_tipo, col_tam];
+        Self::cabecalho(ui.tela, colunas, largo, rotulo_data);
 
         let topo = y0 + 34.0;
         let visivel = a - 34.0;
+        let arrastando = matches!(self.arraste, Some((_, _, true)));
         let total = self.entradas.len() as f32 * LINHA_A;
         self.rolagem = (self.rolagem + ui.rolagem * 2.0).clamp(0.0, (total - visivel + 40.0).max(0.0));
         // Mantém o item selecionado (teclado) à vista.
@@ -1363,7 +1823,14 @@ impl Explorador {
         }
 
         if self.entradas.is_empty() {
-            ui.tela.texto(x0 + 52.0, topo + 30.0, 13.0, tema::TEXTO_SECUNDARIO(), "Esta pasta está vazia.");
+            let msg = if !self.busca.is_empty() {
+                "Nenhum item corresponde à pesquisa. Enter procura nas subpastas."
+            } else if lixeira {
+                "A Lixeira está vazia."
+            } else {
+                "Esta pasta está vazia."
+            };
+            ui.tela.texto(x0 + 52.0, topo + 30.0, 13.0, tema::TEXTO_SECUNDARIO(), msg);
         }
         let mut abrir = None;
         let primeiro = (self.rolagem / LINHA_A).floor() as usize;
@@ -1373,16 +1840,28 @@ impl Explorador {
                 break;
             }
             let e = &self.entradas[i];
-            let sel = self.selecionado == Some(i);
-            if sel {
+            let sel = self.selecionados.contains(&i) || (self.selecionados.is_empty() && self.selecionado == Some(i));
+            let sobre_linha =
+                ui.sobre(x0 + 8.0, y, l - 16.0, LINHA_A - 2.0) && ui.mouse.map(|m| m.1 > topo).unwrap_or(false);
+            if arrastando && sobre_linha && e.pasta && !sel {
+                // Pasta que recebe o que está sendo arrastado.
+                self.alvo_soltar = Some(e.caminho.clone());
+                ui.tela.retangulo(x0 + 8.0, y, l - 16.0, LINHA_A - 2.0, 4.0, tema::DESTAQUE());
+            } else if sel {
                 ui.tela.retangulo(x0 + 8.0, y, l - 16.0, LINHA_A - 2.0, 4.0, tema::DESTAQUE_SUAVE());
-            } else if ui.sobre(x0 + 8.0, y, l - 16.0, LINHA_A - 2.0) && ui.mouse.map(|m| m.1 > topo).unwrap_or(false) {
+                if self.selecionado == Some(i) && self.selecionados.len() > 1 {
+                    ui.tela.retangulo(x0 + 8.0, y, 3.0, LINHA_A - 2.0, 1.5, tema::DESTAQUE());
+                }
+            } else if sobre_linha {
                 ui.tela.retangulo(x0 + 8.0, y, l - 16.0, LINHA_A - 2.0, 4.0, tema::SUPERFICIE_ALTA());
             }
-            if e.pasta {
-                icone_pasta(ui.tela, x0 + 20.0, y + 3.0, 22.0);
-            } else {
-                icone_arquivo(ui.tela, x0 + 20.0, y + 3.0, 22.0);
+            let (cat, tipo) = if e.pasta { (None, "Pasta de arquivos".to_string()) } else {
+                let (c, t) = tipos::tipo_de(&e.nome);
+                (Some(c), t)
+            };
+            match cat {
+                None => icone_pasta(ui.tela, x0 + 20.0, y + 3.0, 22.0),
+                Some(c) => tipos::icone_tipo(ui.tela, c, x0 + 20.0, y + 3.0, 22.0),
             }
             let max_nome = if l > 520.0 { col_data - x0 - 64.0 } else { l - 70.0 };
             match &self.renomeando {
@@ -1403,8 +1882,15 @@ impl Explorador {
                 }
             }
             if l > 520.0 {
-                if let Some(m) = e.modificado {
+                let largura_data = if largo { col_tipo - col_data - 12.0 } else { col_tam - col_data - 12.0 };
+                if self.busca_funda {
+                    let pai = e.caminho.parent().map(|p| p.display().to_string()).unwrap_or_default();
+                    ui.tela.texto(col_data, y + 19.0, 12.0, tema::TEXTO_SECUNDARIO(), &desenho::encurtar(12.0, &pai, largura_data));
+                } else if let Some(m) = e.modificado {
                     ui.tela.texto(col_data, y + 19.0, 12.0, tema::TEXTO_SECUNDARIO(), &data_legivel(m));
+                }
+                if largo {
+                    ui.tela.texto(col_tipo, y + 19.0, 12.0, tema::TEXTO_SECUNDARIO(), &desenho::encurtar(12.0, &tipo, col_tam - col_tipo - 12.0));
                 }
                 if !e.pasta {
                     ui.tela.texto(col_tam, y + 19.0, 12.0, tema::TEXTO_SECUNDARIO(), &tamanho_legivel(e.tamanho));
@@ -1414,12 +1900,43 @@ impl Explorador {
                 if self.renomeando.as_ref().map(|(j, _)| *j != i).unwrap_or(false) {
                     self.confirmar_renomear();
                 }
-                self.selecionado = Some(i);
-                if ui.duplo && self.renomeando.is_none() {
+                if ui.ctrl {
+                    // Ctrl+clique: marca ou desmarca.
+                    if self.selecionados.contains(&i) {
+                        self.selecionados.remove(&i);
+                    } else {
+                        if let (true, Some(f)) = (self.selecionados.is_empty(), self.selecionado) {
+                            self.selecionados.insert(f);
+                        }
+                        self.selecionados.insert(i);
+                    }
+                    self.selecionado = if self.selecionados.is_empty() { None } else { Some(i) };
+                } else if ui.shift && self.selecionado.is_some() {
+                    // Shift+clique: do foco até aqui.
+                    let f = self.selecionado.unwrap_or(i);
+                    self.selecionados = (f.min(i)..=f.max(i)).collect();
+                } else if sel && self.selecionados.len() > 1 {
+                    // Clique num item já marcado: talvez seja um arraste.
+                    self.selecionado = Some(i);
+                    self.colapsar = Some(i);
+                    if let Some((mx, my)) = ui.mouse {
+                        self.arraste = Some((mx, my, false));
+                    }
+                } else {
+                    self.selecionar_so(i);
+                    if let Some((mx, my)) = ui.mouse {
+                        self.arraste = Some((mx, my, false));
+                    }
+                }
+                if ui.duplo && self.renomeando.is_none() && !ui.ctrl && !ui.shift {
                     abrir = Some(self.entradas[i].clone());
+                    self.arraste = None;
                 }
             }
             if y >= topo - 1.0 && ui.clicou_direito(x0 + 8.0, y, l - 16.0, LINHA_A - 2.0) {
+                if !self.selecionados.contains(&i) {
+                    self.selecionar_so(i);
+                }
                 self.selecionado = Some(i);
                 if let Some((mx, my)) = ui.mouse {
                     self.menu = Some((mx, my, Some(i)));
@@ -1432,19 +1949,20 @@ impl Explorador {
             if let Some((mx, my)) = ui.mouse {
                 self.menu = Some((mx, my, None));
                 self.selecionado = None;
+                self.selecionados.clear();
             }
+        }
+        // Clique no fundo (fora dos itens) desmarca tudo.
+        let fim_lista = topo + self.entradas.len() as f32 * LINHA_A - self.rolagem;
+        if ui.clique && !ui.ctrl && !ui.shift && ui.mouse.is_some_and(|(mx, my)| mx > x0 && my > fim_lista.max(topo)) {
+            self.selecionado = None;
+            self.selecionados.clear();
         }
         if ui.clicou(x0, topo, l, a - 34.0) && self.renomeando.is_some() {
             self.confirmar_renomear();
         }
         // Cobre o que rolou para baixo do cabeçalho.
-        ui.tela.retangulo(x0, y0, l, 30.0, 0.0, tema::SUPERFICIE());
-        ui.tela.texto(x0 + 52.0, y0 + 20.0, 12.0, tema::TEXTO_SECUNDARIO(), "Nome");
-        if l > 520.0 {
-            ui.tela.texto(col_data, y0 + 20.0, 12.0, tema::TEXTO_SECUNDARIO(), "Data de modificação");
-            ui.tela.texto(col_tam, y0 + 20.0, 12.0, tema::TEXTO_SECUNDARIO(), "Tamanho");
-        }
-        ui.tela.retangulo(x0 + 12.0, y0 + 29.0, l - 24.0, 1.0, 0.0, tema::BORDA());
+        Self::cabecalho(ui.tela, colunas, largo, rotulo_data);
         if let Some(e) = abrir {
             self.abrir(&e);
         }

@@ -78,11 +78,16 @@ pub struct Ui<'a> {
     /// Foi o segundo clique rápido (clique duplo).
     pub duplo: bool,
     pub clique_direito: bool,
+    /// O botão esquerdo está apertado agora (para arrastar).
+    pub pressionado: bool,
+    /// O botão esquerdo foi solto neste quadro (fim de um arraste).
+    pub soltou: bool,
     /// Rolagem vertical, em pixels (positivo = para baixo).
     pub rolagem: f32,
     pub teclas: Vec<Tecla>,
     pub ctrl: bool,
     pub shift: bool,
+    pub alt: bool,
     /// O app pede para fechar a janela.
     pub fechar: bool,
     /// O app pede outro quadro logo em seguida (animação).
@@ -209,6 +214,8 @@ pub fn executar(opcoes: Opcoes, app: Box<dyn App>) {
         clique: false,
         duplo: false,
         clique_direito: false,
+        pressionado: false,
+        soltou: false,
         rolagem: 0.0,
         teclas: Vec::new(),
         mods: Modifiers::default(),
@@ -267,6 +274,8 @@ struct Janela {
     clique: bool,
     duplo: bool,
     clique_direito: bool,
+    pressionado: bool,
+    soltou: bool,
     rolagem: f32,
     teclas: Vec<Tecla>,
     mods: Modifiers,
@@ -289,10 +298,13 @@ impl Janela {
             clique: std::mem::take(&mut self.clique),
             duplo: std::mem::take(&mut self.duplo),
             clique_direito: std::mem::take(&mut self.clique_direito),
+            pressionado: self.pressionado,
+            soltou: std::mem::take(&mut self.soltou),
             rolagem: std::mem::take(&mut self.rolagem),
             teclas: std::mem::take(&mut self.teclas),
             ctrl: self.mods.ctrl,
             shift: self.mods.shift,
+            alt: self.mods.alt,
             fechar: false,
             redesenhar: false,
             titulo: None,
@@ -484,6 +496,7 @@ impl PointerHandler for Janela {
                 PointerEventKind::Press { button, .. } => {
                     self.mouse = Some(pos);
                     if button == BTN_LEFT {
+                        self.pressionado = true;
                         let agora = Instant::now();
                         self.duplo = self
                             .ultimo_clique
@@ -499,7 +512,12 @@ impl PointerHandler for Janela {
                         self.clique_direito = true;
                     }
                 }
-                PointerEventKind::Release { .. } => {}
+                PointerEventKind::Release { button, .. } => {
+                    if button == BTN_LEFT {
+                        self.pressionado = false;
+                        self.soltou = true;
+                    }
+                }
                 PointerEventKind::Axis { vertical, .. } => {
                     self.rolagem += vertical.absolute as f32;
                 }
