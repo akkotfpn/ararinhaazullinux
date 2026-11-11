@@ -579,6 +579,7 @@ impl Ninho {
         let tela = geo.size;
         desenho::preparar_vidro(tela.w, tela.h);
         self.atualizar_relogio();
+        marcar_tempo_de_boot();
         let hover = self.alvo(ponteiro - geo.loc.to_f64(), tela);
         let o = self.cartao_origem(tela);
 
@@ -783,4 +784,18 @@ impl Ninho {
         }
         t
     }
+}
+
+/// No primeiro quadro do Ninho, guarda em /run/ararinha/ninho-pronto quantos
+/// segundos se passaram desde o boot (o Sobre das Configurações mostra).
+fn marcar_tempo_de_boot() {
+    static FEITO: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    if FEITO.swap(true, std::sync::atomic::Ordering::Relaxed) {
+        return;
+    }
+    let uptime = std::fs::read_to_string("/proc/uptime").unwrap_or_default();
+    let segundos = uptime.split_whitespace().next().unwrap_or("0").to_string();
+    tracing::info!(segundos, "Ninho na tela");
+    let _ = std::fs::create_dir_all("/run/ararinha");
+    let _ = std::fs::write("/run/ararinha/ninho-pronto", format!("{segundos}\n"));
 }

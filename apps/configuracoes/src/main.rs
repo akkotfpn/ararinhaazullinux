@@ -149,6 +149,22 @@ fn ler_sobre() -> Vec<(String, String)> {
         .unwrap_or(0);
     let nome = fs::read_to_string("/etc/hostname").unwrap_or_default().trim().to_string();
     let usuario = std::env::var("USER").or_else(|_| std::env::var("LOGNAME")).unwrap_or_default();
+    // Tempo de inicialização: até a tela de entrada (Ninho) e o do systemd.
+    let ninho: Option<f64> = fs::read_to_string("/run/ararinha/ninho-pronto").ok().and_then(|s| s.trim().parse().ok());
+    let analise = std::process::Command::new("systemd-analyze")
+        .output()
+        .ok()
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .and_then(|s| s.lines().next().map(|l| l.to_string()))
+        .unwrap_or_default();
+    // "Startup finished in 1.2s (kernel) + 2.3s (userspace) = 3.5s"
+    let total_systemd = analise.rsplit('=').next().map(|s| s.trim().to_string()).filter(|s| !s.is_empty() && analise.contains('='));
+    let boot = match (ninho, total_systemd) {
+        (Some(n), Some(t)) => format!("{:.1} s até a tela de entrada (systemd: {t})", n).replace('.', ","),
+        (Some(n), None) => format!("{:.1} s até a tela de entrada", n).replace('.', ","),
+        (None, Some(t)) => format!("systemd: {t}"),
+        (None, None) => "—".into(),
+    };
     vec![
         ("Sistema".into(), "Ararinha Azul Linux 0.1 (Primeiro Pio)".into()),
         ("Nome do computador".into(), nome),
@@ -157,6 +173,7 @@ fn ler_sobre() -> Vec<(String, String)> {
         ("Memória".into(), format!("{:.1} GB", mem_kb as f64 / 1024.0 / 1024.0).replace('.', ",")),
         ("Kernel".into(), format!("Spix Kernel {kernel}")),
         ("Interface".into(), "Plumagem".into()),
+        ("Inicialização".into(), boot),
     ]
 }
 
