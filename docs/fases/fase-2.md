@@ -87,3 +87,18 @@ Win+E / Ctrl+Alt+E, Ctrl+Esc (menu), Ctrl+Alt+T (terminal) e Print Screen
   instalações; Plumagem sem avisos de compilação.
 - Configurações › Sobre mostra a criptografia do disco, o Secure Boot e
   que o sistema não tem telemetria.
+
+### Pedidos do teste de 11/11 (manhã)
+
+- **Gerenciador de Tarefas**: modelo do processador; memória instalada e
+  slots em uso/livres (tabela SMBIOS, lida pelo `ararinha-sistema`); nova
+  aba **Hardware** (computador, processador, memória por slot, vídeo,
+  discos, rede, som e bateria).
+- **Central de Apps** com o ícone de cada app (catálogo do Flathub).
+- **Ícones Spix** em todos os apps (64 e 128 px).
+- **Texto mais nítido** (gama na cobertura dos glifos) e título das janelas
+  em branco sobre o vidro.
+- **Foto da conta** (Configurações › Conta), no Ninho, no menu e no
+  bloqueio.
+- **Bandeja do sistema**: `ararinha-bandeja` (StatusNotifierWatcher) e os
+  ícones dos apps ao lado de rede e som, com clique e menu.
