@@ -185,3 +185,10 @@ impl Bloqueio {
         .unwrap_or_default()
     }
 }
+
+impl std::fmt::Debug for Bloqueio {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // Nunca mostra a senha.
+        f.debug_struct("Bloqueio").field("usuario", &self.usuario).finish_non_exhaustive()
+    }
+}
