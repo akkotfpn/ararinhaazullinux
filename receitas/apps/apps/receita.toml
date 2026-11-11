@@ -75,6 +75,9 @@ for app in imagens notas configuracoes central calculadora tarefas paciencia mus
   install -vDm644 $app/recursos/$app.png /usr/share/icons/hicolor/64x64/apps/$app.png
 done
 install -vDm644 configuracoes/recursos/sobre.desktop /usr/share/applications/sobre.desktop
+install -vDm755 target/release/painel-de-controle /usr/bin/painel-de-controle
+install -vDm644 painel/recursos/painel-de-controle.desktop /usr/share/applications/painel-de-controle.desktop
+install -vDm644 painel/recursos/painel-de-controle.png /usr/share/icons/hicolor/64x64/apps/painel-de-controle.png
 install -vDm755 target/release/ararinha-som /usr/bin/ararinha-som
 # Portais do Flatpak (Abrir/Salvar, tema, notificações) e notificações da sessão.
 install -vDm755 target/release/xdg-desktop-portal-ararinha /usr/libexec/xdg-desktop-portal-ararinha
