@@ -121,6 +121,17 @@ constrói o Ararinha guarda a chave privada. Com o Secure Boot ligado, o
 kernel entra sozinho em lockdown "integrity" e recusa módulos sem essa
 assinatura.
 
+## Serviços endurecidos e sem core dumps
+
+- `nftables.service` e `ararinha-energia.service` rodam com
+  `ProtectSystem=strict`, `ProtectHome`, `PrivateTmp`, `NoNewPrivileges`,
+  `SystemCallFilter=@system-service`, `MemoryDenyWriteExecute` e só as
+  capacidades de que precisam (o firewall: `CAP_NET_ADMIN`; o de energia:
+  nenhuma, e sem rede).
+- Nenhum programa gera core dump (`Storage=none` no systemd-coredump e
+  `DefaultLimitCORE=0`): a memória de um programa que travou pode ter
+  senhas ou chaves.
+
 ## Bloqueio automático
 
 A tela bloqueia sozinha depois de 5 minutos sem teclado nem mouse

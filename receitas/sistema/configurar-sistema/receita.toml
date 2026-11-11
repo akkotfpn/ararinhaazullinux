@@ -38,6 +38,13 @@ echo 'LANG=pt_BR.UTF-8' > /etc/locale.conf
   '''
 printf 'KEYMAP=br-abnt2\nFONT=eurlatgr\n' > /etc/vconsole.conf
 ''',
+  # Sem core dumps: a memória de um programa que travou pode ter senhas.
+  '''
+install -vdm755 /usr/lib/systemd/coredump.conf.d /usr/lib/systemd/system.conf.d /usr/lib/systemd/user.conf.d
+printf '[Coredump]\nStorage=none\nProcessSizeMax=0\n' > /usr/lib/systemd/coredump.conf.d/50-ararinha.conf
+printf '[Manager]\nDefaultLimitCORE=0\n' > /usr/lib/systemd/system.conf.d/50-ararinha.conf
+printf '[Manager]\nDefaultLimitCORE=0\n' > /usr/lib/systemd/user.conf.d/50-ararinha.conf
+''',
   '''
 printf '/bin/sh\n/bin/bash\n' > /etc/shells
 ''',

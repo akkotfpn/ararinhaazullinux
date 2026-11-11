@@ -72,6 +72,25 @@ RemainAfterExit=yes
 ExecStart=/usr/sbin/nft -f /etc/nftables.conf
 ExecReload=/usr/sbin/nft -f /etc/nftables.conf
 ExecStop=/usr/sbin/nft flush ruleset
+# Endurecimento: o serviço só enxerga e pode o mínimo.
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+CapabilityBoundingSet=CAP_NET_ADMIN
+RestrictAddressFamilies=AF_NETLINK AF_UNIX
+PrivateNetwork=no
 
 [Install]
 WantedBy=sysinit.target
