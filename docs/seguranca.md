@@ -78,8 +78,22 @@ Para conferir num sistema instalado: `sudo cryptsetup luksDump
 Ainda falta: tela de senha gráfica (hoje é texto no console), TPM2
 opcional e trocar a senha do disco pelas Configurações.
 
+## Módulos do kernel assinados
+
+Cada módulo do Spix Kernel é assinado (SHA-512) na construção, com uma
+chave que o próprio kernel gera e que a receita apaga em seguida: nem quem
+constrói o Ararinha guarda a chave privada. Com o Secure Boot ligado, o
+kernel entra sozinho em lockdown "integrity" e recusa módulos sem essa
+assinatura.
+
+## Bloqueio automático
+
+A tela bloqueia sozinha depois de 5 minutos sem teclado nem mouse
+(Configurações > Energia: 1, 5, 10, 15, 30 min ou nunca) e sempre antes
+de suspender (gancho em `/usr/lib/systemd/system-sleep`, que avisa a
+Plumagem pelo FIFO `$XDG_RUNTIME_DIR/plumagem-ctl`, só do usuário).
+
 ## A seguir
 
-- Bloquear sozinho depois de um tempo parado e ao suspender.
 - Atualizações automáticas dos apps do Flathub.
 - Secure Boot com chave própria e kernel assinado (UKI).

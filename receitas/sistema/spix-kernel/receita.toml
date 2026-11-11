@@ -15,7 +15,7 @@ tipo      = "toolchain"
 url = "https://cdn.kernel.org/pub/linux/kernel/v7.x/linux-7.1.8.tar.xz"
 
 [dependencias]
-construcao = ["e2fsprogs", "cryptsetup", "kbd", "util-linux", "bash"]
+construcao = ["e2fsprogs", "openssl", "cryptsetup", "kbd", "util-linux", "bash"]
 
 [construcao]
 ambiente = "isolado"
@@ -82,7 +82,10 @@ esac
 du -h /usr/lib/ararinha/vmlinuz-spix-cripto
 ''',
   '''
-for op in CONFIG_EFI_STUB CONFIG_EXT4_FS CONFIG_SCSI_VIRTIO CONFIG_VIRTIO_BLK CONFIG_DEVTMPFS \
+# A chave privada que assinou os módulos não sai da pasta de construção
+# (e é apagada aqui): o sistema instalado só tem a parte pública, no kernel.
+rm -f certs/signing_key.pem certs/signing_key.x509.signer 2>/dev/null
+for op in CONFIG_MODULE_SIG CONFIG_EFI_STUB CONFIG_EXT4_FS CONFIG_SCSI_VIRTIO CONFIG_VIRTIO_BLK CONFIG_DEVTMPFS \
           CONFIG_DRM_FBDEV_EMULATION CONFIG_FRAMEBUFFER_CONSOLE CONFIG_SYSFB_SIMPLEFB \
           CONFIG_INPUT_EVDEV; do
   grep -q "^$op=y" .config || { echo "faltou $op=y"; exit 1; }
