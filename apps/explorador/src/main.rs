@@ -180,6 +180,8 @@ struct Explorador {
     sair: bool,
     /// "Deseja executar este aplicativo?" (AppImage baixado).
     executar_app: Option<PathBuf>,
+    /// Extração ou compactação em andamento (resposta para o aviso).
+    tarefa: Option<std::sync::mpsc::Receiver<String>>,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -214,6 +216,38 @@ enum Acao {
     Restaurar,
     EsvaziarLixeira,
     SelecionarTudo,
+    Extrair,
+    Compactar,
+}
+
+/// Arquivos que o bsdtar (libarchive) sabe abrir.
+fn compactado(nome: &str) -> bool {
+    let n = nome.to_lowercase();
+    [".zip", ".tar", ".tar.gz", ".tgz", ".tar.xz", ".txz", ".tar.bz2", ".tbz2", ".tar.zst", ".7z", ".rar", ".iso", ".cab"]
+        .iter()
+        .any(|e| n.ends_with(e))
+}
+
+/// Nome sem a extensão de pacote ("fotos.tar.gz" → "fotos").
+fn sem_extensao(nome: &str) -> String {
+    let n = nome.to_lowercase();
+    for e in [".tar.gz", ".tar.xz", ".tar.bz2", ".tar.zst", ".tgz", ".txz", ".tbz2", ".zip", ".tar", ".7z", ".rar", ".iso", ".cab"] {
+        if n.ends_with(e) {
+            return nome[..nome.len() - e.len()].to_string();
+        }
+    }
+    nome.to_string()
+}
+
+/// Caminho livre: "x", "x (2)", "x (3)"...
+fn livre(pasta: &std::path::Path, nome: &str, ext: &str) -> PathBuf {
+    let mut p = pasta.join(format!("{nome}{ext}"));
+    let mut n = 2;
+    while p.exists() {
+        p = pasta.join(format!("{nome} ({n}){ext}"));
+        n += 1;
+    }
+    p
 }
 
 const MENU_L: f32 = 210.0;
@@ -387,6 +421,7 @@ impl Explorador {
             escolha: None,
             sair: false,
             executar_app: None,
+            tarefa: None,
         };
         // Abre numa pasta passada como argumento (ou na pasta de um arquivo,
         // já selecionado: "Mostrar na pasta" do navegador). Aceita file://.
@@ -970,10 +1005,17 @@ impl Explorador {
         let lixeira = self.na_lixeira();
         let varios = self.marcados().len() > 1;
         match alvo {
-            Some(_) => {
+            Some(i_menu) => {
                 let mut v = vec![("Abrir", Acao::Abrir, !varios)];
                 if lixeira {
                     v.push(("Restaurar", Acao::Restaurar, true));
+                }
+                let um_compactado = !varios && self.entradas.get(i_menu).is_some_and(|e| !e.pasta && compactado(&e.nome));
+                if um_compactado && !lixeira {
+                    v.push(("Extrair aqui", Acao::Extrair, self.tarefa.is_none()));
+                }
+                if !lixeira {
+                    v.push(("Compactar em ZIP", Acao::Compactar, self.tarefa.is_none()));
                 }
                 v.extend([
                     ("Recortar", Acao::Recortar, true),
@@ -1008,6 +1050,55 @@ impl Explorador {
     fn executar(&mut self, acao: Acao, alvo: Option<usize>) {
         let entrada = alvo.and_then(|i| self.entradas.get(i)).cloned();
         match acao {
+            Acao::Extrair => {
+                let (Some(e), Some(pasta)) = (entrada, self.pasta_atual()) else { return };
+                let destino = livre(&pasta, &sem_extensao(&e.nome), "");
+                let (tx, rx) = std::sync::mpsc::channel();
+                self.aviso = Some(format!("Extraindo \"{}\"…", e.nome));
+                std::thread::spawn(move || {
+                    let _ = fs::create_dir_all(&destino);
+                    let r = std::process::Command::new("bsdtar").arg("-xf").arg(&e.caminho).arg("-C").arg(&destino).output();
+                    let nome = destino.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+                    let _ = tx.send(match r {
+                        Ok(o) if o.status.success() => format!("Extraído na pasta \"{nome}\"."),
+                        Ok(o) => {
+                            let _ = fs::remove_dir(&destino);
+                            format!("Não deu para extrair: {}", String::from_utf8_lossy(&o.stderr).lines().next().unwrap_or("arquivo danificado"))
+                        }
+                        Err(e) => format!("Não deu para extrair: {e}"),
+                    });
+                });
+                self.tarefa = Some(rx);
+            }
+            Acao::Compactar => {
+                let Some(pasta) = self.pasta_atual() else { return };
+                let itens = self.marcados();
+                if itens.is_empty() {
+                    return;
+                }
+                let base = if itens.len() == 1 { sem_extensao(&itens[0].nome) } else { "Arquivos".to_string() };
+                let destino = livre(&pasta, &base, ".zip");
+                let nomes: Vec<String> = itens.iter().map(|e| e.nome.clone()).collect();
+                let (tx, rx) = std::sync::mpsc::channel();
+                self.aviso = Some(format!("Compactando {} item(ns)…", nomes.len()));
+                std::thread::spawn(move || {
+                    let r = std::process::Command::new("bsdtar")
+                        .args(["--format", "zip", "-cf"])
+                        .arg(&destino)
+                        .arg("-C")
+                        .arg(&pasta)
+                        .arg("--")
+                        .args(&nomes)
+                        .output();
+                    let nome = destino.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+                    let _ = tx.send(match r {
+                        Ok(o) if o.status.success() => format!("Criado \"{nome}\"."),
+                        Ok(o) => format!("Não deu para compactar: {}", String::from_utf8_lossy(&o.stderr).lines().next().unwrap_or("")),
+                        Err(e) => format!("Não deu para compactar: {e}"),
+                    });
+                });
+                self.tarefa = Some(rx);
+            }
             Acao::Abrir => {
                 if let Some(e) = entrada {
                     self.abrir(&e);
@@ -1363,6 +1454,17 @@ fn seta(t: &mut Tela, cx: f32, cy: f32, dir: f32, cor: Cor) {
 
 impl App for Explorador {
     fn desenhar(&mut self, ui: &mut Ui) {
+        // Extração/compactação terminou?
+        if let Some(rx) = &self.tarefa {
+            match rx.try_recv() {
+                Ok(msg) => {
+                    self.tarefa = None;
+                    self.aviso = Some(msg);
+                    self.recarregar();
+                }
+                Err(_) => ui.acordar_em = Some(std::time::Duration::from_millis(250)),
+            }
+        }
         // Teclado.
         for tecla in std::mem::take(&mut ui.teclas) {
             if let Some(esc) = self.escolha.as_mut().filter(|e| e.nome_ativo) {
