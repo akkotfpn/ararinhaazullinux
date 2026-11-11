@@ -103,6 +103,20 @@ fn atender(quem: &Quem, pedido: &str) -> Result<String, String> {
             admin()?;
             firewall::fechar(porta)
         }
+        // Plano de energia: qualquer pessoa da sessão pode escolher (como no
+        // Windows); o ajudante só aceita os três planos.
+        ["energia", plano] if ["padrao", "economico", "desempenho"].contains(plano) => {
+            let s = std::process::Command::new("/usr/bin/ararinha-energia")
+                .arg(plano)
+                .env_clear()
+                .output()
+                .map_err(|e| format!("ararinha-energia: {e}"))?;
+            if s.status.success() {
+                Ok(String::from_utf8_lossy(&s.stdout).trim().to_string())
+            } else {
+                Err(String::from_utf8_lossy(&s.stderr).trim().to_string())
+            }
+        }
         _ => Err("pedido desconhecido".into()),
     }
 }

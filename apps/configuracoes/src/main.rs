@@ -2,7 +2,7 @@
 //! Configurações do Ararinha: personalização (barra de tarefas e papel de
 //! parede), energia e Sobre. As escolhas de aparência vão para
 //! ~/.config/plumagem/plumagem.conf, que a Plumagem relê sozinha; o plano
-//! de energia vai pelo ajudante `ararinha-energia`.
+//! de energia vai pelo serviço do sistema (ararinha-sistema).
 
 mod conta;
 mod firewall;
@@ -418,12 +418,11 @@ impl Configuracoes {
             }
         }
         if let Some(id) = escolhido {
-            match std::process::Command::new("ararinha-energia").arg(id).output() {
-                Ok(o) if o.status.success() => {
+            match penas::sistema::pedir(&format!("energia {id}")) {
+                Ok(msg) => {
                     self.energia = id.to_string();
-                    self.aviso = Some(String::from_utf8_lossy(&o.stdout).trim().to_string());
+                    self.aviso = Some(msg);
                 }
-                Ok(o) => self.aviso = Some(String::from_utf8_lossy(&o.stderr).trim().to_string()),
                 Err(e) => self.aviso = Some(format!("Não deu para mudar o plano: {e}")),
             }
         }
