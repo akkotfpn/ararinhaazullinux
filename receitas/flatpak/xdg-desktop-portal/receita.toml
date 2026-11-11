@@ -23,7 +23,8 @@ ambiente = "isolado"
 passos = [
   '''
 mkdir -p build && cd build && meson setup --prefix=/usr --buildtype=release --wrap-mode=nofallback \
-  -D tests=disabled -D documentation=disabled -D man-pages=disabled ..
+  -D tests=disabled -D documentation=disabled -D man-pages=disabled \
+  -D sandboxed-sound-validation=disabled ..
 ''',
   '''
 cd build && ninja
