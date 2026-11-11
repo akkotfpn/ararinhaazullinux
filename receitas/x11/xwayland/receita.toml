@@ -15,8 +15,8 @@ url = "https://www.x.org/pub/individual/xserver/xwayland-24.1.15.tar.xz"
 
 [dependencias]
 construcao = ["meson", "xorgproto", "libxcvt", "pixman", "wayland", "wayland-protocols", "font-util",
-              "libepoxy", "mesa", "libdrm", "libxkbfile", "libXfont2", "libxshmfence", "libXau",
-              "libXdmcp", "xtrans", "xkbcomp", "openssl"]
+              "libepoxy", "mesa", "libdrm", "libxkbfile", "libxfont2", "libxshmfence", "libxau",
+              "libxdmcp", "xtrans", "xkbcomp", "openssl"]
 
 [construcao]
 ambiente = "isolado"

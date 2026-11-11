@@ -13,7 +13,7 @@ tipo      = "toolchain"
 url = "https://www.x.org/pub/individual/app/xkbcomp-1.4.7.tar.xz"
 
 [dependencias]
-construcao = ["libxkbfile", "libX11"]
+construcao = ["libxkbfile", "libx11"]
 
 [construcao]
 ambiente = "isolado"

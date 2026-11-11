@@ -2,7 +2,7 @@
 # XWayland (apps X11, como a Steam): BLFS, libXdmcp
 
 [pacote]
-nome      = "libXdmcp"
+nome      = "libxdmcp"
 versao    = "1.1.5"
 resumo    = "Protocolo XDMCP"
 licenca   = "MIT"

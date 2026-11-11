@@ -2,7 +2,7 @@
 # XWayland (apps X11, como a Steam): BLFS, libXau
 
 [pacote]
-nome      = "libXau"
+nome      = "libxau"
 versao    = "1.0.12"
 resumo    = "Autorização do X"
 licenca   = "MIT"

@@ -13,7 +13,7 @@ tipo      = "toolchain"
 url = "https://xorg.freedesktop.org/archive/individual/lib/libxcb-1.17.0.tar.xz"
 
 [dependencias]
-construcao = ["xcb-proto", "libXau", "libXdmcp", "python"]
+construcao = ["xcb-proto", "libxau", "libxdmcp", "python"]
 
 [construcao]
 ambiente = "isolado"

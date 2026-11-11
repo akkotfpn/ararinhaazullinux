@@ -2,7 +2,7 @@
 # XWayland (apps X11, como a Steam): BLFS, libX11
 
 [pacote]
-nome      = "libX11"
+nome      = "libx11"
 versao    = "1.8.14"
 resumo    = "Biblioteca do X11"
 licenca   = "MIT"
