@@ -4,6 +4,7 @@
 //! ~/.config/plumagem/plumagem.conf, que a Plumagem relê sozinha; o plano
 //! de energia vai pelo ajudante `ararinha-energia`.
 
+mod conta;
 mod rede;
 
 use std::{
@@ -33,6 +34,7 @@ enum Pagina {
     Personalizacao,
     Rede,
     Energia,
+    Conta,
     Sobre,
 }
 
@@ -55,6 +57,7 @@ struct Configuracoes {
     aviso: Option<String>,
     rolagem: f32,
     rede: Option<rede::PaginaRede>,
+    conta: conta::PaginaConta,
     mingau: Option<penas::desenho::Imagem>,
 }
 
@@ -217,6 +220,7 @@ impl Configuracoes {
             aviso: None,
             rolagem: 0.0,
             rede: None,
+            conta: conta::PaginaConta::default(),
             mingau: desenho::icone(MINGAU_PNG, 120, 141),
         }
     }
@@ -469,6 +473,12 @@ impl App for Configuracoes {
                 }
             }
             Pagina::Energia => self.energia(ui, LATERAL_L, l - LATERAL_L),
+            Pagina::Conta => {
+                self.conta.desenhar(ui, LATERAL_L, l - LATERAL_L);
+                if let Some(av) = self.conta.aviso.take() {
+                    self.aviso = Some(av);
+                }
+            }
             Pagina::Sobre => self.sobre(ui, LATERAL_L, l - LATERAL_L),
         }
         // A lateral por cima (o conteúdo rolado não passa por ela).
@@ -479,6 +489,7 @@ impl App for Configuracoes {
             (Pagina::Personalizacao, "Personalização"),
             (Pagina::Rede, "Rede e Internet"),
             (Pagina::Energia, "Energia"),
+            (Pagina::Conta, "Conta"),
             (Pagina::Sobre, "Sobre"),
         ];
         for (i, (p, nome)) in paginas.iter().enumerate() {
@@ -510,6 +521,7 @@ fn main() {
     match std::env::args().nth(1).as_deref() {
         Some("sobre") => app.pagina = Pagina::Sobre,
         Some("energia") => app.pagina = Pagina::Energia,
+        Some("conta") => app.pagina = Pagina::Conta,
         Some("rede") => {
             app.pagina = Pagina::Rede;
             let mut r = rede::PaginaRede::nova();

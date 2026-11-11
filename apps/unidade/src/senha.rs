@@ -57,8 +57,58 @@ fn confere(login: &str, senha: &str) -> bool {
     a.len() == b.len() && a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
 }
 
+extern "C" {
+    fn setresuid(r: u32, e: u32, s: u32) -> i32;
+    fn setresgid(r: u32, e: u32, s: u32) -> i32;
+}
+
+/// `ararinha-senha --trocar`: lê a senha atual e a nova (uma por linha) e
+/// troca a senha da própria conta pelo chpasswd. Saída 0 trocou, 1 senha
+/// atual errada, 2 senha nova recusada ou falha.
+fn trocar(login: &str) -> ! {
+    let mut entrada = String::new();
+    if std::io::stdin().take(1024).read_to_string(&mut entrada).is_err() {
+        exit(2);
+    }
+    let mut linhas = entrada.lines();
+    let (atual, nova) = (linhas.next().unwrap_or(""), linhas.next().unwrap_or(""));
+    if !confere(login, atual) {
+        sleep(Duration::from_secs(2));
+        exit(1);
+    }
+    if nova.chars().count() < 4 || nova.contains(':') || nova.contains('\n') {
+        exit(2);
+    }
+    if unsafe { setresgid(0, 0, 0) } != 0 || unsafe { setresuid(0, 0, 0) } != 0 {
+        exit(2);
+    }
+    for (k, _) in std::env::vars_os() {
+        std::env::remove_var(k);
+    }
+    let filho = std::process::Command::new("/usr/sbin/chpasswd")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn();
+    let ok = filho
+        .and_then(|mut f| {
+            use std::io::Write;
+            if let Some(mut e) = f.stdin.take() {
+                e.write_all(format!("{login}:{nova}\n").as_bytes())?;
+            }
+            f.wait()
+        })
+        .map(|s| s.success())
+        .unwrap_or(false);
+    exit(if ok { 0 } else { 2 });
+}
+
 fn main() {
     let uid = unsafe { getuid() };
+    if std::env::args().nth(1).as_deref() == Some("--trocar") {
+        let Some(login) = nome_do_uid(uid) else { exit(2) };
+        trocar(&login);
+    }
     let Some(login) = nome_do_uid(uid) else { exit(1) };
     let mut senha = String::new();
     if std::io::stdin().take(512).read_to_string(&mut senha).is_err() {

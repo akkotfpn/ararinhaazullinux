@@ -374,7 +374,14 @@ fn main() {
             tamanho: (980, 680),
             minimo: (640, 420),
         },
-        Box::new(Central::nova()),
+        {
+            let mut c = Central::nova();
+            // "central instalados" abre direto em Instalados (Painel de Controle).
+            if std::env::args().nth(1).as_deref() == Some("instalados") {
+                c.aba = Aba::Instalados;
+            }
+            Box::new(c)
+        },
     );
 }
 

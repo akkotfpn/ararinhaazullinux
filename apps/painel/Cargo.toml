@@ -1,0 +1,14 @@
+[package]
+name = "painel"
+version = "0.1.0"
+description = "Painel de Controle do Ararinha Azul Linux"
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+penas = { path = "../penas" }
+
+[[bin]]
+name = "painel-de-controle"
+path = "src/main.rs"

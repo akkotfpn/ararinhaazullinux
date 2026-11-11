@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Painel de Controle
+Name[en]=Control Panel
+Comment=Todas as configurações do computador num lugar só
+Exec=painel-de-controle
+Icon=painel-de-controle
+StartupWMClass=painel-de-controle
+Categories=Settings;System;
