@@ -8,6 +8,7 @@
 //! um botão foi clicada.
 
 pub mod componentes;
+pub mod sistema;
 pub mod desenho;
 
 use std::time::{Duration, Instant};

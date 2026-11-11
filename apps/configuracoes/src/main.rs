@@ -5,6 +5,7 @@
 //! de energia vai pelo ajudante `ararinha-energia`.
 
 mod conta;
+mod firewall;
 mod rede;
 
 use std::{
@@ -33,6 +34,7 @@ const NOMES_PAPEIS: [(&str, &str); 5] = [
 enum Pagina {
     Personalizacao,
     Rede,
+    Firewall,
     Energia,
     Conta,
     Sobre,
@@ -58,6 +60,7 @@ struct Configuracoes {
     rolagem: f32,
     rede: Option<rede::PaginaRede>,
     conta: conta::PaginaConta,
+    firewall: firewall::PaginaFirewall,
     mingau: Option<penas::desenho::Imagem>,
 }
 
@@ -249,6 +252,7 @@ impl Configuracoes {
             rolagem: 0.0,
             rede: None,
             conta: conta::PaginaConta::default(),
+            firewall: firewall::PaginaFirewall::default(),
             mingau: desenho::icone(MINGAU_PNG, 120, 141),
         }
     }
@@ -526,6 +530,12 @@ impl App for Configuracoes {
                     self.aviso = Some(av);
                 }
             }
+            Pagina::Firewall => {
+                self.firewall.desenhar(ui, LATERAL_L, l - LATERAL_L);
+                if let Some(av) = self.firewall.aviso.take() {
+                    self.aviso = Some(av);
+                }
+            }
             Pagina::Energia => self.energia(ui, LATERAL_L, l - LATERAL_L),
             Pagina::Conta => {
                 self.conta.desenhar(ui, LATERAL_L, l - LATERAL_L);
@@ -542,6 +552,7 @@ impl App for Configuracoes {
         let paginas = [
             (Pagina::Personalizacao, "Personalização"),
             (Pagina::Rede, "Rede e Internet"),
+            (Pagina::Firewall, "Firewall"),
             (Pagina::Energia, "Energia"),
             (Pagina::Conta, "Conta"),
             (Pagina::Sobre, "Sobre"),
@@ -576,6 +587,7 @@ fn main() {
         Some("sobre") => app.pagina = Pagina::Sobre,
         Some("energia") => app.pagina = Pagina::Energia,
         Some("conta") => app.pagina = Pagina::Conta,
+        Some("firewall") => app.pagina = Pagina::Firewall,
         Some("rede") => {
             app.pagina = Pagina::Rede;
             let mut r = rede::PaginaRede::nova();

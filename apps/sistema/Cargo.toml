@@ -1,0 +1,11 @@
+[package]
+name = "sistema"
+version = "0.1.0"
+description = "Serviço do sistema do Ararinha: ações de administrador por socket, sem setuid"
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "ararinha-sistema"
+path = "src/main.rs"
