@@ -12,7 +12,7 @@
 | 2.2 LLVM e drivers de placas reais | Receitas `cmake` e `llvm` (com Clang) em `receitas/desenvolvimento/`. A fazer: Mesa com radeonsi, iris, nouveau, llvmpipe e Vulkan |
 | 2.3 Rust dentro do Ararinha | Construído em 10/11/2026. Receita `rust` 1.98.1: compilado do código-fonte e sem rede; o compilador inicial (stage0 1.97.1) entra como fonte travada pelos hashes oficiais |
 | 2.4 Plumagem v0 | Compositor em `plumagem/` (Smithay 0.7, baseado no Anvil): backend udev/DRM, papel de parede Spix com o Mingau, teclado ABNT2, Super+Enter abre o Alacritty. Receitas `plumagem`, `alacritty`, `fonte-inter` e `fonte-jetbrains-mono`; crates do Cargo.lock baixadas e travadas pela Ninhada. Primeira construção completa: 10/11/2026, 11h01. Primeira tela gráfica (Mingau no papel de parede, cursor) às 11h53; primeira janela (Alacritty, Ctrl+Alt+T) às 12h06. **Plumagem v1** (10/11, 13h28): barra de tarefas com o Mingau, botões das janelas e relógio; menu iniciar com aplicativos, Sair, Reiniciar e Desligar (também Ctrl+Esc); barra de título com Minimizar/Maximizar/Fechar; maximizar sem cobrir a barra; interface automática no tty1. A fazer: ícones reais, Ninho (login gráfico), arrastar e redimensionar pelas bordas |
-| 2.5 Som e rede | Receitas `receitas/multimidia/` (alsa-lib, pcre2, glib, lua, pipewire, wireplumber), iniciadas pela `plumagem-sessao` com D-Bus de sessão. Bandeja da barra com volume (wpctl) e estado da rede (cabo/Wi-Fi, IP). A fazer: Wi-Fi com iwd (procurar e conectar), Bluetooth |
+| 2.5 Som e rede | Receitas `receitas/multimidia/` (alsa-lib, pcre2, glib, lua, pipewire, wireplumber), iniciadas pela `plumagem-sessao` com D-Bus de sessão; o ALSA sai pelo PipeWire. Bandeja da barra com volume (wpctl) e estado da rede (cabo/Wi-Fi, IP). **Wi-Fi** (11/11): `receitas/rede/` com iwd 3.12 e o firmware de Wi-Fi/rede/vídeo (linux-firmware 20260622, só o necessário, em zstd), drivers Intel/Realtek/Atheros/MediaTek/Broadcom no Spix Kernel; Configurações › Rede e Internet lista as redes e conecta. Sons do sistema (entrar, notificação, desligar) pelo `ararinha-som`. A fazer: Bluetooth |
 | 2.6 Ninho v0 e Primeiro Voo v1 | Ninho (`plumagem --ninho`, `ninho.service` no tty1): relógio, cartão de vidro com o Mingau, senha conferida no /etc/shadow; sem contas comuns, cria a primeira conta (grupos seat, video, audio, input). Sessões dos usuários via seatd. **Primeiro Voo gráfico** (idioma, fuso e teclado no próprio Ninho, gravados em /etc/locale.conf, /etc/localtime e /etc/plumagem/teclado); a raiz cresce sozinha no primeiro boot (systemd-repart + x-systemd.growfs) |
 | 2.7 Flatpak e Flathub | Construído em 11/11/2026. Receitas em `receitas/flatpak/`: ca-certificates, libxml2, curl, a família GnuPG (libgpg-error, libassuan, libgcrypt, libksba, npth, gnupg, gpgme), libarchive, libseccomp, json-glib, fuse3, libfyaml, libxmlb, appstream, shared-mime-info, gdk-pixbuf, bubblewrap, xdg-dbus-proxy, ostree e flatpak 1.18.4, com o Flathub configurado. A sessão adiciona o Flathub do usuário e põe os apps exportados no menu Iniciar. A fazer: xdg-desktop-portal |
 | 2.8 Unidades de rede | `cifs-utils` (com `talloc`) e o ajudante setuid `ararinha-unidade`: Mapear unidade de rede no Explorador (letra, \\servidor\pasta, usuário e senha), reconexão ao entrar e desconexão pelo botão direito. As unidades aparecem em Este Computador > Locais de rede |
@@ -45,6 +45,19 @@ pelo smithay-client-toolkit e o mesmo desenho da Plumagem):
 - **Calculadora** (padrão, com teclado) e **Gerenciador de Tarefas**
   (processos com Finalizar tarefa; gráficos de processador e memória).
 
+Mais apps: **Músicas** (MP3, FLAC, OGG, WAV, M4A pelo Symphonia), **Paciência
+dos Pássaros** (Klondike com pássaros nas figuras) e **Instalar o Ararinha**
+(do pendrive para o disco, com o ajudante `ararinha-instalar`).
+
+Na Plumagem: **notificações** no canto (`ararinha-notificar "Título" "Texto"`),
+**captura de tela** com Print Screen (Imagens › Capturas de Tela) e menus do
+**botão direito** na área de trabalho e na barra de tarefas. O tempo até a
+tela de entrada aparece em Configurações › Sobre.
+
+Imagem: compiladores, cabeçalhos e bibliotecas estáticas saem da imagem e vão
+para o pacote `ararinha-dev-<arq>.tar.zst` (lista em `imagem/pacote-dev.txt`).
+
 Atalhos do Windows na Plumagem: Alt+Tab, Alt+F4, Win+D / Ctrl+Alt+D,
-Win+E / Ctrl+Alt+E, Ctrl+Esc (menu) e Ctrl+Alt+T (terminal).
+Win+E / Ctrl+Alt+E, Ctrl+Esc (menu), Ctrl+Alt+T (terminal) e Print Screen
+(captura de tela).
 
