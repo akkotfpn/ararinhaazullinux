@@ -9,3 +9,8 @@ authors.workspace = true
 [[bin]]
 name = "ararinha-unidade"
 path = "src/main.rs"
+
+# Confere a senha da própria conta (tela de bloqueio). Setuid root.
+[[bin]]
+name = "ararinha-senha"
+path = "src/senha.rs"

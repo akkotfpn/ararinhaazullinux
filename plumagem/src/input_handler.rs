@@ -76,6 +76,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             KeyAction::MostrarAreaDeTrabalho => self.mostrar_area_de_trabalho(),
             KeyAction::Captura => crate::captura::pedir(),
             KeyAction::Encaixar(lado) => self.encaixar(lado),
+            KeyAction::Bloquear => self.bloquear(),
 
             KeyAction::Quit => {
                 info!("Quitting.");
@@ -161,6 +162,19 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 FilterResult::Intercept(())
             });
             self.processar_ninho();
+            return KeyAction::None;
+        }
+
+        // Tela de bloqueio: as teclas vão para a senha.
+        if self.bloqueio.is_some() {
+            keyboard.input::<(), _>(self, keycode, state, serial, time, |data, _mods, handle| {
+                if let KeyState::Pressed = state {
+                    if let Some(b) = data.bloqueio.as_mut() {
+                        b.tecla(handle.modified_sym());
+                    }
+                }
+                FilterResult::Intercept(())
+            });
             return KeyAction::None;
         }
 
@@ -251,6 +265,11 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         if wl_pointer::ButtonState::Released == state {
             self.painel.selecao = None;
             self.painel.cursor_redim = None;
+        }
+
+        // Bloqueada: nenhum clique chega às janelas.
+        if self.bloqueio.is_some() {
+            return;
         }
 
         // Ninho (tela de entrada): só o cartão de login recebe cliques.
@@ -431,7 +450,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         &self,
         pos: Point<f64, Logical>,
     ) -> Option<(PointerFocusTarget, Point<f64, Logical>)> {
-        if self.ninho.is_some() || self.sobre_a_interface(pos) {
+        if self.ninho.is_some() || self.bloqueio.is_some() || self.sobre_a_interface(pos) {
             return None;
         }
         let output = self.space.outputs().find(|o| {
@@ -610,6 +629,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                     | KeyAction::MostrarAreaDeTrabalho
                     | KeyAction::Captura
                     | KeyAction::Encaixar(_)
+                    | KeyAction::Bloquear
                     | KeyAction::TogglePreview
                     | KeyAction::ToggleDecorations => self.process_common_key_action(action),
 
@@ -831,6 +851,7 @@ impl AnvilState<UdevData> {
                     | KeyAction::MostrarAreaDeTrabalho
                     | KeyAction::Captura
                     | KeyAction::Encaixar(_)
+                    | KeyAction::Bloquear
                     | KeyAction::TogglePreview
                     | KeyAction::ToggleDecorations => self.process_common_key_action(action),
 
@@ -1406,6 +1427,8 @@ enum KeyAction {
     Captura,
     /// Win+setas: encaixar a janela
     Encaixar(crate::janelas::Encaixe),
+    /// Win+L: bloquear a tela
+    Bloquear,
     /// Switch the current screen
     Screen(usize),
     ScaleUp,
@@ -1424,6 +1447,8 @@ fn process_keyboard_shortcut(modifiers: ModifiersState, keysym: Keysym) -> Optio
         Some(KeyAction::Quit)
     } else if modifiers.alt && !modifiers.ctrl && (keysym == Keysym::Tab || keysym == Keysym::ISO_Left_Tab) {
         Some(KeyAction::ProximaJanela)
+    } else if modifiers.logo && (keysym == Keysym::l || keysym == Keysym::L) {
+        Some(KeyAction::Bloquear)
     } else if modifiers.logo && keysym == Keysym::Left {
         Some(KeyAction::Encaixar(crate::janelas::Encaixe::Esquerda))
     } else if modifiers.logo && keysym == Keysym::Right {

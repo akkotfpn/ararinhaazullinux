@@ -1478,12 +1478,21 @@ impl AnvilState<UdevData> {
         if self.backend_data.fundo.as_ref().map(|f| f.versao) != Some(crate::fundo::versao()) {
             self.backend_data.fundo = crate::fundo::Fundo::atual();
         }
-        let interface = if let Some(ninho) = self.ninho.as_mut() {
+        if self.bloqueio.as_mut().map(|b| b.atualizar()).unwrap_or(false) {
+            self.bloqueio = None;
+        }
+        let mut interface = if let Some(ninho) = self.ninho.as_mut() {
             ninho.elementos(&mut renderer, &output, &self.space, self.pointer.current_location())
         } else {
             self.painel
                 .elementos(&mut renderer, &output, &self.space, self.pointer.current_location())
         };
+        if let (Some(b), Some(geo)) = (self.bloqueio.as_mut(), self.space.output_geometry(&output)) {
+            // A tela de bloqueio cobre tudo (o primeiro da lista fica por cima).
+            let mut v = b.elementos(&mut renderer, geo.size, output.current_scale().fractional_scale());
+            v.append(&mut interface);
+            interface = v;
+        }
         let area = if self.ninho.is_some() {
             Vec::new()
         } else {

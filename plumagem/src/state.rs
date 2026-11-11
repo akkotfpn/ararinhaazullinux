@@ -181,6 +181,8 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     pub painel: crate::painel::Painel,
     /// Tela de entrada (login), quando a Plumagem roda como Ninho.
     pub ninho: Option<crate::ninho::Ninho>,
+    /// Tela de bloqueio (Win+L), quando ativa.
+    pub bloqueio: Option<crate::bloqueio::Bloqueio>,
 }
 
 #[derive(Debug)]
@@ -755,6 +757,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             show_window_preview: false,
             painel: Default::default(),
             ninho: std::env::var_os("PLUMAGEM_NINHO").map(|_| crate::ninho::Ninho::novo()),
+            bloqueio: None,
         }
     }
 

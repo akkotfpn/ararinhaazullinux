@@ -83,6 +83,17 @@ impl<B: Backend> AnvilState<B> {
         }
     }
 
+    /// Win+L: bloqueia a tela (o teclado sai das janelas).
+    pub fn bloquear(&mut self) {
+        if self.ninho.is_some() || self.bloqueio.is_some() {
+            return;
+        }
+        self.bloqueio = Some(crate::bloqueio::Bloqueio::novo());
+        self.painel.menu_aberto = false;
+        let teclado = self.seat.get_keyboard().unwrap();
+        teclado.set_focus(self, None, SERIAL_COUNTER.next_serial());
+    }
+
     pub fn focar_janela(&mut self, w: &WindowElement) {
         self.elevar_com_filhos(w);
         let teclado = self.seat.get_keyboard().unwrap();
