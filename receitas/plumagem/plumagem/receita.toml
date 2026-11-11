@@ -137,6 +137,18 @@ install -vdm755 /usr/share/backgrounds/ararinha
 install -vm644 ../plumagem/resources/fundo-spix.png /usr/share/backgrounds/ararinha/spix.png
 install -vm644 ../plumagem/resources/papeis/*.png /usr/share/backgrounds/ararinha/
 # Sons do sistema (sintetizados por ferramentas/arte/sintetizar-sons.py).
+# Bloqueia a tela antes de suspender (pelo FIFO de controle da Plumagem).
+install -vdm755 /usr/lib/systemd/system-sleep
+cat > /usr/lib/systemd/system-sleep/ararinha-bloquear << 'FIM'
+#!/bin/sh
+[ "$1" = pre ] || exit 0
+for f in /run/user/*/plumagem-ctl; do
+  [ -p "$f" ] && timeout 1 sh -c "echo bloquear > '$f'"
+done
+sleep 0.4
+exit 0
+FIM
+chmod 755 /usr/lib/systemd/system-sleep/ararinha-bloquear
 install -vdm755 /usr/share/sounds/ararinha
 install -vm644 ../plumagem/resources/sons/*.wav /usr/share/sounds/ararinha/
 # ararinha-notificar "Título" "Texto": mostra uma notificação na Plumagem.
