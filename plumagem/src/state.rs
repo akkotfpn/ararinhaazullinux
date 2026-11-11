@@ -671,9 +671,21 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
 
         let pointer = seat.add_pointer();
         // Teclado ABNT2 por padrão (ADR 0009); XKB_DEFAULT_LAYOUT troca.
-        let layout = std::env::var("XKB_DEFAULT_LAYOUT").unwrap_or_else(|_| "br".into());
+        // O Primeiro Voo grava o teclado escolhido em /etc/plumagem/teclado
+        // ("layout variante").
+        let escolhido = std::fs::read_to_string("/etc/plumagem/teclado").unwrap_or_default();
+        let mut partes = escolhido.split_whitespace();
+        let layout = std::env::var("XKB_DEFAULT_LAYOUT")
+            .ok()
+            .or_else(|| partes.next().map(String::from))
+            .unwrap_or_else(|| "br".into());
+        let variante = std::env::var("XKB_DEFAULT_VARIANT")
+            .ok()
+            .or_else(|| partes.next().map(String::from))
+            .unwrap_or_default();
         let xkb = XkbConfig {
             layout: &layout,
+            variant: &variante,
             ..XkbConfig::default()
         };
         seat.add_keyboard(xkb, 200, 25)

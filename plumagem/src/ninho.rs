@@ -56,18 +56,45 @@ pub struct Usuario {
 enum Modo {
     Entrar,
     Criar,
+    /// Primeiro Voo: idioma e teclado.
+    Idioma,
+    /// Primeiro Voo: fuso horário.
+    Fuso,
 }
+
+/// Opções do Primeiro Voo.
+const IDIOMAS: [(&str, &str); 2] = [("Português (Brasil)", "pt_BR.UTF-8"), ("English (US)", "en_US.UTF-8")];
+/// Nome, layout XKB, variante XKB e mapa do console.
+const TECLADOS: [(&str, &str, &str, &str); 3] = [
+    ("ABNT2 (Brasil)", "br", "", "br-abnt2"),
+    ("US Internacional (com acentos)", "us", "intl", "us-acentos"),
+    ("US (inglês)", "us", "", "us"),
+];
+const FUSOS: [(&str, &str); 7] = [
+    ("Brasília (SP, RJ, MG, Sul, Nordeste…)", "America/Sao_Paulo"),
+    ("Manaus (Amazonas, Roraima, Rondônia)", "America/Manaus"),
+    ("Cuiabá (Mato Grosso, MS)", "America/Cuiaba"),
+    ("Rio Branco (Acre)", "America/Rio_Branco"),
+    ("Fernando de Noronha", "America/Noronha"),
+    ("Lisboa (Portugal)", "Europe/Lisbon"),
+    ("UTC (horário universal)", "UTC"),
+];
+/// Marca de que o Primeiro Voo já foi feito.
+const MARCA_VOO: &str = "/var/lib/ararinha/primeiro-voo";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Pedido {
     Entrar,
     Criar,
+    Continuar,
     Reiniciar,
     Desligar,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Alvo {
+    /// Opção do Primeiro Voo: grupo (0 idioma, 1 teclado, 2 fuso) e índice.
+    Opcao(u8, usize),
     Campo(usize),
     Botao,
     Anterior,
@@ -77,6 +104,8 @@ enum Alvo {
 }
 
 pub struct Ninho {
+    /// Escolhas do Primeiro Voo: idioma, teclado e fuso.
+    voo: (usize, usize, usize),
     usuarios: Vec<Usuario>,
     sel: usize,
     modo: Modo,
@@ -181,8 +210,15 @@ fn senha_confere(login: &str, senha: &str) -> bool {
 impl Ninho {
     pub fn novo() -> Ninho {
         let usuarios = ler_usuarios();
-        let modo = if usuarios.is_empty() { Modo::Criar } else { Modo::Entrar };
+        let modo = if !usuarios.is_empty() {
+            Modo::Entrar
+        } else if std::path::Path::new(MARCA_VOO).exists() {
+            Modo::Criar
+        } else {
+            Modo::Idioma
+        };
         let mut n = Ninho {
+            voo: (0, 0, 0),
             usuarios,
             sel: 0,
             modo,
@@ -202,6 +238,7 @@ impl Ninho {
         self.campos = match self.modo {
             Modo::Entrar => vec![String::new()],
             Modo::Criar => vec![String::new(), String::new(), String::new()],
+            Modo::Idioma | Modo::Fuso => vec![String::new()],
         };
         self.foco = 0;
     }
@@ -213,7 +250,7 @@ impl Ninho {
     fn cartao_a(&self) -> i32 {
         match self.modo {
             Modo::Entrar => CARTAO_A_ENTRAR,
-            Modo::Criar => CARTAO_A_CRIAR,
+            Modo::Criar | Modo::Idioma | Modo::Fuso => CARTAO_A_CRIAR,
         }
     }
 
@@ -227,6 +264,21 @@ impl Ninho {
         match self.modo {
             Modo::Entrar => (vec![236.0], 290.0),
             Modo::Criar => (vec![196.0, 290.0, 344.0], 404.0),
+            Modo::Idioma | Modo::Fuso => (vec![], 430.0),
+        }
+    }
+
+    /// Opções clicáveis do Primeiro Voo: (grupo, índice, y, texto).
+    fn opcoes(&self) -> Vec<(u8, usize, f32, &'static str)> {
+        match self.modo {
+            Modo::Idioma => {
+                let mut v: Vec<(u8, usize, f32, &'static str)> =
+                    IDIOMAS.iter().enumerate().map(|(i, o)| (0, i, 196.0 + i as f32 * 36.0, o.0)).collect();
+                v.extend(TECLADOS.iter().enumerate().map(|(i, o)| (1, i, 306.0 + i as f32 * 36.0, o.0)));
+                v
+            }
+            Modo::Fuso => FUSOS.iter().enumerate().map(|(i, o)| (2, i, 168.0 + i as f32 * 36.0, o.0)).collect(),
+            _ => Vec::new(),
         }
     }
 
@@ -250,6 +302,11 @@ impl Ninho {
         if dentro_x && cy >= botao && cy < botao + CAMPO_A {
             return Some(Alvo::Botao);
         }
+        for (g, i, oy, _) in self.opcoes() {
+            if dentro_x && cy >= oy && cy < oy + 32.0 {
+                return Some(Alvo::Opcao(g, i));
+            }
+        }
         if self.modo == Modo::Entrar && self.usuarios.len() > 1 && (176.0..212.0).contains(&cy) {
             if (CAMPO_X..CAMPO_X + 36.0).contains(&cx) {
                 return Some(Alvo::Anterior);
@@ -264,6 +321,11 @@ impl Ninho {
     /// Clique com o botão esquerdo em `p` (coordenadas da tela).
     pub fn clique(&mut self, p: Point<f64, Logical>, tela: Size<i32, Logical>) {
         match self.alvo(p, tela) {
+            Some(Alvo::Opcao(g, i)) => match g {
+                0 => self.voo.0 = i,
+                1 => self.voo.1 = i,
+                _ => self.voo.2 = i,
+            },
             Some(Alvo::Campo(i)) => self.foco = i,
             Some(Alvo::Botao) => self.enviar(),
             Some(Alvo::Anterior) => self.trocar_usuario(-1),
@@ -287,10 +349,24 @@ impl Ninho {
         self.pedido = Some(match self.modo {
             Modo::Entrar => Pedido::Entrar,
             Modo::Criar => Pedido::Criar,
+            Modo::Idioma | Modo::Fuso => Pedido::Continuar,
         });
     }
 
     pub fn tecla(&mut self, sym: Keysym, mods: ModifiersState) {
+        // Primeiro Voo: setas escolhem, Enter continua.
+        if matches!(self.modo, Modo::Idioma | Modo::Fuso) {
+            match sym {
+                Keysym::Return | Keysym::KP_Enter => self.enviar(),
+                Keysym::Down if self.modo == Modo::Fuso => self.voo.2 = (self.voo.2 + 1).min(FUSOS.len() - 1),
+                Keysym::Up if self.modo == Modo::Fuso => self.voo.2 = self.voo.2.saturating_sub(1),
+                Keysym::Down => self.voo.1 = (self.voo.1 + 1).min(TECLADOS.len() - 1),
+                Keysym::Up => self.voo.1 = self.voo.1.saturating_sub(1),
+                Keysym::Left | Keysym::Right => self.voo.0 = 1 - self.voo.0,
+                _ => {}
+            }
+            return;
+        }
         match sym {
             Keysym::Return | Keysym::KP_Enter => {
                 if self.foco + 1 < self.campos.len() {
@@ -352,6 +428,16 @@ impl Ninho {
                     None
                 }
             }
+            Pedido::Continuar => {
+                if self.modo == Modo::Idioma {
+                    self.modo = Modo::Fuso;
+                } else {
+                    self.aplicar_voo();
+                    self.modo = Modo::Criar;
+                    self.limpar_campos();
+                }
+                None
+            }
             Pedido::Criar => match self.criar_conta() {
                 Ok(login) => Some(login),
                 Err(e) => {
@@ -360,6 +446,22 @@ impl Ninho {
                 }
             },
         }
+    }
+
+    /// Grava idioma, teclado e fuso escolhidos no Primeiro Voo.
+    fn aplicar_voo(&mut self) {
+        let (idioma, teclado, fuso) = (IDIOMAS[self.voo.0].1, TECLADOS[self.voo.1], FUSOS[self.voo.2].1);
+        let _ = std::fs::write("/etc/locale.conf", format!("LANG={idioma}\n"));
+        let _ = std::fs::write("/etc/vconsole.conf", format!("KEYMAP={}\nFONT=eurlatgr\n", teclado.3));
+        let _ = std::fs::create_dir_all("/etc/plumagem");
+        let _ = std::fs::write("/etc/plumagem/teclado", format!("{} {}\n", teclado.1, teclado.2));
+        let _ = std::fs::remove_file("/etc/localtime");
+        let _ = std::os::unix::fs::symlink(format!("../usr/share/zoneinfo/{fuso}"), "/etc/localtime");
+        let _ = std::fs::create_dir_all("/var/lib/ararinha");
+        let _ = std::fs::write(MARCA_VOO, "");
+        // O relógio da tela passa a usar o fuso novo já no próximo minuto.
+        self.relogio.0 = 0;
+        info!(idioma, teclado = teclado.1, fuso, "Primeiro Voo aplicado");
     }
 
     fn criar_conta(&mut self) -> Result<String, String> {
@@ -406,6 +508,23 @@ impl Ninho {
         }
         if !chpasswd.wait().map(|s| s.success()).unwrap_or(false) {
             return Err("Não deu para definir a senha (chpasswd).".into());
+        }
+        // Primeira conta: a mesma senha passa a valer para o administrador
+        // (root), que até aqui estava sem senha.
+        let shadow = std::fs::read_to_string("/etc/shadow").unwrap_or_default();
+        let root_sem_senha = shadow
+            .lines()
+            .find_map(|l| l.strip_prefix("root:"))
+            .map(|r| r.split(':').next().unwrap_or("").is_empty())
+            .unwrap_or(false);
+        if root_sem_senha {
+            if let Ok(mut c) = Command::new("chpasswd").stdin(Stdio::piped()).spawn() {
+                if let Some(mut e) = c.stdin.take() {
+                    let _ = writeln!(e, "root:{}", self.campos[1]);
+                }
+                let _ = c.wait();
+                let _ = Command::new("chage").args(["-d", "-1", "root"]).status();
+            }
         }
         info!(login, "conta criada");
         Ok(login)
@@ -465,7 +584,10 @@ impl Ninho {
 
         let partes: [(String, Point<i32, Logical>, u8); 3] = [
             (
-                format!("c|{:?}|{:?}|{}|{:?}|{:?}|{}|{o:?}|{}", self.modo, self.campos, self.foco, self.erro, hover, self.sel, self.relogio.1),
+                format!(
+                    "c|{:?}|{:?}|{}|{:?}|{:?}|{}|{o:?}|{}|{:?}",
+                    self.modo, self.campos, self.foco, self.erro, hover, self.sel, self.relogio.1, self.voo
+                ),
                 o,
                 0,
             ),
@@ -601,6 +723,40 @@ impl Ninho {
                 self.campo(&mut t, 0, campos[0], "Senha", true, hover);
                 self.botao(&mut t, botao, "Entrar", hover);
             }
+            Modo::Idioma | Modo::Fuso => {
+                let (titulo, sub) = if self.modo == Modo::Idioma {
+                    ("Bem-vindo ao Ararinha!", "Escolha o idioma e o teclado.")
+                } else {
+                    ("Qual é o seu fuso horário?", "O relógio usa este fuso.")
+                };
+                Self::centralizado(&mut t, 136.0, 21.0, tema::TEXTO, titulo);
+                Self::centralizado(&mut t, 158.0, 13.0, tema::TEXTO_SECUNDARIO, sub);
+                if self.modo == Modo::Idioma {
+                    t.texto(CAMPO_X, 190.0, 12.0, tema::TEXTO_SECUNDARIO, "Idioma");
+                    t.texto(CAMPO_X, 300.0, 12.0, tema::TEXTO_SECUNDARIO, "Teclado");
+                }
+                for (g, i, oy, nome) in self.opcoes() {
+                    let sel = match g {
+                        0 => self.voo.0 == i,
+                        1 => self.voo.1 == i,
+                        _ => self.voo.2 == i,
+                    };
+                    let oy = if g == 2 { oy } else { oy + 4.0 };
+                    if sel {
+                        t.retangulo(CAMPO_X, oy, CAMPO_L, 30.0, 7.0, tema::DESTAQUE_SUAVE);
+                    } else if hover == Some(Alvo::Opcao(g, i)) {
+                        t.retangulo(CAMPO_X, oy, CAMPO_L, 30.0, 7.0, tema::SUPERFICIE_ALTA);
+                    }
+                    // Bolinha de escolha.
+                    t.retangulo(CAMPO_X + 10.0, oy + 8.0, 14.0, 14.0, 7.0, if sel { tema::DESTAQUE } else { tema::BORDA });
+                    t.retangulo(CAMPO_X + 12.0, oy + 10.0, 10.0, 10.0, 5.0, tema::BRANCO);
+                    if sel {
+                        t.retangulo(CAMPO_X + 14.0, oy + 12.0, 6.0, 6.0, 3.0, tema::DESTAQUE);
+                    }
+                    t.texto(CAMPO_X + 34.0, oy + 20.0, 13.5, tema::TEXTO, nome);
+                }
+                self.botao(&mut t, botao, "Continuar", hover);
+            }
             Modo::Criar => {
                 Self::centralizado(&mut t, 148.0, 21.0, tema::TEXTO, "Bem-vindo ao Ararinha!");
                 Self::centralizado(&mut t, 172.0, 13.0, tema::TEXTO_SECUNDARIO, "Vamos criar a sua conta.");
@@ -612,6 +768,13 @@ impl Ninho {
                 self.campo(&mut t, 1, campos[1], "Senha", true, hover);
                 self.campo(&mut t, 2, campos[2], "Confirme a senha", true, hover);
                 self.botao(&mut t, botao, "Criar conta", hover);
+                t.texto(
+                    CAMPO_X,
+                    botao + CAMPO_A + 50.0,
+                    11.5,
+                    tema::TEXTO_SECUNDARIO,
+                    "Esta senha também vale para o administrador.",
+                );
             }
         }
         if let Some(e) = &self.erro {
