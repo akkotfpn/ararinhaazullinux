@@ -99,6 +99,9 @@ for b in usr/bin/plumagem usr/bin/explorador usr/bin/configuracoes; do
   fi
 done
 echo "== Pastas na raiz da imagem: $(ls "$PODADA" | tr '\n' ' ')"
+for f in usr/bin/systemd-sbsign usr/lib/systemd/systemd-sbsign usr/bin/openssl usr/sbin/cryptsetup usr/lib/ararinha/vmlinuz-spix-cripto; do
+  if [[ -e "$PODADA/$f" ]]; then echo "   tem /$f ($(du -h "$PODADA/$f" | cut -f1))"; else echo "   falta /$f"; fi
+done
 
 echo "== Fora da imagem: $(wc -l < "$LISTA") itens; pacote dev: $(du -h "$DEV" 2>/dev/null | cut -f1)"
 echo "== Tamanho da raiz: $(du -sh "$RAIZ" | cut -f1) -> $(du -sh "$PODADA" | cut -f1)"
