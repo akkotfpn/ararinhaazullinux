@@ -41,7 +41,7 @@ shopt -s nullglob
   while IFS= read -r padrao; do
     [[ -z "$padrao" || "$padrao" == \#* ]] && continue
     for p in $padrao; do
-      printf '%s\n' "$p"
+      [[ -e "$p" || -L "$p" ]] && printf '%s\n' "$p"
     done
   done < "$REPO/imagem/pacote-dev.txt" ) | sort -u > "$LISTA"
 shopt -u nullglob
