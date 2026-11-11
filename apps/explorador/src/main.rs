@@ -5,6 +5,7 @@
 //! "Este Computador", Disco Local (C:), unidades D:, E:..., pastas do
 //! usuário com os nomes de sempre e navegação com Voltar, Avançar e Subir.
 
+mod abrir_com;
 mod tipos;
 
 use std::{
@@ -189,9 +190,51 @@ struct Explorador {
     /// Painel de visualização (à direita): o arquivo mostrado e a prévia.
     previa: Option<(PathBuf, Previa)>,
     previa_rx: Option<std::sync::mpsc::Receiver<(PathBuf, Previa)>>,
+    /// Janela "Abrir com…".
+    abrir_com: Option<AbrirCom>,
     /// Quando as unidades foram lidas (pendrives entram e saem).
     unidades_em: Option<std::time::Instant>,
 }
+
+/// Janela "Como você quer abrir este arquivo?".
+struct AbrirCom {
+    arquivo: PathBuf,
+    tipo: String,
+    ext: String,
+    apps: Vec<abrir_com::AppDesktop>,
+    outros: Vec<abrir_com::AppDesktop>,
+    ver_todos: bool,
+    sel: usize,
+    sempre: bool,
+    rolagem: f32,
+}
+
+impl AbrirCom {
+    fn novo(arquivo: &Path) -> AbrirCom {
+        let nome = arquivo.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+        let tipo = abrir_com::tipo_mime(&nome);
+        let (apps, outros) = abrir_com::para_tipo(&tipo);
+        let ext = arquivo.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
+        let ver_todos = apps.is_empty();
+        AbrirCom { arquivo: arquivo.to_path_buf(), tipo, ext, apps, outros, ver_todos, sel: 0, sempre: false, rolagem: 0.0 }
+    }
+
+    fn visiveis(&self) -> Vec<&abrir_com::AppDesktop> {
+        let mut v: Vec<&abrir_com::AppDesktop> = self.apps.iter().collect();
+        if self.ver_todos {
+            v.extend(self.outros.iter());
+        }
+        v
+    }
+
+    /// (x, y, largura, altura) da caixa e o topo/fundo da lista.
+    fn caixa(l: f32, a: f32) -> (f32, f32, f32, f32, f32, f32) {
+        let (cl, ca) = (460.0_f32.min(l - 20.0), 480.0_f32.min(a - 20.0));
+        let (x, y) = ((l - cl) / 2.0, (a - ca) / 2.0);
+        (x, y, cl, ca, y + 96.0, y + ca - 108.0)
+    }
+}
+const ABRIR_ITEM: f32 = 40.0;
 
 /// O que o painel de visualização mostra de um arquivo.
 enum Previa {
@@ -257,6 +300,7 @@ enum Acao {
     SelecionarTudo,
     Extrair,
     Compactar,
+    AbrirCom,
 }
 
 /// Arquivos que o bsdtar (libarchive) sabe abrir.
@@ -494,6 +538,7 @@ impl Explorador {
             previa: None,
             previa_rx: None,
             unidades_em: None,
+            abrir_com: None,
         };
         // Abre numa pasta passada como argumento (ou na pasta de um arquivo,
         // já selecionado: "Mostrar na pasta" do navegador). Aceita file://.
@@ -1079,6 +1124,10 @@ impl Explorador {
         match alvo {
             Some(i_menu) => {
                 let mut v = vec![("Abrir", Acao::Abrir, !varios)];
+                let arquivo = !varios && self.entradas.get(i_menu).is_some_and(|e| !e.pasta);
+                if arquivo && !lixeira {
+                    v.push(("Abrir com…", Acao::AbrirCom, true));
+                }
                 if lixeira {
                     v.push(("Restaurar", Acao::Restaurar, true));
                 }
@@ -1174,6 +1223,11 @@ impl Explorador {
             Acao::Abrir => {
                 if let Some(e) = entrada {
                     self.abrir(&e);
+                }
+            }
+            Acao::AbrirCom => {
+                if let Some(e) = entrada {
+                    self.abrir_com = Some(AbrirCom::novo(&e.caminho));
                 }
             }
             Acao::Copiar | Acao::Recortar => {
@@ -1412,15 +1466,21 @@ impl Explorador {
                 self.executar_app = Some(e.caminho.clone());
                 return;
             }
+            // App padrão escolhido pela pessoa ("Sempre usar este app").
+            let tipo = abrir_com::tipo_mime(&e.nome);
+            if let Some(app) = abrir_com::padrao(&tipo).and_then(|id| abrir_com::achar(&id)) {
+                if let Err(err) = abrir_com::abrir(&app, &e.caminho) {
+                    self.aviso = Some(format!("Não deu para abrir: {err}"));
+                }
+                return;
+            }
             match programa {
                 Some(p) => {
                     if let Err(err) = Command::new(p).arg(&e.caminho).spawn() {
                         self.aviso = Some(format!("Não deu para abrir: {err}"));
                     }
                 }
-                None => {
-                    self.aviso = Some(format!("Ainda não há um app para abrir arquivos .{ext} (\"{}\").", e.nome))
-                }
+                None => self.abrir_com = Some(AbrirCom::novo(&e.caminho)),
             }
         }
     }
@@ -1702,6 +1762,13 @@ impl App for Explorador {
             ui.clique_direito = false;
             ui.rolagem = 0.0;
         }
+        if self.abrir_com.is_some() {
+            self.entrada_abrir_com(ui, l_tela, a_tela);
+            ui.clique = false;
+            ui.duplo = false;
+            ui.clique_direito = false;
+            ui.rolagem = 0.0;
+        }
         if let Some(app) = self.executar_app.clone() {
             let (x, y, cl, ca) = Self::caixa_executar(l_tela, a_tela);
             if ui.clicou(x + cl - 130.0, y + ca - 56.0, 110.0, 36.0) {
@@ -1887,6 +1954,9 @@ impl App for Explorador {
             ui.tela.retangulo(cx + 1.0, by + 1.0, 108.0, 34.0, 7.0, if s { tema::SUPERFICIE_ALTA() } else { tema::JANELA() });
             ui.tela.texto(cx + 24.0, by + 23.0, 13.5, tema::TEXTO(), "Cancelar");
         }
+        if self.abrir_com.is_some() {
+            self.desenhar_abrir_com(ui, l, a);
+        }
         if self.sair {
             ui.fechar = true;
         }
@@ -1894,6 +1964,103 @@ impl App for Explorador {
 }
 
 impl Explorador {
+    fn entrada_abrir_com(&mut self, ui: &mut Ui, l: f32, a: f32) {
+        let (x, y, cl, ca, topo, fundo) = AbrirCom::caixa(l, a);
+        let Some(ac) = self.abrir_com.as_mut() else { return };
+        let n = ac.visiveis().len();
+        let mais = !ac.ver_todos && !ac.outros.is_empty();
+        let total = (n + mais as usize) as f32 * ABRIR_ITEM;
+        if ui.sobre(x, topo, cl, fundo - topo) {
+            ac.rolagem = (ac.rolagem + ui.rolagem * 2.0).clamp(0.0, (total - (fundo - topo)).max(0.0));
+        }
+        let mut abrir = false;
+        if let Some((mx, my)) = ui.mouse {
+            if (ui.clique || ui.duplo) && mx >= x + 12.0 && mx < x + cl - 12.0 && my >= topo && my < fundo {
+                let i = ((my - topo + ac.rolagem) / ABRIR_ITEM) as usize;
+                if i < n {
+                    ac.sel = i;
+                    abrir = ui.duplo;
+                } else if mais && i == n {
+                    ac.ver_todos = true;
+                }
+            }
+        }
+        if ui.clicou(x + 24.0, fundo + 14.0, cl - 48.0, 28.0) {
+            ac.sempre = !ac.sempre;
+        }
+        let by = y + ca - 56.0;
+        if ui.clicou(x + cl - 130.0, by, 110.0, 36.0) {
+            abrir = true;
+        } else if ui.clicou(x + cl - 250.0, by, 110.0, 36.0) {
+            self.abrir_com = None;
+            return;
+        }
+        if abrir {
+            let Some(ac) = self.abrir_com.take() else { return };
+            let Some(app) = ac.visiveis().get(ac.sel).map(|a| (*a).clone()) else { return };
+            if ac.sempre {
+                if let Err(e) = abrir_com::definir_padrao(&ac.tipo, &app.id) {
+                    self.aviso = Some(format!("Não deu para guardar o app padrão: {e}"));
+                }
+            }
+            if let Err(e) = abrir_com::abrir(&app, &ac.arquivo) {
+                self.aviso = Some(format!("Não deu para abrir com {}: {e}", app.nome));
+            }
+        }
+    }
+
+    fn desenhar_abrir_com(&mut self, ui: &mut Ui, l: f32, a: f32) {
+        let (x, y, cl, ca, topo, fundo) = AbrirCom::caixa(l, a);
+        let Some(ac) = self.abrir_com.as_ref() else { return };
+        ui.tela.retangulo(0.0, 0.0, l, a, 0.0, Cor(11, 26, 46, 90));
+        ui.tela.retangulo(x, y, cl, ca, 12.0, tema::BORDA());
+        ui.tela.retangulo(x + 1.0, y + 1.0, cl - 2.0, ca - 2.0, 11.0, tema::JANELA());
+        ui.tela.texto(x + 24.0, y + 40.0, 16.0, tema::TEXTO(), "Como você quer abrir este arquivo?");
+        let nome = ac.arquivo.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+        ui.tela.texto(x + 24.0, y + 66.0, 12.5, tema::TEXTO_SECUNDARIO(), &desenho::encurtar(12.5, &nome, cl - 48.0));
+        let vis = ac.visiveis();
+        if vis.is_empty() && ac.outros.is_empty() {
+            ui.tela.texto(x + 24.0, topo + 24.0, 13.0, tema::TEXTO_SECUNDARIO(), "Nenhum app instalado abre este tipo de arquivo.");
+            ui.tela.texto(x + 24.0, topo + 44.0, 13.0, tema::TEXTO_SECUNDARIO(), "Procure um na Central de Apps.");
+        }
+        let mais = !ac.ver_todos && !ac.outros.is_empty();
+        let mut linhas: Vec<(String, bool, bool)> = vis.iter().enumerate().map(|(i, a)| (a.nome.clone(), i == ac.sel, i == ac.apps.len() && ac.ver_todos && !ac.apps.is_empty())).collect();
+        if mais {
+            linhas.push(("Mais apps…".into(), false, false));
+        }
+        for (i, (nome, sel, separa)) in linhas.iter().enumerate() {
+            let iy = topo + i as f32 * ABRIR_ITEM - ac.rolagem;
+            // Só os itens inteiros (a lista rola).
+            if iy < topo - 1.0 || iy + ABRIR_ITEM > fundo + 1.0 {
+                continue;
+            }
+            if *separa {
+                ui.tela.retangulo(x + 24.0, iy - 1.0, cl - 48.0, 1.0, 0.0, tema::BORDA());
+            }
+            if *sel {
+                ui.tela.retangulo(x + 12.0, iy + 2.0, cl - 24.0, ABRIR_ITEM - 4.0, 6.0, tema::DESTAQUE_SUAVE());
+            } else if ui.sobre(x + 12.0, iy + 2.0, cl - 24.0, ABRIR_ITEM - 4.0) {
+                ui.tela.retangulo(x + 12.0, iy + 2.0, cl - 24.0, ABRIR_ITEM - 4.0, 6.0, tema::SUPERFICIE_ALTA());
+            }
+            let cor = if mais && i == linhas.len() - 1 { tema::DESTAQUE() } else { tema::TEXTO() };
+            ui.tela.texto(x + 28.0, iy + 25.0, 13.5, cor, &desenho::encurtar(13.5, nome, cl - 60.0));
+        }
+        let rotulo = if ac.ext.is_empty() { "Sempre usar este app para este tipo de arquivo".to_string() } else { format!("Sempre usar este app para arquivos .{}", ac.ext) };
+        let mut sempre = ac.sempre;
+        penas::componentes::caixa_marcar(ui, x + 28.0, fundo + 18.0, &rotulo, &mut sempre);
+        let pode = !vis.is_empty();
+        let (bx, by) = (x + cl - 130.0, y + ca - 56.0);
+        let s = ui.sobre(bx, by, 110.0, 36.0) && pode;
+        ui.tela.retangulo(bx, by, 110.0, 36.0, 8.0, if !pode { tema::BORDA() } else if s { tema::DESTAQUE_FORTE() } else { tema::DESTAQUE() });
+        let lt = desenho::medir(13.5, "Abrir");
+        ui.tela.texto(bx + 55.0 - lt / 2.0, by + 23.0, 13.5, tema::BRANCO(), "Abrir");
+        let cx = x + cl - 250.0;
+        let s = ui.sobre(cx, by, 110.0, 36.0);
+        ui.tela.retangulo(cx, by, 110.0, 36.0, 8.0, tema::BORDA());
+        ui.tela.retangulo(cx + 1.0, by + 1.0, 108.0, 34.0, 7.0, if s { tema::SUPERFICIE_ALTA() } else { tema::JANELA() });
+        ui.tela.texto(cx + 24.0, by + 23.0, 13.5, tema::TEXTO(), "Cancelar");
+    }
+
     fn caixa_executar(l: f32, a: f32) -> (f32, f32, f32, f32) {
         let (cl, ca) = (480.0_f32.min(l - 20.0), 210.0);
         ((l - cl) / 2.0, (a - ca) / 2.0, cl, ca)
