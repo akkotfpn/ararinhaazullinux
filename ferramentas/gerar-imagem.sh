@@ -83,7 +83,9 @@ if command -v strip >/dev/null; then
       *) modo=--strip-all ;;
     esac
     if strip $modo -o "$f.selo" "$f" 2>/dev/null; then
-      chmod --reference="$f" "$f.selo" && chown --reference="$f" "$f.selo" 2>/dev/null || true
+      # Dono primeiro e permissões depois: o chown apaga o bit setuid.
+      chown --reference="$f" "$f.selo" 2>/dev/null || true
+      chmod --reference="$f" "$f.selo" 2>/dev/null || true
       mv -f "$f.selo" "$f"; n=$((n+1))
     else
       rm -f "$f.selo"
@@ -91,6 +93,12 @@ if command -v strip >/dev/null; then
   done < <(find "$PODADA/usr/bin" "$PODADA/usr/sbin" "$PODADA/usr/lib" "$PODADA/usr/libexec" \
              -xdev -type f \( -perm -u+x -o -name '*.so' -o -name '*.so.*' -o -name '*.ko' \) -print0 2>/dev/null)
   echo "== Programas e bibliotecas sem símbolos: $n"
+  # Confere que os ajudantes continuam setuid.
+  for b in usr/bin/ararinha-senha usr/bin/ararinha-instalar usr/bin/ararinha-unidade; do
+    if [[ -f "$PODADA/$b" && ! -u "$PODADA/$b" ]]; then
+      echo "ERRO: $b perdeu o setuid" >&2; exit 1
+    fi
+  done
 fi
 # 3) Confere: nenhum caminho da construção pode sobrar nos nossos programas.
 for b in usr/bin/plumagem usr/bin/explorador usr/bin/configuracoes; do
