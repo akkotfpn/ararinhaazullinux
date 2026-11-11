@@ -217,13 +217,25 @@ impl<B: Backend> AnvilState<B> {
                 info!("saindo pela opção do menu");
                 self.running.store(false, Ordering::SeqCst);
             }
-            Alvo::Reiniciar => self.executar_programa("systemctl reboot"),
-            Alvo::Desligar => self.executar_programa("systemctl poweroff"),
+            Alvo::Reiniciar => self.executar_programa(
+                "sh -c 'ararinha-som /usr/share/sounds/ararinha/desligar.wav; systemctl reboot'",
+            ),
+            Alvo::Desligar => self.executar_programa(
+                "sh -c 'ararinha-som /usr/share/sounds/ararinha/desligar.wav; systemctl poweroff'",
+            ),
             Alvo::Rede => {
                 self.painel.menu_aberto = false;
                 self.painel.rede_aberta = !self.painel.rede_aberta;
             }
             Alvo::RedePainel => {}
+            Alvo::Aviso(i) => {
+                if i < self.painel.avisos.len() {
+                    let aviso = self.painel.avisos.remove(i);
+                    if let Some(cmd) = aviso.acao {
+                        self.executar_programa(&cmd);
+                    }
+                }
+            }
             Alvo::RedeConfig => {
                 self.painel.rede_aberta = false;
                 self.executar_programa("configuracoes rede");

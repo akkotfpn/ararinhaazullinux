@@ -10,3 +10,12 @@ authors.workspace = true
 penas = { path = "../penas" }
 alsa = "0.9"
 symphonia = { version = "0.5", default-features = false, features = ["mp3", "flac", "ogg", "vorbis", "wav", "pcm", "aac", "isomp4"] }
+
+[[bin]]
+name = "musicas"
+path = "src/main.rs"
+
+# Toca os sons do sistema (sessão iniciada, notificação, desligar...).
+[[bin]]
+name = "ararinha-som"
+path = "src/som.rs"

@@ -47,6 +47,7 @@ struct Configuracoes {
     barra: String,
     papel: String,
     tema: String,
+    sons: String,
     papeis: Vec<Papel>,
     miniaturas: Option<Receiver<(usize, penas::desenho::Imagem)>>,
     energia: String,
@@ -191,6 +192,7 @@ impl Configuracoes {
             barra: ler_chave("barra").unwrap_or_else(|| "media".into()),
             papel: ler_chave("papel").unwrap_or_else(|| "spix".into()),
             tema: ler_chave("tema").unwrap_or_else(|| "claro".into()),
+            sons: ler_chave("sons").unwrap_or_else(|| "sim".into()),
             papeis,
             miniaturas: Some(rx),
             energia: ler_energia(),
@@ -271,6 +273,26 @@ impl Configuracoes {
             ui.tela.texto(x + 38.0, y + 23.0, 13.5, tema::TEXTO(), nome);
             if ui.clicou(x, y, w, h) && !sel {
                 novo_modo = Some(*id);
+            }
+        }
+        // Sons do sistema (ligados/desligados), na mesma linha.
+        {
+            let (x, y, w, h) = (x0 + 32.0 + 2.0 * 132.0 + 24.0, y_modo + 14.0, 190.0, 36.0);
+            let ligados = self.sons != "nao";
+            let sobre = ui.sobre(x, y, w, h);
+            ui.tela.retangulo(x, y, w, h, 8.0, if sobre { tema::TEXTO_SECUNDARIO() } else { tema::BORDA() });
+            ui.tela.retangulo(x + 1.0, y + 1.0, w - 2.0, h - 2.0, 7.0, tema::JANELA());
+            // Chavinha
+            let (cx, cy) = (x + 12.0, y + 9.0);
+            ui.tela.retangulo(cx, cy, 34.0, 18.0, 9.0, if ligados { tema::DESTAQUE() } else { tema::BORDA() });
+            let bx = if ligados { cx + 18.0 } else { cx + 2.0 };
+            ui.tela.retangulo(bx, cy + 2.0, 14.0, 14.0, 7.0, tema::BRANCO());
+            ui.tela.texto(x + 56.0, y + 23.0, 13.5, tema::TEXTO(), if ligados { "Sons do sistema" } else { "Sons desligados" });
+            if ui.clicou(x, y, w, h) {
+                let novo = if ligados { "nao" } else { "sim" };
+                if self.salvar("sons", novo) {
+                    self.sons = novo.to_string();
+                }
             }
         }
         if let Some(id) = novo_modo {

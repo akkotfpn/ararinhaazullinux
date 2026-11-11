@@ -150,6 +150,35 @@ pub enum Alvo {
     RedePainel,
     /// "Configurações de rede e Wi-Fi" no painel de rede.
     RedeConfig,
+    /// Uma notificação (o clique fecha).
+    Aviso(usize),
+}
+
+/// Notificação mostrada no canto da tela por alguns segundos.
+#[derive(Debug, Clone)]
+pub struct Aviso {
+    pub titulo: String,
+    pub texto: String,
+    /// Comando para o clique (por exemplo, abrir a captura).
+    pub acao: Option<String>,
+    ate: std::time::Instant,
+}
+
+const AVISO_L: i32 = 360;
+const AVISO_A: i32 = 78;
+const AVISO_ESPACO: i32 = 8;
+
+/// Pasta onde programas deixam notificações (ver `ararinha-notificar`).
+fn pasta_avisos() -> Option<std::path::PathBuf> {
+    std::env::var("XDG_RUNTIME_DIR").ok().map(|d| std::path::PathBuf::from(d).join("ararinha-avisos"))
+}
+
+/// Toca um som do sistema sem esperar (o ararinha-som respeita "sons = nao").
+pub fn tocar_som(nome: &str) {
+    let _ = std::process::Command::new("sh")
+        .arg("-c")
+        .arg(format!("ararinha-som /usr/share/sounds/ararinha/{nome}.wav >/dev/null 2>&1 &"))
+        .status();
 }
 
 /// Estado da rede (lido de /sys e /proc, a cada 5 s).
@@ -210,6 +239,9 @@ pub struct Painel {
     /// Há uma placa Wi-Fi (mesmo desconectada).
     wifi_disponivel: bool,
     painel_rede: Option<(String, MemoryRenderBuffer)>,
+    pub avisos: Vec<Aviso>,
+    avisos_buf: Option<(String, MemoryRenderBuffer)>,
+    avisos_visto: std::time::Instant,
     /// Ícone selecionado na área de trabalho e o último clique (clique duplo).
     pub icone_sel: Option<usize>,
     ultimo_clique_icone: Option<(usize, std::time::Instant)>,
@@ -252,6 +284,9 @@ impl Default for Painel {
             rede_aberta: false,
             wifi_disponivel: false,
             painel_rede: None,
+            avisos: Vec::new(),
+            avisos_buf: None,
+            avisos_visto: std::time::Instant::now(),
             icone_sel: None,
             ultimo_clique_icone: None,
             area_buf: None,
@@ -347,6 +382,15 @@ impl Painel {
     /// O que está em `p` (coordenadas da tela), se for a interface.
     pub fn alvo(&self, p: Point<f64, Logical>, tela: Size<i32, Logical>) -> Option<Alvo> {
         let (x, y) = (p.x as i32, p.y as i32);
+        if !self.avisos.is_empty() {
+            let o = Self::avisos_origem(tela, self.avisos.len());
+            if x >= o.x && x < o.x + AVISO_L && y >= o.y {
+                let i = ((y - o.y) / (AVISO_A + AVISO_ESPACO)) as usize;
+                if i < self.avisos.len() && (y - o.y) % (AVISO_A + AVISO_ESPACO) < AVISO_A {
+                    return Some(Alvo::Aviso(i));
+                }
+            }
+        }
         if self.rede_aberta {
             let o = Self::rede_origem(tela);
             if x >= o.x && y >= o.y && x < o.x + SOM_L && y < o.y + REDE_A {
@@ -418,6 +462,81 @@ impl Painel {
             }
         }
         Some(Alvo::Barra)
+    }
+
+    fn avisos_origem(tela: Size<i32, Logical>, n: usize) -> Point<i32, Logical> {
+        let n = n.min(3) as i32;
+        let h = n * AVISO_A + (n - 1).max(0) * AVISO_ESPACO;
+        (tela.w - AVISO_L - 8, tela.h - altura() - 8 - h).into()
+    }
+
+    /// Mostra uma notificação (com o som de notificação).
+    pub fn avisar(&mut self, titulo: &str, texto: &str) {
+        self.avisar_com(titulo, texto, None);
+    }
+
+    pub fn avisar_com(&mut self, titulo: &str, texto: &str, acao: Option<String>) {
+        self.avisos.push(Aviso {
+            titulo: titulo.to_string(),
+            texto: texto.to_string(),
+            acao,
+            ate: std::time::Instant::now() + std::time::Duration::from_secs(6),
+        });
+        while self.avisos.len() > 3 {
+            self.avisos.remove(0);
+        }
+        tocar_som("notificacao");
+    }
+
+    /// Lê as notificações deixadas na pasta (a cada meio segundo) e tira as
+    /// que já passaram do tempo.
+    fn ler_avisos(&mut self) {
+        let agora = std::time::Instant::now();
+        self.avisos.retain(|a| a.ate > agora);
+        if agora.duration_since(self.avisos_visto) < std::time::Duration::from_millis(500) {
+            return;
+        }
+        self.avisos_visto = agora;
+        let Some(pasta) = pasta_avisos() else { return };
+        let Ok(rd) = std::fs::read_dir(&pasta) else { return };
+        let mut arquivos: Vec<std::path::PathBuf> = rd
+            .flatten()
+            .map(|e| e.path())
+            .filter(|p| p.extension().map(|x| x == "txt").unwrap_or(false))
+            .collect();
+        arquivos.sort();
+        for p in arquivos {
+            let texto = std::fs::read_to_string(&p).unwrap_or_default();
+            let _ = std::fs::remove_file(&p);
+            let mut linhas = texto.lines();
+            let titulo = linhas.next().unwrap_or("").trim().to_string();
+            let corpo = linhas.collect::<Vec<_>>().join(" ");
+            if !titulo.is_empty() {
+                self.avisar(&titulo, corpo.trim());
+            }
+        }
+    }
+
+    fn desenhar_avisos(&self, origem: Point<i32, Logical>, hover: Option<Alvo>) -> Tela {
+        let n = self.avisos.len().min(3);
+        let h = n as i32 * AVISO_A + (n as i32 - 1).max(0) * AVISO_ESPACO;
+        let mut t = Tela::nova(AVISO_L, h.max(1));
+        for (i, a) in self.avisos.iter().take(3).enumerate() {
+            let y = i as f32 * (AVISO_A + AVISO_ESPACO) as f32;
+            let (l, al) = (AVISO_L as f32, AVISO_A as f32);
+            t.vidro(0.0, y, l, al, 12.0, (origem.x, origem.y + y as i32), tema::FUNDO().com_alfa(190));
+            // Faixa de destaque e o Mingau (bolinha azul) à esquerda.
+            t.retangulo(14.0, y + 18.0, 40.0, 40.0, 20.0, tema::DESTAQUE());
+            t.retangulo(24.0, y + 26.0, 20.0, 20.0, 10.0, tema::BRANCO().com_alfa(220));
+            t.retangulo(30.0, y + 32.0, 8.0, 8.0, 4.0, tema::DESTAQUE());
+            t.texto(66.0, y + 32.0, 13.5, tema::TEXTO(), &desenho::encurtar(13.5, &a.titulo, l - 100.0));
+            t.texto(66.0, y + 54.0, 12.0, tema::TEXTO_SECUNDARIO(), &desenho::encurtar(12.0, &a.texto, l - 84.0));
+            // "x" para fechar
+            let cor = if hover == Some(Alvo::Aviso(i)) { tema::TEXTO() } else { tema::TEXTO_SECUNDARIO().com_alfa(140) };
+            t.linha(l - 24.0, y + 14.0, l - 16.0, y + 22.0, 1.4, cor);
+            t.linha(l - 24.0, y + 22.0, l - 16.0, y + 14.0, 1.4, cor);
+        }
+        t
     }
 
     fn rede_origem(tela: Size<i32, Logical>) -> Point<i32, Logical> {
@@ -810,7 +929,34 @@ impl Painel {
         self.ler_som(false);
         self.ler_rede();
         self.ver_config();
+        self.ler_avisos();
         let mut elementos = Vec::new();
+
+        if !self.avisos.is_empty() {
+            let o = Self::avisos_origem(tela, self.avisos.len());
+            let chave = format!(
+                "{:?}|{o:?}|{hover:?}|{}",
+                self.avisos.iter().map(|a| (&a.titulo, &a.texto)).collect::<Vec<_>>(),
+                desenho::tema::escuro()
+            );
+            if self.avisos_buf.as_ref().map(|(c, _)| c != &chave).unwrap_or(true) {
+                let t = self.desenhar_avisos(o, hover);
+                self.avisos_buf = Some((chave, t.em_buffer()));
+            }
+            if let Some((_, buf)) = &self.avisos_buf {
+                if let Ok(e) = MemoryRenderBufferRenderElement::from_buffer(
+                    renderer,
+                    o.to_f64().to_physical(escala),
+                    buf,
+                    None,
+                    None,
+                    None,
+                    Kind::Unspecified,
+                ) {
+                    elementos.push(e);
+                }
+            }
+        }
 
         if self.rede_aberta {
             let o = Self::rede_origem(tela);

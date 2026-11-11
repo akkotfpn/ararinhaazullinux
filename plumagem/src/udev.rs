@@ -1522,14 +1522,14 @@ impl AnvilState<UdevData> {
         // Abre a captura recém-salva no Visualizador de Imagens.
         let salva = crate::captura::SALVA.lock().unwrap().take();
         if let Some(caminho) = salva {
-            let mut c = std::process::Command::new("imagens");
-            c.arg(&caminho);
-            if let Some(s) = &self.socket_name {
-                c.env("WAYLAND_DISPLAY", s);
-            }
-            if let Err(e) = c.spawn() {
-                warn!("não deu para abrir a captura: {e}");
-            }
+            // Como no Windows: uma notificação; o clique abre a captura.
+            let nome = caminho.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+            let c = caminho.to_string_lossy().replace('\'', "'\\''");
+            self.painel.avisar_com(
+                "Captura de tela salva",
+                &format!("Imagens › Capturas de Tela › {nome}. Clique para abrir."),
+                Some(format!("imagens '{c}'")),
+            );
         }
         let reschedule = match result {
             Ok((has_rendered, states)) => {

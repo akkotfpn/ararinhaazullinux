@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Captura de tela (tecla Print Screen): desenha a saída mais uma vez numa
 //! textura fora da tela, lê os pixels e salva um PNG em
-//! ~/Imagens/Capturas de Tela. Depois a captura abre no Visualizador.
+//! ~/Imagens/Capturas de Tela. Uma notificação avisa; o clique nela abre a
+//! captura no Visualizador de Imagens.
 
 use std::{
     path::PathBuf,

@@ -86,7 +86,7 @@ pub fn nome_da_faixa(p: &Path) -> String {
 
 /// Toca um arquivo até acabar ou chegar outro comando que não seja de
 /// pausa/busca. Devolve o comando que interrompeu, se houver.
-fn tocar(caminho: &Path, rx: &Receiver<Comando>, estado: &Arc<Mutex<Estado>>) -> Result<Option<Comando>, String> {
+pub fn tocar(caminho: &Path, rx: &Receiver<Comando>, estado: &Arc<Mutex<Estado>>) -> Result<Option<Comando>, String> {
     let arquivo = File::open(caminho).map_err(|e| format!("abrir: {e}"))?;
     let mss = MediaSourceStream::new(Box::new(arquivo), Default::default());
     let mut dica = Hint::new();
