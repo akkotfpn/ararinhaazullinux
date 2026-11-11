@@ -54,13 +54,14 @@ install -vDm644 explorador/recursos/explorador.png /usr/share/icons/hicolor/64x6
 install -vDm4755 target/release/ararinha-unidade /usr/bin/ararinha-unidade
 # Tela de bloqueio: confere a senha da própria conta (setuid root).
 install -vDm4755 target/release/ararinha-senha /usr/bin/ararinha-senha
-# Planos de energia: setuid root, só escreve em arquivos fixos do /sys.
-install -vDm4755 target/release/ararinha-energia /usr/bin/ararinha-energia
+# Planos de energia: sem setuid; quem chama como root é o ararinha-sistema
+# (e o serviço do boot). Só escreve em arquivos fixos do /sys.
+install -vDm755 target/release/ararinha-energia /usr/bin/ararinha-energia
 install -vdm755 /usr/lib/systemd/system
 # Serviço do sistema: ações de administrador por socket (SO_PEERCRED),
 # no lugar de mais ajudantes setuid. Ativado só quando alguém pede.
 install -vDm755 target/release/ararinha-sistema /usr/libexec/ararinha-sistema
-install -vdm755 /etc/ararinha
+install -vdm755 /etc/ararinha /var/lib/ararinha
 cat > /usr/lib/systemd/system/ararinha-sistema.socket << 'FIM'
 [Unit]
 Description=Serviço do sistema do Ararinha (socket)
@@ -85,7 +86,7 @@ NoNewPrivileges=yes
 PrivateTmp=yes
 PrivateDevices=yes
 ProtectSystem=strict
-ReadWritePaths=/etc/ararinha
+ReadWritePaths=/etc/ararinha /var/lib/ararinha
 ProtectHome=yes
 ProtectClock=yes
 ProtectHostname=yes

@@ -132,9 +132,9 @@ cada pedido no journal (`journalctl -u ararinha-sistema`). Ele mesmo roda
 confinado: `ProtectSystem=strict` (só escreve em `/etc/ararinha`), sem
 dispositivos, só `CAP_NET_ADMIN`, só sockets Unix e netlink.
 
-Hoje cuida do firewall. Os ajudantes setuid que ainda existem
-(`ararinha-senha`, `ararinha-energia`, `ararinha-unidade`,
-`ararinha-instalar`) passam para ele aos poucos.
+Hoje cuida do firewall e do plano de energia (o `ararinha-energia` deixou
+de ser setuid). Os ajudantes setuid que ainda existem (`ararinha-senha`,
+`ararinha-unidade`, `ararinha-instalar`) passam para ele aos poucos.
 
 ## Firewall com perfis
 
