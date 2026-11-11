@@ -883,10 +883,13 @@ impl Painel {
         (tela.w - SOM_L - 8, tela.h - altura() - 8 - SOM_A).into()
     }
 
-    /// Lê volume e mudo com o wpctl (no máximo a cada 5 s, ou se `agora`).
+    /// Lê volume e mudo com o wpctl: na hora quando `agora` (painel aberto,
+    /// volume mudado aqui); fora isso, a cada 30 s (mudança feita por outro
+    /// programa). Assim a barra não cria um processo a cada poucos segundos.
     pub fn ler_som(&mut self, agora: bool) {
         let seg = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
-        if !agora && seg < self.som.lido_em + 5 {
+        let intervalo = if self.som_aberto { 3 } else { 30 };
+        if !agora && seg < self.som.lido_em + intervalo {
             return;
         }
         self.som.lido_em = seg;
@@ -949,18 +952,7 @@ impl Painel {
         {
             r.conectado = true;
             r.sem_fio = std::path::Path::new(&format!("/sys/class/net/{iface}/wireless")).exists();
-            r.ip = std::process::Command::new(if std::path::Path::new("/usr/sbin/ip").exists() { "/usr/sbin/ip" } else { "ip" })
-                .args(["-4", "-o", "addr", "show", "dev", &iface])
-                .output()
-                .ok()
-                .and_then(|o| String::from_utf8(o.stdout).ok())
-                .and_then(|s| {
-                    s.split_whitespace()
-                        .skip_while(|p| *p != "inet")
-                        .nth(1)
-                        .map(|ip| ip.split('/').next().unwrap_or(ip).to_string())
-                })
-                .unwrap_or_default();
+            r.ip = ipv4_de(&iface).unwrap_or_default();
             r.interface = iface;
         } else if let Ok(dir) = std::fs::read_dir("/sys/class/net") {
             // Sem rota: mostra a primeira interface que não seja a lo.
@@ -1062,15 +1054,7 @@ impl Painel {
         if minuto == self.relogio.0 {
             return;
         }
-        let saida = std::process::Command::new("date")
-            .arg("+%H:%M|%d/%m/%Y")
-            .output()
-            .ok()
-            .and_then(|o| String::from_utf8(o.stdout).ok())
-            .unwrap_or_default();
-        let mut partes = saida.trim().splitn(2, '|');
-        let hora = partes.next().unwrap_or("").to_string();
-        let data = partes.next().unwrap_or("").to_string();
+        let (hora, data) = hora_local();
         self.relogio = (minuto, hora, data);
     }
 
@@ -1755,6 +1739,93 @@ fn nome_completo(usuario: &str) -> Option<String> {
     let linha = passwd.lines().find(|l| l.split(':').next() == Some(usuario))?;
     let gecos = linha.split(':').nth(4)?.split(',').next()?.trim().to_string();
     (!gecos.is_empty()).then_some(gecos)
+}
+
+#[repr(C)]
+struct IfAddrs {
+    ifa_next: *mut IfAddrs,
+    ifa_name: *const std::os::raw::c_char,
+    ifa_flags: u32,
+    ifa_addr: *const SockAddrIn,
+    ifa_netmask: *const SockAddrIn,
+    ifa_ifu: *const std::ffi::c_void,
+    ifa_data: *const std::ffi::c_void,
+}
+
+#[repr(C)]
+struct SockAddrIn {
+    familia: u16,
+    porta: u16,
+    endereco: [u8; 4],
+}
+
+#[repr(C)]
+#[derive(Default)]
+struct Tm {
+    seg: i32,
+    min: i32,
+    hora: i32,
+    dia: i32,
+    mes: i32,
+    ano: i32,
+    dia_semana: i32,
+    dia_ano: i32,
+    verao: i32,
+    gmtoff: i64,
+    zona: usize,
+}
+
+extern "C" {
+    fn getifaddrs(lista: *mut *mut IfAddrs) -> i32;
+    fn freeifaddrs(lista: *mut IfAddrs);
+    fn time(t: *mut i64) -> i64;
+    fn localtime_r(t: *const i64, saida: *mut Tm) -> *mut Tm;
+}
+
+/// IPv4 da interface pelo getifaddrs (sem chamar o `ip`).
+fn ipv4_de(iface: &str) -> Option<String> {
+    let mut lista: *mut IfAddrs = std::ptr::null_mut();
+    // SAFETY: getifaddrs preenche a lista, liberada com freeifaddrs abaixo;
+    // cada ponteiro é conferido antes de ser lido.
+    unsafe {
+        if getifaddrs(&mut lista) != 0 {
+            return None;
+        }
+        let mut achado = None;
+        let mut p = lista;
+        while !p.is_null() {
+            let item = &*p;
+            if !item.ifa_addr.is_null()
+                && !item.ifa_name.is_null()
+                && (*item.ifa_addr).familia == 2
+                && std::ffi::CStr::from_ptr(item.ifa_name).to_bytes() == iface.as_bytes()
+            {
+                let [a, b, c, d] = (*item.ifa_addr).endereco;
+                achado = Some(format!("{a}.{b}.{c}.{d}"));
+                break;
+            }
+            p = item.ifa_next;
+        }
+        freeifaddrs(lista);
+        achado
+    }
+}
+
+/// "HH:MM" e "dd/mm/aaaa" no fuso local (localtime_r, sem chamar o `date`).
+fn hora_local() -> (String, String) {
+    let mut tm = Tm::default();
+    // SAFETY: time e localtime_r só escrevem nas variáveis passadas.
+    let ok = unsafe {
+        let agora = time(std::ptr::null_mut());
+        !localtime_r(&agora, &mut tm).is_null()
+    };
+    if !ok {
+        return (String::new(), String::new());
+    }
+    (
+        format!("{:02}:{:02}", tm.hora, tm.min),
+        format!("{:02}/{:02}/{}", tm.dia, tm.mes + 1, tm.ano + 1900),
+    )
 }
 
 /// Tira os acentos mais comuns do português (para a busca).
