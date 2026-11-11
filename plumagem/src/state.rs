@@ -608,6 +608,16 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
                 })
                 .expect("Failed to init wayland socket source");
             info!(name = socket_name, "Listening on wayland socket");
+            // Serviços ativados pelo D-Bus (portal, notificações) precisam
+            // saber do Wayland da sessão.
+            if std::env::var_os("PLUMAGEM_NINHO").is_none() {
+                let _ = std::process::Command::new("dbus-update-activation-environment")
+                    .arg(format!("WAYLAND_DISPLAY={socket_name}"))
+                    .arg("XDG_CURRENT_DESKTOP=Plumagem")
+                    .arg("XDG_SESSION_TYPE=wayland")
+                    .spawn()
+                    .and_then(|mut f| f.wait());
+            }
             Some(socket_name)
         } else {
             None

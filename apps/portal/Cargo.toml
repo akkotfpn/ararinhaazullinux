@@ -1,0 +1,15 @@
+[package]
+name = "portal"
+version = "0.1.0"
+description = "Backend de portais (xdg-desktop-portal) e notificações do Ararinha"
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+zbus = "5"
+async-io = "2"
+
+[[bin]]
+name = "xdg-desktop-portal-ararinha"
+path = "src/main.rs"

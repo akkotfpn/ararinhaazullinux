@@ -1,0 +1,331 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+//! xdg-desktop-portal-ararinha: a parte do Ararinha nos portais do Flatpak e
+//! o servidor de notificações da sessão.
+//!
+//! - FileChooser: "Abrir" e "Salvar como" pelo Explorador (`--escolher`).
+//! - Settings: avisa os apps se o tema é claro ou escuro.
+//! - Notification (portal) e org.freedesktop.Notifications: viram as
+//!   notificações da Plumagem (pasta $XDG_RUNTIME_DIR/ararinha-avisos).
+//!
+//! É ativado pelo D-Bus de sessão quando alguém precisa dele.
+
+use std::{
+    collections::HashMap,
+    path::PathBuf,
+    process::{Command, Stdio},
+    sync::atomic::{AtomicU32, Ordering},
+    time::Duration,
+};
+
+use zbus::{
+    fdo, interface,
+    zvariant::{OwnedObjectPath, OwnedValue, Value},
+};
+
+// ---------------------------------------------------------------- ajuda
+
+fn opcao_bool(op: &HashMap<String, OwnedValue>, chave: &str) -> bool {
+    match op.get(chave).map(|v| &**v) {
+        Some(Value::Bool(b)) => *b,
+        _ => false,
+    }
+}
+
+fn opcao_texto(op: &HashMap<String, OwnedValue>, chave: &str) -> Option<String> {
+    match op.get(chave).map(|v| &**v) {
+        Some(Value::Str(s)) => Some(s.as_str().to_string()),
+        _ => None,
+    }
+}
+
+/// Opção do tipo "ay" (caminho terminado em NUL).
+fn opcao_bytes(op: &HashMap<String, OwnedValue>, chave: &str) -> Option<String> {
+    match op.get(chave).map(|v| &**v) {
+        Some(Value::Array(a)) => {
+            let bytes: Vec<u8> = a
+                .iter()
+                .filter_map(|x| match x {
+                    Value::U8(b) => Some(*b),
+                    _ => None,
+                })
+                .take_while(|b| *b != 0)
+                .collect();
+            String::from_utf8(bytes).ok().filter(|s| !s.is_empty())
+        }
+        _ => None,
+    }
+}
+
+/// file:// com os caracteres especiais escapados.
+fn uri_de(p: &str) -> String {
+    let mut s = String::from("file://");
+    for b in p.bytes() {
+        if b.is_ascii_alphanumeric() || b"/-_.~".contains(&b) {
+            s.push(b as char);
+        } else {
+            s.push_str(&format!("%{b:02X}"));
+        }
+    }
+    s
+}
+
+fn valor<T: Into<Value<'static>>>(v: T) -> OwnedValue {
+    OwnedValue::try_from(v.into()).expect("valor sem descritor de arquivo")
+}
+
+/// Abre o Explorador no modo escolher e espera, sem travar o D-Bus.
+async fn escolher(args: Vec<String>) -> Option<Vec<String>> {
+    let mut filho = Command::new("explorador")
+        .arg("--escolher")
+        .args(&args)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .ok()?;
+    loop {
+        match filho.try_wait() {
+            Ok(Some(_)) => break,
+            Ok(None) => {
+                async_io::Timer::after(Duration::from_millis(100)).await;
+            }
+            Err(_) => return None,
+        }
+    }
+    let saida = filho.wait_with_output().ok()?;
+    let linhas: Vec<String> =
+        String::from_utf8_lossy(&saida.stdout).lines().filter(|l| !l.is_empty()).map(String::from).collect();
+    (!linhas.is_empty()).then_some(linhas)
+}
+
+fn resposta(caminhos: Option<Vec<String>>) -> (u32, HashMap<String, OwnedValue>) {
+    match caminhos {
+        Some(c) => {
+            let uris: Vec<String> = c.iter().map(|p| uri_de(p)).collect();
+            let mut r = HashMap::new();
+            r.insert("uris".to_string(), valor(uris));
+            (0, r)
+        }
+        // 1 = o usuário cancelou.
+        None => (1, HashMap::new()),
+    }
+}
+
+// ------------------------------------------------------------ FileChooser
+
+struct Escolhedor;
+
+#[interface(name = "org.freedesktop.impl.portal.FileChooser")]
+impl Escolhedor {
+    async fn open_file(
+        &self,
+        _handle: OwnedObjectPath,
+        _app_id: String,
+        _parent_window: String,
+        title: String,
+        options: HashMap<String, OwnedValue>,
+    ) -> (u32, HashMap<String, OwnedValue>) {
+        let modo = if opcao_bool(&options, "directory") { "pasta" } else { "abrir" };
+        let mut args = vec![modo.to_string(), "--titulo".into(), title];
+        if opcao_bool(&options, "multiple") {
+            args.push("--varios".into());
+        }
+        if let Some(p) = opcao_bytes(&options, "current_folder") {
+            args.push("--pasta".into());
+            args.push(p);
+        }
+        resposta(escolher(args).await)
+    }
+
+    async fn save_file(
+        &self,
+        _handle: OwnedObjectPath,
+        _app_id: String,
+        _parent_window: String,
+        title: String,
+        options: HashMap<String, OwnedValue>,
+    ) -> (u32, HashMap<String, OwnedValue>) {
+        let mut args = vec!["salvar".to_string(), "--titulo".into(), title];
+        if let Some(n) = opcao_texto(&options, "current_name") {
+            args.push("--nome".into());
+            args.push(n);
+        }
+        let pasta = opcao_bytes(&options, "current_folder").or_else(|| {
+            // Sem pasta sugerida: Downloads, como o Windows.
+            std::env::var("HOME").ok().map(|h| format!("{h}/Downloads")).filter(|p| PathBuf::from(p).is_dir())
+        });
+        if let Some(p) = pasta {
+            args.push("--pasta".into());
+            args.push(p);
+        }
+        resposta(escolher(args).await)
+    }
+}
+
+// ---------------------------------------------------------------- Settings
+
+fn tema_escuro() -> bool {
+    let casa = std::env::var("HOME").unwrap_or_default();
+    for c in [format!("{casa}/.config/plumagem/plumagem.conf"), "/etc/plumagem/plumagem.conf".into()] {
+        let Ok(t) = std::fs::read_to_string(&c) else { continue };
+        for l in t.lines() {
+            if l.trim_start().starts_with('#') {
+                continue;
+            }
+            if let Some((k, v)) = l.split_once('=') {
+                if k.trim() == "tema" {
+                    return v.trim().trim_matches('"') == "escuro";
+                }
+            }
+        }
+    }
+    false
+}
+
+struct Config;
+
+impl Config {
+    fn aparencia() -> HashMap<String, OwnedValue> {
+        let mut m = HashMap::new();
+        // 0 sem preferência, 1 escuro, 2 claro.
+        m.insert("color-scheme".to_string(), valor(if tema_escuro() { 1u32 } else { 2u32 }));
+        // Azul do Ararinha (#2B7BC4) em RGB de 0 a 1.
+        m.insert("accent-color".to_string(), valor((43.0f64 / 255.0, 123.0f64 / 255.0, 196.0f64 / 255.0)));
+        m
+    }
+}
+
+#[interface(name = "org.freedesktop.impl.portal.Settings")]
+impl Config {
+    fn read_all(&self, namespaces: Vec<String>) -> HashMap<String, HashMap<String, OwnedValue>> {
+        let mut r = HashMap::new();
+        let quer = |ns: &str| {
+            namespaces.is_empty()
+                || namespaces.iter().any(|n| n == ns || (n.ends_with('*') && ns.starts_with(n.trim_end_matches('*'))))
+        };
+        if quer("org.freedesktop.appearance") {
+            r.insert("org.freedesktop.appearance".to_string(), Config::aparencia());
+        }
+        r
+    }
+
+    fn read(&self, namespace: String, key: String) -> fdo::Result<OwnedValue> {
+        if namespace == "org.freedesktop.appearance" {
+            if let Some(v) = Config::aparencia().remove(&key) {
+                return Ok(v);
+            }
+        }
+        Err(fdo::Error::Failed(format!("configuração desconhecida: {namespace} {key}")))
+    }
+
+    #[zbus(property)]
+    fn version(&self) -> u32 {
+        2
+    }
+}
+
+// ---------------------------------------------------------- Notificações
+
+fn mostrar_aviso(titulo: &str, texto: &str) {
+    let base = std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/tmp".into());
+    let pasta = PathBuf::from(base).join("ararinha-avisos");
+    let _ = std::fs::create_dir_all(&pasta);
+    static N: AtomicU32 = AtomicU32::new(0);
+    let agora = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let nome = format!("{agora}-{}", N.fetch_add(1, Ordering::Relaxed));
+    let tmp = pasta.join(format!(".{nome}.tmp"));
+    // Uma linha só para o texto (a Plumagem junta as linhas).
+    let texto = texto.replace('\n', " ");
+    if std::fs::write(&tmp, format!("{}\n{}\n", titulo.replace('\n', " "), texto)).is_ok() {
+        let _ = std::fs::rename(&tmp, pasta.join(format!("{nome}.txt")));
+    }
+}
+
+struct AvisosPortal;
+
+#[interface(name = "org.freedesktop.impl.portal.Notification")]
+impl AvisosPortal {
+    fn add_notification(&self, _app_id: String, _id: String, notification: HashMap<String, OwnedValue>) {
+        let titulo = opcao_texto(&notification, "title").unwrap_or_default();
+        let corpo = opcao_texto(&notification, "body").unwrap_or_default();
+        if !titulo.is_empty() || !corpo.is_empty() {
+            mostrar_aviso(if titulo.is_empty() { "Notificação" } else { &titulo }, &corpo);
+        }
+    }
+
+    fn remove_notification(&self, _app_id: String, _id: String) {}
+}
+
+struct Notificacoes {
+    proximo: AtomicU32,
+}
+
+#[interface(name = "org.freedesktop.Notifications")]
+impl Notificacoes {
+    #[allow(clippy::too_many_arguments)]
+    fn notify(
+        &self,
+        app_name: String,
+        replaces_id: u32,
+        _app_icon: String,
+        summary: String,
+        body: String,
+        _actions: Vec<String>,
+        _hints: HashMap<String, OwnedValue>,
+        _expire_timeout: i32,
+    ) -> u32 {
+        let titulo = if summary.is_empty() { app_name } else { summary };
+        // Tira as marcações simples (<b>, <i>) que alguns apps mandam.
+        let mut limpo = String::new();
+        let mut dentro = false;
+        for c in body.chars() {
+            match c {
+                '<' => dentro = true,
+                '>' => dentro = false,
+                _ if !dentro => limpo.push(c),
+                _ => {}
+            }
+        }
+        mostrar_aviso(&titulo, &limpo);
+        if replaces_id != 0 {
+            replaces_id
+        } else {
+            self.proximo.fetch_add(1, Ordering::Relaxed)
+        }
+    }
+
+    fn close_notification(&self, _id: u32) {}
+
+    fn get_capabilities(&self) -> Vec<String> {
+        vec!["body".into()]
+    }
+
+    fn get_server_information(&self) -> (String, String, String, String) {
+        ("Plumagem".into(), "Ararinha Azul Linux".into(), env!("CARGO_PKG_VERSION").into(), "1.2".into())
+    }
+}
+
+fn main() -> zbus::Result<()> {
+    let conexao = zbus::blocking::connection::Builder::session()?
+        .serve_at("/org/freedesktop/portal/desktop", Escolhedor)?
+        .serve_at("/org/freedesktop/portal/desktop", Config)?
+        .serve_at("/org/freedesktop/portal/desktop", AvisosPortal)?
+        .serve_at("/org/freedesktop/Notifications", Notificacoes { proximo: AtomicU32::new(1) })?
+        .build()?;
+    // Os dois nomes; se outro processo já tiver um deles, fica com o outro.
+    let mut algum = false;
+    for nome in ["org.freedesktop.impl.portal.desktop.ararinha", "org.freedesktop.Notifications"] {
+        match conexao.request_name(nome) {
+            Ok(_) => algum = true,
+            Err(e) => eprintln!("xdg-desktop-portal-ararinha: {nome}: {e}"),
+        }
+    }
+    if !algum {
+        return Ok(());
+    }
+    loop {
+        std::thread::park();
+    }
+}

@@ -174,6 +174,27 @@ struct Explorador {
     /// Pasta sob o mouse durante o arraste.
     alvo_soltar: Option<PathBuf>,
     propriedades: Option<Propriedades>,
+    /// Modo "escolher arquivo" (chamado pelo portal dos apps Flatpak).
+    escolha: Option<Escolha>,
+    /// Fecha a janela no fim do quadro (escolha feita).
+    sair: bool,
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum ModoEscolha {
+    Abrir,
+    Salvar,
+    Pasta,
+}
+
+/// Janela de "Abrir"/"Salvar como": o resultado sai no stdout, um caminho
+/// por linha; nada no stdout é "Cancelar".
+struct Escolha {
+    modo: ModoEscolha,
+    varios: bool,
+    nome: String,
+    nome_ativo: bool,
+    confirmar: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -361,6 +382,8 @@ impl Explorador {
             colapsar: None,
             alvo_soltar: None,
             propriedades: None,
+            escolha: None,
+            sair: false,
         };
         // Abre numa pasta passada como argumento, se houver.
         if let Some(p) = std::env::args().nth(1).map(PathBuf::from).filter(|p| p.is_dir()) {
@@ -509,6 +532,112 @@ impl Explorador {
             format!("{feitos} item(ns) {} para \"{nome_destino}\".", if copiar { "copiados" } else { "movidos" })
         });
         self.recarregar();
+    }
+
+    /// Escreve a escolha no stdout e fecha.
+    fn entregar(&mut self, caminhos: Vec<PathBuf>) {
+        use std::io::Write;
+        let mut saida = std::io::stdout().lock();
+        for c in caminhos {
+            let _ = writeln!(saida, "{}", c.display());
+        }
+        let _ = saida.flush();
+        self.sair = true;
+    }
+
+    /// Barra de baixo do modo escolher: nome (ao salvar) e os botões.
+    fn desenhar_escolha(&mut self, ui: &mut Ui, x0: f32, y: f32, l: f32) {
+        let Some(modo) = self.escolha.as_ref().map(|e| e.modo) else { return };
+        ui.tela.retangulo(x0, y, l, 64.0, 0.0, tema::FUNDO());
+        ui.tela.retangulo(x0, y, l, 1.0, 0.0, tema::BORDA());
+        let by = y + 14.0;
+        let mut bx = x0 + l - 16.0;
+        let mut botao = |ui: &mut Ui, rot: &str, principal: bool, ativo: bool| -> bool {
+            let w = desenho::medir(13.5, rot) + 34.0;
+            bx -= w;
+            let s = ativo && ui.sobre(bx, by, w, 36.0);
+            let fundo = if !ativo {
+                tema::SUPERFICIE_ALTA()
+            } else if principal {
+                if s { tema::DESTAQUE_FORTE() } else { tema::DESTAQUE() }
+            } else if s {
+                tema::SUPERFICIE_ALTA()
+            } else {
+                tema::JANELA()
+            };
+            ui.tela.retangulo(bx, by, w, 36.0, 7.0, if principal { fundo } else { tema::BORDA() });
+            if !principal {
+                ui.tela.retangulo(bx + 1.0, by + 1.0, w - 2.0, 34.0, 6.0, fundo);
+            }
+            let cor = if !ativo { tema::TEXTO_SECUNDARIO() } else if principal { tema::BRANCO() } else { tema::TEXTO() };
+            ui.tela.texto(bx + 17.0, by + 23.0, 13.5, cor, rot);
+            let r = ativo && ui.clicou(bx, by, w, 36.0);
+            bx -= 10.0;
+            r
+        };
+        let cancelar = botao(ui, "Cancelar", false, true);
+        let marcados: Vec<Entrada> = self.marcados();
+        let pasta = self.pasta_atual();
+        match modo {
+            ModoEscolha::Abrir => {
+                let so_arquivos: Vec<PathBuf> = marcados.iter().filter(|e| !e.pasta).map(|e| e.caminho.clone()).collect();
+                let varios = self.escolha.as_ref().map(|e| e.varios).unwrap_or(false);
+                let ok = !so_arquivos.is_empty() && (varios || so_arquivos.len() == 1);
+                if botao(ui, "Abrir", true, ok) {
+                    self.entregar(so_arquivos);
+                }
+            }
+            ModoEscolha::Pasta => {
+                let alvo = marcados.iter().find(|e| e.pasta).map(|e| e.caminho.clone()).or(pasta.clone());
+                if botao(ui, "Selecionar pasta", true, alvo.is_some()) {
+                    if let Some(p) = alvo {
+                        self.entregar(vec![p]);
+                    }
+                }
+            }
+            ModoEscolha::Salvar => {
+                let (nome, ativo, confirmar) = {
+                    let e = self.escolha.as_ref().unwrap();
+                    (e.nome.clone(), e.nome_ativo, e.confirmar)
+                };
+                let pode = !nome.trim().is_empty() && !nome.contains('/') && pasta.is_some();
+                let salvar = botao(ui, if confirmar { "Substituir" } else { "Salvar" }, true, pode);
+                // Campo do nome
+                let (cx, cl) = (x0 + 70.0, (bx - x0 - 86.0).max(120.0));
+                ui.tela.texto(x0 + 16.0, by + 23.0, 13.0, tema::TEXTO_SECUNDARIO(), "Nome:");
+                ui.tela.retangulo(cx, by, cl, 36.0, 6.0, if ativo { tema::DESTAQUE() } else { tema::BORDA() });
+                ui.tela.retangulo(cx + 1.0, by + 1.0, cl - 2.0, 34.0, 5.0, tema::JANELA());
+                let fim = ui.tela.texto(cx + 10.0, by + 23.0, 13.5, tema::TEXTO(), &desenho::encurtar(13.5, &nome, cl - 24.0));
+                if ativo {
+                    ui.tela.retangulo(cx + 11.0 + fim, by + 9.0, 1.5, 18.0, 0.0, tema::DESTAQUE());
+                }
+                if ui.clique {
+                    let dentro = ui.sobre(cx, by, cl, 36.0);
+                    if let Some(e) = self.escolha.as_mut() {
+                        e.nome_ativo = dentro;
+                    }
+                }
+                if salvar {
+                    self.salvar_escolha();
+                }
+            }
+        }
+        if cancelar {
+            self.sair = true;
+        }
+    }
+
+    /// "Salvar" do modo escolher: pede confirmação se o arquivo já existe.
+    fn salvar_escolha(&mut self) {
+        let Some(pasta) = self.pasta_atual() else { return };
+        let Some(e) = self.escolha.as_mut() else { return };
+        let destino = pasta.join(e.nome.trim());
+        if destino.exists() && !e.confirmar {
+            e.confirmar = true;
+            self.aviso = Some(format!("\"{}\" já existe. Clique em Substituir para trocar.", e.nome.trim()));
+            return;
+        }
+        self.entregar(vec![destino]);
     }
 
     fn ir(&mut self, novo: Local) {
@@ -1064,6 +1193,16 @@ impl Explorador {
     fn abrir(&mut self, e: &Entrada) {
         if e.pasta {
             self.ir(Local::Pasta(e.caminho.clone()));
+        } else if let Some(esc) = &mut self.escolha {
+            // Escolhendo arquivo: clique duplo escolhe (ou põe o nome, ao salvar).
+            match esc.modo {
+                ModoEscolha::Abrir => self.entregar(vec![e.caminho.clone()]),
+                ModoEscolha::Salvar => {
+                    esc.nome = e.nome.clone();
+                    esc.confirmar = false;
+                }
+                ModoEscolha::Pasta => {}
+            }
         } else {
             let ext = e
                 .caminho
@@ -1202,6 +1341,22 @@ impl App for Explorador {
     fn desenhar(&mut self, ui: &mut Ui) {
         // Teclado.
         for tecla in std::mem::take(&mut ui.teclas) {
+            if let Some(esc) = self.escolha.as_mut().filter(|e| e.nome_ativo) {
+                match tecla {
+                    Tecla::Texto(s) => {
+                        esc.nome.push_str(&s);
+                        esc.confirmar = false;
+                    }
+                    Tecla::Apagar => {
+                        esc.nome.pop();
+                        esc.confirmar = false;
+                    }
+                    Tecla::Enter => self.salvar_escolha(),
+                    Tecla::Esc => esc.nome_ativo = false,
+                    _ => {}
+                }
+                continue;
+            }
             if self.mapear.is_some() {
                 self.tecla_mapear(tecla);
                 continue;
@@ -1329,7 +1484,9 @@ impl App for Explorador {
                 _ => {}
             }
         }
-        ui.titulo = Some(self.titulo());
+        if self.escolha.is_none() {
+            ui.titulo = Some(self.titulo());
+        }
 
         // Diálogo "Mapear unidade de rede": modal, os cliques são dele.
         let (l_tela, a_tela) = (ui.largura(), ui.altura());
@@ -1397,15 +1554,19 @@ impl App for Explorador {
         self.desenhar_barra(ui, l);
 
         let (cx, cy) = (LATERAL_L, BARRA_A);
-        let (cl, ca) = (l - LATERAL_L, a - BARRA_A);
+        let rodape = if self.escolha.is_some() { 64.0 } else { 0.0 };
+        let (cl, ca) = (l - LATERAL_L, a - BARRA_A - rodape);
         match self.local.clone() {
             Local::EsteComputador => self.desenhar_este_computador(ui, cx, cy, cl),
             Local::Pasta(_) => self.desenhar_pasta(ui, cx, cy, cl, ca),
         }
+        if self.escolha.is_some() {
+            self.desenhar_escolha(ui, cx, a - rodape, cl);
+        }
 
         // Aviso na parte de baixo.
         if let Some(aviso) = self.aviso.clone() {
-            let y = a - 40.0;
+            let y = a - 40.0 - rodape;
             ui.tela.retangulo(cx + 12.0, y, cl - 24.0, 30.0, 8.0, tema::DESTAQUE_SUAVE());
             let txt = desenho::encurtar(13.0, &aviso, cl - 80.0);
             ui.tela.texto(cx + 24.0, y + 20.0, 13.0, tema::TEXTO(), &txt);
@@ -1487,6 +1648,9 @@ impl App for Explorador {
         }
         if self.propriedades.is_some() {
             self.desenhar_propriedades(ui, l, a);
+        }
+        if self.sair {
+            ui.fechar = true;
         }
     }
 }
@@ -1976,6 +2140,41 @@ fn main() {
     // Chamado pela sessão ao entrar: reconecta as unidades de rede salvas.
     if std::env::args().nth(1).as_deref() == Some("--reconectar") {
         reconectar_tudo();
+        return;
+    }
+    // Modo escolher (portal dos apps Flatpak):
+    //   explorador --escolher abrir|salvar|pasta [--varios] [--nome N] [--pasta P] [--titulo T]
+    let args: Vec<String> = std::env::args().collect();
+    if args.get(1).map(String::as_str) == Some("--escolher") {
+        let modo = match args.get(2).map(String::as_str) {
+            Some("salvar") => ModoEscolha::Salvar,
+            Some("pasta") => ModoEscolha::Pasta,
+            _ => ModoEscolha::Abrir,
+        };
+        let valor = |chave: &str| args.iter().position(|a| a == chave).and_then(|i| args.get(i + 1)).cloned();
+        let mut app = Explorador::novo();
+        let inicio = valor("--pasta").map(PathBuf::from).filter(|p| p.is_dir()).unwrap_or_else(|| app.casa.clone());
+        app.ir(Local::Pasta(inicio));
+        app.voltar.clear();
+        app.escolha = Some(Escolha {
+            modo,
+            varios: args.iter().any(|a| a == "--varios"),
+            nome: valor("--nome").unwrap_or_default(),
+            nome_ativo: modo == ModoEscolha::Salvar,
+            confirmar: false,
+        });
+        let titulo = valor("--titulo").unwrap_or_else(|| {
+            match modo {
+                ModoEscolha::Abrir => "Abrir",
+                ModoEscolha::Salvar => "Salvar como",
+                ModoEscolha::Pasta => "Escolher pasta",
+            }
+            .into()
+        });
+        penas::executar(
+            Opcoes { titulo, app_id: "explorador-escolha".into(), tamanho: (900, 600), minimo: (560, 380) },
+            Box::new(app),
+        );
         return;
     }
     penas::executar(

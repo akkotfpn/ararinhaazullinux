@@ -2,7 +2,7 @@
 # Aplicativos do Ararinha (ADR 0015): o kit de interface Penas e os apps
 # feitos com ele. Cada app é um binário; o Cargo.lock é um só.
 [workspace]
-members = ["penas", "explorador", "imagens", "notas", "configuracoes", "unidade", "central", "calculadora", "tarefas", "energia", "paciencia", "musicas", "instalador"]
+members = ["penas", "explorador", "imagens", "notas", "configuracoes", "unidade", "central", "calculadora", "tarefas", "energia", "paciencia", "musicas", "instalador", "portal"]
 resolver = "2"
 
 [workspace.package]
