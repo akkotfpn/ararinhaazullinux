@@ -3,17 +3,19 @@
 # Os "portais" deixam os apps da caixa de areia abrir e salvar arquivos,
 # abrir links, mandar notificações e saber se o tema é escuro. A parte que
 # desenha (o "backend") é nossa: xdg-desktop-portal-ararinha, nos apps.
+# Versão 1.18: a 1.20+ exige o GStreamer só para validar sons de
+# notificação.
 
 [pacote]
 nome      = "xdg-desktop-portal"
-versao    = "1.22.1"
+versao    = "1.18.4"
 resumo    = "Portais do Flatpak (arquivos, links, notificações)"
 licenca   = "LGPL-2.1-or-later"
 categoria = "flatpak"
 tipo      = "toolchain"
 
 [[fonte]]
-url = "https://github.com/flatpak/xdg-desktop-portal/releases/download/1.22.1/xdg-desktop-portal-1.22.1.tar.xz"
+url = "https://github.com/flatpak/xdg-desktop-portal/releases/download/1.18.4/xdg-desktop-portal-1.18.4.tar.xz"
 
 [dependencias]
 construcao = ["glib", "meson", "fuse3", "gdk-pixbuf", "json-glib", "pipewire", "bubblewrap", "dbus", "systemd"]
@@ -23,8 +25,7 @@ ambiente = "isolado"
 passos = [
   '''
 mkdir -p build && cd build && meson setup --prefix=/usr --buildtype=release --wrap-mode=nofallback \
-  -D tests=disabled -D documentation=disabled -D man-pages=disabled \
-  -D sandboxed-sound-validation=disabled ..
+  -D pytest=disabled -D docbook-docs=disabled -D man-pages=disabled ..
 ''',
   '''
 cd build && ninja
