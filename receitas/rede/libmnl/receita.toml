@@ -1,0 +1,29 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Segurança (firewall): BLFS, libmnl
+
+[pacote]
+nome      = "libmnl"
+versao    = "1.0.5"
+resumo    = "Biblioteca mínima de Netlink (base do nftables)"
+licenca   = "LGPL-2.1-or-later"
+categoria = "rede"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://www.netfilter.org/projects/libmnl/files/libmnl-1.0.5.tar.bz2"
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+./configure --prefix=/usr --disable-static
+''',
+  '''
+make -j$NUCLEOS
+''',
+]
+instalar = [
+  '''
+make install
+''',
+]

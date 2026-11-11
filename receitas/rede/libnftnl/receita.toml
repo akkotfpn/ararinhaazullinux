@@ -1,0 +1,32 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Segurança (firewall): BLFS, libnftnl
+
+[pacote]
+nome      = "libnftnl"
+versao    = "1.3.2"
+resumo    = "Interface do kernel para as regras do nftables"
+licenca   = "GPL-2.0-or-later"
+categoria = "rede"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://www.netfilter.org/projects/libnftnl/files/libnftnl-1.3.2.tar.xz"
+
+[dependencias]
+construcao = ["libmnl"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+./configure --prefix=/usr --disable-static
+''',
+  '''
+make -j$NUCLEOS
+''',
+]
+instalar = [
+  '''
+make install
+''',
+]

@@ -12,7 +12,7 @@ categoria = "apps"
 tipo      = "toolchain"
 
 [dependencias]
-construcao = ["rust", "libxkbcommon", "wayland", "fonte-inter", "cifs-utils", "systemd", "alsa-lib"]
+construcao = ["rust", "libxkbcommon", "wayland", "fonte-inter", "cifs-utils", "systemd", "alsa-lib", "libxcrypt"]
 
 [construcao]
 ambiente = "isolado"
@@ -52,6 +52,8 @@ install -vDm644 explorador/recursos/explorador.desktop /usr/share/applications/e
 install -vDm644 explorador/recursos/explorador.png /usr/share/icons/hicolor/64x64/apps/explorador.png
 # Ajudante das unidades de rede: setuid root (ver apps/unidade).
 install -vDm4755 target/release/ararinha-unidade /usr/bin/ararinha-unidade
+# Tela de bloqueio: confere a senha da própria conta (setuid root).
+install -vDm4755 target/release/ararinha-senha /usr/bin/ararinha-senha
 # Planos de energia: setuid root, só escreve em arquivos fixos do /sys.
 install -vDm4755 target/release/ararinha-energia /usr/bin/ararinha-energia
 install -vdm755 /usr/lib/systemd/system
