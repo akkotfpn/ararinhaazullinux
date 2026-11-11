@@ -43,6 +43,7 @@ struct Configuracoes {
     pagina: Pagina,
     barra: String,
     papel: String,
+    tema: String,
     papeis: Vec<Papel>,
     miniaturas: Option<Receiver<(usize, penas::desenho::Imagem)>>,
     energia: String,
@@ -185,6 +186,7 @@ impl Configuracoes {
             pagina: Pagina::Personalizacao,
             barra: ler_chave("barra").unwrap_or_else(|| "media".into()),
             papel: ler_chave("papel").unwrap_or_else(|| "spix".into()),
+            tema: ler_chave("tema").unwrap_or_else(|| "claro".into()),
             papeis,
             miniaturas: Some(rx),
             energia: ler_energia(),
@@ -210,12 +212,12 @@ impl Configuracoes {
 
     fn personalizacao(&mut self, ui: &mut Ui, x0: f32, l: f32) {
         // Conteúdo maior que a janela: rola com a roda do mouse.
-        let altura_total = 330.0 + ((self.papeis.len() + 2) / 3) as f32 * 140.0 + 40.0;
+        let altura_total = 410.0 + ((self.papeis.len() + 2) / 3) as f32 * 140.0 + 40.0;
         self.rolagem = (self.rolagem + ui.rolagem).clamp(0.0, (altura_total - ui.altura()).max(0.0));
         let oy = -self.rolagem;
 
-        ui.tela.texto(x0 + 32.0, oy + 52.0, 22.0, tema::TEXTO, "Personalização");
-        ui.tela.texto(x0 + 32.0, oy + 96.0, 15.0, tema::TEXTO, "Tamanho da barra de tarefas");
+        ui.tela.texto(x0 + 32.0, oy + 52.0, 22.0, tema::TEXTO(), "Personalização");
+        ui.tela.texto(x0 + 32.0, oy + 96.0, 15.0, tema::TEXTO(), "Tamanho da barra de tarefas");
         let opcoes = [("pequena", "Pequena", 38.0), ("media", "Média", 44.0), ("grande", "Grande", 50.0)];
         let cl = ((l - 64.0 - 2.0 * 16.0) / 3.0).min(200.0);
         let ca = 112.0;
@@ -225,17 +227,17 @@ impl Configuracoes {
             let y = oy + 112.0;
             let sel = self.barra == *id;
             let sobre = ui.sobre(x, y, cl, ca);
-            let borda = if sel { tema::DESTAQUE } else if sobre { tema::TEXTO_SECUNDARIO } else { tema::BORDA };
+            let borda = if sel { tema::DESTAQUE() } else if sobre { tema::TEXTO_SECUNDARIO() } else { tema::BORDA() };
             let esp = if sel { 2.0 } else { 1.0 };
             ui.tela.retangulo(x, y, cl, ca, 10.0, borda);
-            ui.tela.retangulo(x + esp, y + esp, cl - 2.0 * esp, ca - 2.0 * esp, 10.0 - esp, tema::BRANCO);
+            ui.tela.retangulo(x + esp, y + esp, cl - 2.0 * esp, ca - 2.0 * esp, 10.0 - esp, tema::JANELA());
             let (px, py, pl, pa) = (x + 14.0, y + 12.0, cl - 28.0, 64.0);
             ui.tela.retangulo(px, py, pl, pa, 6.0, Cor::hex(0x3E6FA8));
             let ba = pa * alt / 400.0 * 2.2;
             ui.tela.retangulo(px, py + pa - ba, pl, ba, 0.0, Cor(255, 255, 255, 210));
-            ui.tela.retangulo(px + 4.0, py + pa - ba + ba * 0.2, ba * 0.6, ba * 0.6, ba * 0.3, tema::DESTAQUE);
+            ui.tela.retangulo(px + 4.0, py + pa - ba + ba * 0.2, ba * 0.6, ba * 0.6, ba * 0.3, tema::DESTAQUE());
             let lt = desenho::medir(13.5, nome);
-            ui.tela.texto(x + cl / 2.0 - lt / 2.0, y + 98.0, 13.5, tema::TEXTO, nome);
+            ui.tela.texto(x + cl / 2.0 - lt / 2.0, y + 98.0, 13.5, tema::TEXTO(), nome);
             if ui.clicou(x, y, cl, ca) {
                 escolhida = Some(*id);
             }
@@ -246,9 +248,37 @@ impl Configuracoes {
             }
         }
 
-        let y_papel = oy + 270.0;
-        ui.tela.texto(x0 + 32.0, y_papel, 15.0, tema::TEXTO, "Papel de parede");
-        ui.tela.texto(x0 + 32.0, y_papel + 22.0, 12.5, tema::TEXTO_SECUNDARIO, "Vale também para o vidro da barra e das janelas.");
+        // Modo de cor
+        let y_modo = oy + 270.0;
+        ui.tela.texto(x0 + 32.0, y_modo, 15.0, tema::TEXTO(), "Modo de cor");
+        let mut novo_modo = None;
+        for (i, (id, nome)) in [("claro", "Claro"), ("escuro", "Escuro")].iter().enumerate() {
+            let (x, y, w, h) = (x0 + 32.0 + i as f32 * 132.0, y_modo + 14.0, 120.0, 36.0);
+            let sel = (self.tema == *id) || (self.tema.is_empty() && *id == "claro");
+            let sobre = ui.sobre(x, y, w, h);
+            ui.tela.retangulo(x, y, w, h, 8.0, if sel { tema::DESTAQUE() } else if sobre { tema::TEXTO_SECUNDARIO() } else { tema::BORDA() });
+            let esp = if sel { 2.0 } else { 1.0 };
+            ui.tela.retangulo(x + esp, y + esp, w - 2.0 * esp, h - 2.0 * esp, 8.0 - esp, if sel { tema::DESTAQUE_SUAVE() } else { tema::JANELA() });
+            // Amostra do modo
+            let amostra = if *id == "escuro" { Cor::hex(0x0B1A2E) } else { Cor::hex(0xF4F7FA) };
+            ui.tela.retangulo(x + 12.0, y + 10.0, 16.0, 16.0, 8.0, tema::BORDA());
+            ui.tela.retangulo(x + 13.0, y + 11.0, 14.0, 14.0, 7.0, amostra);
+            ui.tela.texto(x + 38.0, y + 23.0, 13.5, tema::TEXTO(), nome);
+            if ui.clicou(x, y, w, h) && !sel {
+                novo_modo = Some(*id);
+            }
+        }
+        if let Some(id) = novo_modo {
+            if self.salvar("tema", id) {
+                self.tema = id.to_string();
+                tema::definir_escuro(id == "escuro");
+                ui.redesenhar = true;
+            }
+        }
+
+        let y_papel = oy + 350.0;
+        ui.tela.texto(x0 + 32.0, y_papel, 15.0, tema::TEXTO(), "Papel de parede");
+        ui.tela.texto(x0 + 32.0, y_papel + 22.0, 12.5, tema::TEXTO_SECUNDARIO(), "Vale também para o vidro da barra e das janelas.");
         let (ml, ma) = (176.0, 99.0);
         let mut escolhido = None;
         for (i, p) in self.papeis.iter().enumerate() {
@@ -257,15 +287,15 @@ impl Configuracoes {
             let sel = self.papel == p.id;
             let sobre = ui.sobre(x - 4.0, y - 4.0, ml + 8.0, ma + 8.0);
             if sel {
-                ui.tela.retangulo(x - 4.0, y - 4.0, ml + 8.0, ma + 8.0, 9.0, tema::DESTAQUE);
+                ui.tela.retangulo(x - 4.0, y - 4.0, ml + 8.0, ma + 8.0, 9.0, tema::DESTAQUE());
             } else if sobre {
-                ui.tela.retangulo(x - 3.0, y - 3.0, ml + 6.0, ma + 6.0, 8.0, tema::BORDA);
+                ui.tela.retangulo(x - 3.0, y - 3.0, ml + 6.0, ma + 6.0, 8.0, tema::BORDA());
             }
             match &p.miniatura {
                 Some(m) => ui.tela.imagem(x as i32, y as i32, m),
-                None => ui.tela.retangulo(x, y, ml, ma, 6.0, tema::SUPERFICIE_ALTA),
+                None => ui.tela.retangulo(x, y, ml, ma, 6.0, tema::SUPERFICIE_ALTA()),
             }
-            let cor = if sel { tema::DESTAQUE } else { tema::TEXTO };
+            let cor = if sel { tema::DESTAQUE() } else { tema::TEXTO() };
             ui.tela.texto(x, y + ma + 22.0, 13.0, cor, &desenho::encurtar(13.0, &p.nome, ml));
             if ui.clicou(x - 4.0, y - 4.0, ml + 8.0, ma + 8.0) {
                 escolhido = Some(p.id.clone());
@@ -279,8 +309,8 @@ impl Configuracoes {
     }
 
     fn energia(&mut self, ui: &mut Ui, x0: f32, l: f32) {
-        ui.tela.texto(x0 + 32.0, 52.0, 22.0, tema::TEXTO, "Energia");
-        ui.tela.texto(x0 + 32.0, 84.0, 13.0, tema::TEXTO_SECUNDARIO, "Escolha como o computador equilibra rapidez e consumo.");
+        ui.tela.texto(x0 + 32.0, 52.0, 22.0, tema::TEXTO(), "Energia");
+        ui.tela.texto(x0 + 32.0, 84.0, 13.0, tema::TEXTO_SECUNDARIO(), "Escolha como o computador equilibra rapidez e consumo.");
         let planos = [
             ("padrao", "Padrão", "Equilibrado: rápido quando precisa, econômico quando está parado."),
             ("economico", "Econômico", "Gasta menos energia e esquenta menos. Bom para notebook na bateria."),
@@ -292,17 +322,17 @@ impl Configuracoes {
             let (x, w, h) = (x0 + 32.0, (l - 64.0).min(620.0), 66.0);
             let sel = self.energia == *id;
             let sobre = ui.sobre(x, y, w, h);
-            ui.tela.retangulo(x, y, w, h, 8.0, if sel { tema::DESTAQUE } else if sobre { tema::TEXTO_SECUNDARIO } else { tema::BORDA });
+            ui.tela.retangulo(x, y, w, h, 8.0, if sel { tema::DESTAQUE() } else if sobre { tema::TEXTO_SECUNDARIO() } else { tema::BORDA() });
             let esp = if sel { 2.0 } else { 1.0 };
-            ui.tela.retangulo(x + esp, y + esp, w - 2.0 * esp, h - 2.0 * esp, 8.0 - esp, if sel { tema::DESTAQUE_SUAVE } else { tema::BRANCO });
+            ui.tela.retangulo(x + esp, y + esp, w - 2.0 * esp, h - 2.0 * esp, 8.0 - esp, if sel { tema::DESTAQUE_SUAVE() } else { tema::JANELA() });
             // Botão de rádio
-            ui.tela.retangulo(x + 18.0, y + 24.0, 18.0, 18.0, 9.0, if sel { tema::DESTAQUE } else { tema::TEXTO_SECUNDARIO });
-            ui.tela.retangulo(x + 20.0, y + 26.0, 14.0, 14.0, 7.0, tema::BRANCO);
+            ui.tela.retangulo(x + 18.0, y + 24.0, 18.0, 18.0, 9.0, if sel { tema::DESTAQUE() } else { tema::TEXTO_SECUNDARIO() });
+            ui.tela.retangulo(x + 20.0, y + 26.0, 14.0, 14.0, 7.0, tema::JANELA());
             if sel {
-                ui.tela.retangulo(x + 23.0, y + 29.0, 8.0, 8.0, 4.0, tema::DESTAQUE);
+                ui.tela.retangulo(x + 23.0, y + 29.0, 8.0, 8.0, 4.0, tema::DESTAQUE());
             }
-            ui.tela.texto(x + 50.0, y + 28.0, 14.5, tema::TEXTO, nome);
-            ui.tela.texto(x + 50.0, y + 49.0, 12.5, tema::TEXTO_SECUNDARIO, &desenho::encurtar(12.5, desc, w - 64.0));
+            ui.tela.texto(x + 50.0, y + 28.0, 14.5, tema::TEXTO(), nome);
+            ui.tela.texto(x + 50.0, y + 49.0, 12.5, tema::TEXTO_SECUNDARIO(), &desenho::encurtar(12.5, desc, w - 64.0));
             if ui.clicou(x, y, w, h) && !sel {
                 escolhido = Some(*id);
             }
@@ -320,26 +350,26 @@ impl Configuracoes {
     }
 
     fn sobre(&mut self, ui: &mut Ui, x0: f32, l: f32) {
-        ui.tela.texto(x0 + 32.0, 52.0, 22.0, tema::TEXTO, "Sobre o Ararinha Azul Linux");
+        ui.tela.texto(x0 + 32.0, 52.0, 22.0, tema::TEXTO(), "Sobre o Ararinha Azul Linux");
         if let Some(m) = &self.mingau {
             ui.tela.imagem((x0 + l - 32.0 - 120.0) as i32, 80, m);
         }
         let mut y = 100.0;
         for (k, v) in &self.sobre {
-            ui.tela.texto(x0 + 32.0, y, 13.0, tema::TEXTO_SECUNDARIO, k);
-            ui.tela.texto(x0 + 200.0, y, 13.5, tema::TEXTO, &desenho::encurtar(13.5, v, l - 200.0 - 170.0));
+            ui.tela.texto(x0 + 32.0, y, 13.0, tema::TEXTO_SECUNDARIO(), k);
+            ui.tela.texto(x0 + 200.0, y, 13.5, tema::TEXTO(), &desenho::encurtar(13.5, v, l - 200.0 - 170.0));
             y += 28.0;
         }
         y += 18.0;
-        ui.tela.retangulo(x0 + 32.0, y, l - 64.0, 1.0, 0.0, tema::BORDA);
+        ui.tela.retangulo(x0 + 32.0, y, l - 64.0, 1.0, 0.0, tema::BORDA());
         y += 30.0;
         let textos: [(f32, Cor, &str); 6] = [
-            (15.0, tema::TEXTO, "Um projeto sem fins lucrativos"),
-            (13.0, tema::TEXTO_SECUNDARIO, "O Ararinha existe para facilitar a vida de quem usa o computador: um sistema"),
-            (13.0, tema::TEXTO_SECUNDARIO, "livre, em português, com cara de casa. Não vende nada, não mostra anúncios e"),
-            (13.0, tema::TEXTO_SECUNDARIO, "não coleta seus dados. O nome homenageia a ararinha-azul (Cyanopsitta spixii)."),
-            (15.0, tema::TEXTO, "Créditos"),
-            (13.0, tema::TEXTO_SECUNDARIO, "Criado por Davi Souza, com a ajuda do Claude (Anthropic). Mascote: Mingau."),
+            (15.0, tema::TEXTO(), "Um projeto sem fins lucrativos"),
+            (13.0, tema::TEXTO_SECUNDARIO(), "O Ararinha existe para facilitar a vida de quem usa o computador: um sistema"),
+            (13.0, tema::TEXTO_SECUNDARIO(), "livre, em português, com cara de casa. Não vende nada, não mostra anúncios e"),
+            (13.0, tema::TEXTO_SECUNDARIO(), "não coleta seus dados. O nome homenageia a ararinha-azul (Cyanopsitta spixii)."),
+            (15.0, tema::TEXTO(), "Créditos"),
+            (13.0, tema::TEXTO_SECUNDARIO(), "Criado por Davi Souza, com a ajuda do Claude (Anthropic). Mascote: Mingau."),
         ];
         for (i, (tam, cor, t)) in textos.iter().enumerate() {
             if i == 4 {
@@ -354,7 +384,7 @@ impl Configuracoes {
             "Software livre sob a GPL-3.0; artes sob a CC BY-SA 4.0.",
         ];
         for t in rodape {
-            ui.tela.texto(x0 + 32.0, y, 12.5, tema::TEXTO_SECUNDARIO, &desenho::encurtar(12.5, t, l - 64.0));
+            ui.tela.texto(x0 + 32.0, y, 12.5, tema::TEXTO_SECUNDARIO(), &desenho::encurtar(12.5, t, l - 64.0));
             y += 19.0;
         }
     }
@@ -384,26 +414,26 @@ impl App for Configuracoes {
         }
 
         let (l, a) = (ui.largura(), ui.altura());
-        ui.tela.limpar(tema::BRANCO);
+        ui.tela.limpar(tema::JANELA());
         match self.pagina {
             Pagina::Personalizacao => self.personalizacao(ui, LATERAL_L, l - LATERAL_L),
             Pagina::Energia => self.energia(ui, LATERAL_L, l - LATERAL_L),
             Pagina::Sobre => self.sobre(ui, LATERAL_L, l - LATERAL_L),
         }
         // A lateral por cima (o conteúdo rolado não passa por ela).
-        ui.tela.retangulo(0.0, 0.0, LATERAL_L, a, 0.0, tema::FUNDO);
-        ui.tela.retangulo(LATERAL_L - 1.0, 0.0, 1.0, a, 0.0, tema::BORDA);
-        ui.tela.texto(20.0, 40.0, 17.0, tema::TEXTO, "Configurações");
+        ui.tela.retangulo(0.0, 0.0, LATERAL_L, a, 0.0, tema::FUNDO());
+        ui.tela.retangulo(LATERAL_L - 1.0, 0.0, 1.0, a, 0.0, tema::BORDA());
+        ui.tela.texto(20.0, 40.0, 17.0, tema::TEXTO(), "Configurações");
         let paginas = [(Pagina::Personalizacao, "Personalização"), (Pagina::Energia, "Energia"), (Pagina::Sobre, "Sobre")];
         for (i, (p, nome)) in paginas.iter().enumerate() {
             let y = 64.0 + i as f32 * 36.0;
             if self.pagina == *p {
-                ui.tela.retangulo(10.0, y, LATERAL_L - 20.0, 32.0, 6.0, tema::DESTAQUE_SUAVE);
-                ui.tela.retangulo(10.0, y + 8.0, 3.0, 16.0, 1.5, tema::DESTAQUE);
+                ui.tela.retangulo(10.0, y, LATERAL_L - 20.0, 32.0, 6.0, tema::DESTAQUE_SUAVE());
+                ui.tela.retangulo(10.0, y + 8.0, 3.0, 16.0, 1.5, tema::DESTAQUE());
             } else if ui.sobre(10.0, y, LATERAL_L - 20.0, 32.0) {
-                ui.tela.retangulo(10.0, y, LATERAL_L - 20.0, 32.0, 6.0, tema::SUPERFICIE_ALTA);
+                ui.tela.retangulo(10.0, y, LATERAL_L - 20.0, 32.0, 6.0, tema::SUPERFICIE_ALTA());
             }
-            ui.tela.texto(26.0, y + 21.0, 13.5, tema::TEXTO, nome);
+            ui.tela.texto(26.0, y + 21.0, 13.5, tema::TEXTO(), nome);
             if ui.clicou(10.0, y, LATERAL_L - 20.0, 32.0) {
                 self.pagina = *p;
                 self.aviso = None;
@@ -411,8 +441,8 @@ impl App for Configuracoes {
             }
         }
         if let Some(av) = &self.aviso {
-            ui.tela.retangulo(LATERAL_L, a - 36.0, l - LATERAL_L, 36.0, 0.0, tema::FUNDO);
-            let cor = if av.starts_with("Não") { tema::ERRO } else { tema::TEXTO_SECUNDARIO };
+            ui.tela.retangulo(LATERAL_L, a - 36.0, l - LATERAL_L, 36.0, 0.0, tema::FUNDO());
+            let cor = if av.starts_with("Não") { tema::ERRO() } else { tema::TEXTO_SECUNDARIO() };
             ui.tela.texto(LATERAL_L + 32.0, a - 13.0, 12.5, cor, &desenho::encurtar(12.5, av, l - LATERAL_L - 64.0));
         }
     }

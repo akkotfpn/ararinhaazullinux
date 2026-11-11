@@ -112,6 +112,9 @@ barra = media
 # Papel de parede: spix, noite-no-sertao, velho-chico, aero-azul,
 # caatinga-em-flor (de /usr/share/backgrounds/ararinha) ou o caminho de um PNG.
 papel = spix
+
+# Modo de cor da interface e dos aplicativos: claro ou escuro.
+tema = claro
 FIM
 rm -f /etc/profile.d/plumagem.sh
 ''',

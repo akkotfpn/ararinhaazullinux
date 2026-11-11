@@ -635,10 +635,10 @@ impl Ninho {
         let (hora, data) = (&self.relogio.1, &self.relogio.2);
         let lh = desenho::medir(64.0, hora);
         t.texto(300.0 - lh / 2.0 + 1.0, 66.0, 64.0, sombra, hora);
-        t.texto(300.0 - lh / 2.0, 64.0, 64.0, tema::BRANCO, hora);
+        t.texto(300.0 - lh / 2.0, 64.0, 64.0, tema::BRANCO(), hora);
         let ld = desenho::medir(18.0, data);
         t.texto(300.0 - ld / 2.0 + 1.0, 97.0, 18.0, sombra, data);
-        t.texto(300.0 - ld / 2.0, 96.0, 18.0, tema::BRANCO, data);
+        t.texto(300.0 - ld / 2.0, 96.0, 18.0, tema::BRANCO(), data);
         t
     }
 
@@ -648,12 +648,12 @@ impl Ninho {
         for (i, (alvo, nome)) in [(Alvo::Reiniciar, "Reiniciar"), (Alvo::Desligar, "Desligar")].iter().enumerate() {
             let x = i as f32 * bl;
             let tinta = if hover == Some(*alvo) {
-                if *alvo == Alvo::Desligar { tema::ERRO.com_alfa(170) } else { tema::BRANCO.com_alfa(170) }
+                if *alvo == Alvo::Desligar { tema::ERRO().com_alfa(170) } else { tema::BRANCO().com_alfa(170) }
             } else {
-                tema::BRANCO.com_alfa(90)
+                tema::BRANCO().com_alfa(90)
             };
             t.vidro(x + 3.0, 4.0, bl - 6.0, 40.0, 20.0, (origem.x + x as i32 + 3, origem.y + 4), tinta);
-            let cor = if hover == Some(Alvo::Desligar) && *alvo == Alvo::Desligar { tema::BRANCO } else { tema::TEXTO };
+            let cor = if hover == Some(Alvo::Desligar) && *alvo == Alvo::Desligar { tema::BRANCO() } else { tema::TEXTO() };
             let lt = desenho::medir(13.0, nome);
             t.texto_com_brilho(x + bl / 2.0 - lt / 2.0, 29.0, 13.0, cor, nome);
         }
@@ -662,36 +662,36 @@ impl Ninho {
 
     fn campo(&self, t: &mut Tela, i: usize, y: f32, rotulo: &str, segredo: bool, hover: Option<Alvo>) {
         let focado = self.foco == i;
-        let borda = if focado { tema::DESTAQUE } else if hover == Some(Alvo::Campo(i)) { tema::TEXTO_SECUNDARIO } else { tema::BORDA };
+        let borda = if focado { tema::DESTAQUE() } else if hover == Some(Alvo::Campo(i)) { tema::TEXTO_SECUNDARIO() } else { tema::BORDA() };
         t.retangulo(CAMPO_X, y, CAMPO_L, CAMPO_A, 8.0, borda);
         let esp = if focado { 2.0 } else { 1.0 };
-        t.retangulo(CAMPO_X + esp, y + esp, CAMPO_L - 2.0 * esp, CAMPO_A - 2.0 * esp, 8.0 - esp, tema::BRANCO);
+        t.retangulo(CAMPO_X + esp, y + esp, CAMPO_L - 2.0 * esp, CAMPO_A - 2.0 * esp, 8.0 - esp, tema::JANELA());
         let texto = &self.campos[i];
         let base = y + CAMPO_A / 2.0 + 5.0;
         let fim = if texto.is_empty() {
-            t.texto(CAMPO_X + 14.0, base, 14.0, tema::TEXTO_SECUNDARIO.com_alfa(170), rotulo);
+            t.texto(CAMPO_X + 14.0, base, 14.0, tema::TEXTO_SECUNDARIO().com_alfa(170), rotulo);
             CAMPO_X + 14.0
         } else if segredo {
             let n = texto.chars().count().min(26);
             for k in 0..n {
                 let cx = CAMPO_X + 18.0 + k as f32 * 11.0;
-                t.retangulo(cx - 4.0, y + CAMPO_A / 2.0 - 4.0, 8.0, 8.0, 4.0, tema::TEXTO);
+                t.retangulo(cx - 4.0, y + CAMPO_A / 2.0 - 4.0, 8.0, 8.0, 4.0, tema::TEXTO());
             }
             CAMPO_X + 14.0 + n as f32 * 11.0
         } else {
             let visivel = desenho::encurtar(14.0, texto, CAMPO_L - 30.0);
-            CAMPO_X + 14.0 + t.texto(CAMPO_X + 14.0, base, 14.0, tema::TEXTO, &visivel)
+            CAMPO_X + 14.0 + t.texto(CAMPO_X + 14.0, base, 14.0, tema::TEXTO(), &visivel)
         };
         if focado {
-            t.retangulo(fim + 1.0, y + 10.0, 1.5, CAMPO_A - 20.0, 0.0, tema::DESTAQUE);
+            t.retangulo(fim + 1.0, y + 10.0, 1.5, CAMPO_A - 20.0, 0.0, tema::DESTAQUE());
         }
     }
 
     fn botao(&self, t: &mut Tela, y: f32, nome: &str, hover: Option<Alvo>) {
-        let cor = if hover == Some(Alvo::Botao) { tema::DESTAQUE_FORTE } else { tema::DESTAQUE };
+        let cor = if hover == Some(Alvo::Botao) { tema::DESTAQUE_FORTE() } else { tema::DESTAQUE() };
         t.retangulo(CAMPO_X, y, CAMPO_L, CAMPO_A, 8.0, cor);
         let l = desenho::medir(15.0, nome);
-        t.texto(CAMPO_X + CAMPO_L / 2.0 - l / 2.0, y + CAMPO_A / 2.0 + 5.5, 15.0, tema::BRANCO, nome);
+        t.texto(CAMPO_X + CAMPO_L / 2.0 - l / 2.0, y + CAMPO_A / 2.0 + 5.5, 15.0, tema::BRANCO(), nome);
     }
 
     fn centralizado(t: &mut Tela, y: f32, tam: f32, cor: Cor, texto: &str) {
@@ -702,20 +702,20 @@ impl Ninho {
     fn desenhar_cartao(&self, hover: Option<Alvo>, origem: Point<i32, Logical>) -> Tela {
         let a = self.cartao_a();
         let mut t = Tela::nova(CARTAO_L, a);
-        t.vidro(0.0, 0.0, CARTAO_L as f32, a as f32, 18.0, (origem.x, origem.y), tema::FUNDO.com_alfa(185));
+        t.vidro(0.0, 0.0, CARTAO_L as f32, a as f32, 18.0, (origem.x, origem.y), tema::FUNDO().com_alfa(185));
         if let Some(m) = &self.mingau {
             t.imagem((CARTAO_L - m.width() as i32) / 2, 18, m);
         }
         let (campos, botao) = self.campos_y();
         match self.modo {
             Modo::Entrar => {
-                Self::centralizado(&mut t, 152.0, 22.0, tema::TEXTO, self.saudacao());
+                Self::centralizado(&mut t, 152.0, 22.0, tema::TEXTO(), self.saudacao());
                 let nome = self.usuario().map(|u| u.nome.clone()).unwrap_or_default();
                 let nome = desenho::encurtar(17.0, &nome, CAMPO_L - 80.0);
-                Self::centralizado(&mut t, 200.0, 17.0, tema::TEXTO, &nome);
+                Self::centralizado(&mut t, 200.0, 17.0, tema::TEXTO(), &nome);
                 if self.usuarios.len() > 1 {
                     for (alvo, x, s) in [(Alvo::Anterior, CAMPO_X + 18.0, -1.0), (Alvo::Proximo, CAMPO_X + CAMPO_L - 18.0, 1.0)] {
-                        let cor = if hover == Some(alvo) { tema::DESTAQUE } else { tema::TEXTO_SECUNDARIO };
+                        let cor = if hover == Some(alvo) { tema::DESTAQUE() } else { tema::TEXTO_SECUNDARIO() };
                         t.linha(x + 3.0 * s * -1.0, 187.0, x + 3.0 * s, 194.0, 2.0, cor);
                         t.linha(x + 3.0 * s, 194.0, x + 3.0 * s * -1.0, 201.0, 2.0, cor);
                     }
@@ -729,11 +729,11 @@ impl Ninho {
                 } else {
                     ("Qual é o seu fuso horário?", "O relógio usa este fuso.")
                 };
-                Self::centralizado(&mut t, 136.0, 21.0, tema::TEXTO, titulo);
-                Self::centralizado(&mut t, 158.0, 13.0, tema::TEXTO_SECUNDARIO, sub);
+                Self::centralizado(&mut t, 136.0, 21.0, tema::TEXTO(), titulo);
+                Self::centralizado(&mut t, 158.0, 13.0, tema::TEXTO_SECUNDARIO(), sub);
                 if self.modo == Modo::Idioma {
-                    t.texto(CAMPO_X, 190.0, 12.0, tema::TEXTO_SECUNDARIO, "Idioma");
-                    t.texto(CAMPO_X, 300.0, 12.0, tema::TEXTO_SECUNDARIO, "Teclado");
+                    t.texto(CAMPO_X, 190.0, 12.0, tema::TEXTO_SECUNDARIO(), "Idioma");
+                    t.texto(CAMPO_X, 300.0, 12.0, tema::TEXTO_SECUNDARIO(), "Teclado");
                 }
                 for (g, i, oy, nome) in self.opcoes() {
                     let sel = match g {
@@ -743,27 +743,27 @@ impl Ninho {
                     };
                     let oy = if g == 2 { oy } else { oy + 4.0 };
                     if sel {
-                        t.retangulo(CAMPO_X, oy, CAMPO_L, 30.0, 7.0, tema::DESTAQUE_SUAVE);
+                        t.retangulo(CAMPO_X, oy, CAMPO_L, 30.0, 7.0, tema::DESTAQUE_SUAVE());
                     } else if hover == Some(Alvo::Opcao(g, i)) {
-                        t.retangulo(CAMPO_X, oy, CAMPO_L, 30.0, 7.0, tema::SUPERFICIE_ALTA);
+                        t.retangulo(CAMPO_X, oy, CAMPO_L, 30.0, 7.0, tema::SUPERFICIE_ALTA());
                     }
                     // Bolinha de escolha.
-                    t.retangulo(CAMPO_X + 10.0, oy + 8.0, 14.0, 14.0, 7.0, if sel { tema::DESTAQUE } else { tema::BORDA });
-                    t.retangulo(CAMPO_X + 12.0, oy + 10.0, 10.0, 10.0, 5.0, tema::BRANCO);
+                    t.retangulo(CAMPO_X + 10.0, oy + 8.0, 14.0, 14.0, 7.0, if sel { tema::DESTAQUE() } else { tema::BORDA() });
+                    t.retangulo(CAMPO_X + 12.0, oy + 10.0, 10.0, 10.0, 5.0, tema::JANELA());
                     if sel {
-                        t.retangulo(CAMPO_X + 14.0, oy + 12.0, 6.0, 6.0, 3.0, tema::DESTAQUE);
+                        t.retangulo(CAMPO_X + 14.0, oy + 12.0, 6.0, 6.0, 3.0, tema::DESTAQUE());
                     }
-                    t.texto(CAMPO_X + 34.0, oy + 20.0, 13.5, tema::TEXTO, nome);
+                    t.texto(CAMPO_X + 34.0, oy + 20.0, 13.5, tema::TEXTO(), nome);
                 }
                 self.botao(&mut t, botao, "Continuar", hover);
             }
             Modo::Criar => {
-                Self::centralizado(&mut t, 148.0, 21.0, tema::TEXTO, "Bem-vindo ao Ararinha!");
-                Self::centralizado(&mut t, 172.0, 13.0, tema::TEXTO_SECUNDARIO, "Vamos criar a sua conta.");
+                Self::centralizado(&mut t, 148.0, 21.0, tema::TEXTO(), "Bem-vindo ao Ararinha!");
+                Self::centralizado(&mut t, 172.0, 13.0, tema::TEXTO_SECUNDARIO(), "Vamos criar a sua conta.");
                 self.campo(&mut t, 0, campos[0], "Seu nome", false, hover);
                 let login = login_de(&self.campos[0]);
                 if !login.is_empty() {
-                    t.texto(CAMPO_X + 4.0, campos[0] + CAMPO_A + 18.0, 12.0, tema::TEXTO_SECUNDARIO, &format!("Nome de usuário: {login}"));
+                    t.texto(CAMPO_X + 4.0, campos[0] + CAMPO_A + 18.0, 12.0, tema::TEXTO_SECUNDARIO(), &format!("Nome de usuário: {login}"));
                 }
                 self.campo(&mut t, 1, campos[1], "Senha", true, hover);
                 self.campo(&mut t, 2, campos[2], "Confirme a senha", true, hover);
@@ -772,14 +772,14 @@ impl Ninho {
                     CAMPO_X,
                     botao + CAMPO_A + 50.0,
                     11.5,
-                    tema::TEXTO_SECUNDARIO,
+                    tema::TEXTO_SECUNDARIO(),
                     "Esta senha também vale para o administrador.",
                 );
             }
         }
         if let Some(e) = &self.erro {
             let e = desenho::encurtar(13.0, e, CAMPO_L);
-            Self::centralizado(&mut t, botao + CAMPO_A + 28.0, 13.0, tema::ERRO, &e);
+            Self::centralizado(&mut t, botao + CAMPO_A + 28.0, 13.0, tema::ERRO(), &e);
         }
         t
     }

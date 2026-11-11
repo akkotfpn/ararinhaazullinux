@@ -130,6 +130,36 @@ pub struct Opcoes {
     pub minimo: (u32, u32),
 }
 
+fn arquivos_config() -> [std::path::PathBuf; 2] {
+    let casa = std::env::var("HOME").unwrap_or_else(|_| "/root".into());
+    [
+        std::path::PathBuf::from(casa).join(".config/plumagem/plumagem.conf"),
+        std::path::PathBuf::from("/etc/plumagem/plumagem.conf"),
+    ]
+}
+
+/// `tema = escuro` na configuração da Plumagem (a do usuário vale mais).
+fn ler_tema_escuro() -> bool {
+    for c in arquivos_config() {
+        let Ok(t) = std::fs::read_to_string(&c) else { continue };
+        for l in t.lines() {
+            if l.trim_start().starts_with('#') {
+                continue;
+            }
+            if let Some((k, v)) = l.split_once('=') {
+                if k.trim() == "tema" {
+                    return v.trim().trim_matches('"') == "escuro";
+                }
+            }
+        }
+    }
+    false
+}
+
+fn versao_config() -> Vec<Option<std::time::SystemTime>> {
+    arquivos_config().iter().map(|c| std::fs::metadata(c).and_then(|m| m.modified()).ok()).collect()
+}
+
 /// Abre a janela e roda o app até ela ser fechada.
 pub fn executar(opcoes: Opcoes, app: Box<dyn App>) {
     let conn = match Connection::connect_to_env() {
@@ -189,7 +219,18 @@ pub fn executar(opcoes: Opcoes, app: Box<dyn App>) {
         tela: Tela::nova(l as i32, a as i32),
     };
 
+    tema::definir_escuro(ler_tema_escuro());
+    let mut config = (Instant::now(), versao_config());
     while !janela.sair {
+        // O tema mudou nas Configurações? Redesenha com as cores novas.
+        if config.0.elapsed() >= Duration::from_secs(1) {
+            let v = versao_config();
+            if v != config.1 {
+                tema::definir_escuro(ler_tema_escuro());
+                janela.sujo = true;
+            }
+            config = (Instant::now(), v);
+        }
         let espera = janela
             .acordar
             .map(|t| t.saturating_duration_since(Instant::now()).min(Duration::from_millis(100)))

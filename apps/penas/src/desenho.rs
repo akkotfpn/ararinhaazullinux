@@ -19,18 +19,48 @@ impl Cor {
 
 /// Cores do tema Spix (`arte/temas/spix.toml`).
 pub mod tema {
+    //! Cores do tema. Claro ou escuro conforme `tema = claro | escuro` em
+    //! ~/.config/plumagem/plumagem.conf (a Penas relê quando o arquivo muda).
     use super::Cor;
-    pub const DESTAQUE: Cor = Cor::hex(0x2B7BC4);
-    pub const DESTAQUE_FORTE: Cor = Cor::hex(0x1E5FA3);
-    pub const DESTAQUE_SUAVE: Cor = Cor::hex(0xD6E8F7);
-    pub const FUNDO: Cor = Cor::hex(0xF4F7FA);
-    pub const SUPERFICIE: Cor = Cor::hex(0xFFFFFF);
-    pub const SUPERFICIE_ALTA: Cor = Cor::hex(0xEAF0F5);
-    pub const TEXTO: Cor = Cor::hex(0x0B1A2E);
-    pub const TEXTO_SECUNDARIO: Cor = Cor::hex(0x4A5A6A);
-    pub const BORDA: Cor = Cor::hex(0xD3DDE6);
-    pub const ERRO: Cor = Cor::hex(0xC2413B);
-    pub const BRANCO: Cor = Cor::hex(0xFFFFFF);
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    static ESCURO: AtomicBool = AtomicBool::new(false);
+
+    pub fn escuro() -> bool {
+        ESCURO.load(Ordering::Relaxed)
+    }
+    pub fn definir_escuro(sim: bool) {
+        ESCURO.store(sim, Ordering::Relaxed);
+    }
+
+    macro_rules! cores {
+        ($($(#[$doc:meta])* $nome:ident = $claro:expr, $esc:expr;)*) => {
+            $(
+                $(#[$doc])*
+                #[allow(non_snake_case)]
+                pub fn $nome() -> Cor {
+                    if escuro() { Cor::hex($esc) } else { Cor::hex($claro) }
+                }
+            )*
+        };
+    }
+
+    cores! {
+        DESTAQUE = 0x2B7BC4, 0x3B8DD8;
+        DESTAQUE_FORTE = 0x1E5FA3, 0x5AA8EC;
+        DESTAQUE_SUAVE = 0xD6E8F7, 0x163A5E;
+        FUNDO = 0xF4F7FA, 0x0B1A2E;
+        SUPERFICIE = 0xFFFFFF, 0x152A44;
+        SUPERFICIE_ALTA = 0xEAF0F5, 0x1A3150;
+        TEXTO = 0x0B1A2E, 0xEAF2F9;
+        TEXTO_SECUNDARIO = 0x4A5A6A, 0x9FB3C6;
+        BORDA = 0xD3DDE6, 0x24405F;
+        ERRO = 0xC2413B, 0xE06A63;
+        /// Fundo das janelas e dos cartões.
+        JANELA = 0xFFFFFF, 0x10223A;
+        /// Branco de verdade (texto sobre o destaque), nos dois temas.
+        BRANCO = 0xFFFFFF, 0xFFFFFF;
+    }
 }
 
 pub struct Tela {
@@ -174,7 +204,7 @@ impl Tela {
     /// continua legível sobre qualquer fundo.
     pub fn texto_com_brilho(&mut self, x: f32, y: f32, tamanho: f32, cor: Cor, texto: &str) -> f32 {
         // Halo leve: forte demais, deixa letras pequenas borradas.
-        let halo = tema::BRANCO.com_alfa(45);
+        let halo = if tema::escuro() { Cor(0, 0, 0, 70) } else { tema::BRANCO().com_alfa(45) };
         for (dx, dy) in [(-1.0, 0.0), (1.0, 0.0), (0.0, -1.0), (0.0, 1.0)] {
             self.texto(x + dx, y + dy, tamanho, halo, texto);
         }

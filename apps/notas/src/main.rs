@@ -190,7 +190,7 @@ impl App for Notas {
         }
         ui.titulo = Some(self.titulo());
 
-        ui.tela.limpar(tema::BRANCO);
+        ui.tela.limpar(tema::JANELA());
         let topo = BARRA_A;
         let visivel = a - topo - 28.0;
 
@@ -229,46 +229,46 @@ impl App for Notas {
             if y > a - 28.0 {
                 break;
             }
-            ui.tela.texto(MARGEM, y + 15.0, TAM, tema::TEXTO, &self.linhas[i]);
+            ui.tela.texto(MARGEM, y + 15.0, TAM, tema::TEXTO(), &self.linhas[i]);
             if i == self.cl && self.nome_salvar.is_none() {
                 let antes: String = self.linhas[i].chars().take(self.cc).collect();
                 let x = MARGEM + desenho::medir(TAM, &antes);
-                ui.tela.retangulo(x, y + 2.0, 1.5, LINHA - 2.0, 0.0, tema::DESTAQUE);
+                ui.tela.retangulo(x, y + 2.0, 1.5, LINHA - 2.0, 0.0, tema::DESTAQUE());
             }
         }
 
         // Barra de cima: Salvar.
-        ui.tela.retangulo(0.0, 0.0, l, BARRA_A, 0.0, tema::FUNDO);
-        ui.tela.retangulo(0.0, BARRA_A - 1.0, l, 1.0, 0.0, tema::BORDA);
+        ui.tela.retangulo(0.0, 0.0, l, BARRA_A, 0.0, tema::FUNDO());
+        ui.tela.retangulo(0.0, BARRA_A - 1.0, l, 1.0, 0.0, tema::BORDA());
         let sobre = ui.sobre(10.0, 7.0, 96.0, 30.0);
-        ui.tela.retangulo(10.0, 7.0, 96.0, 30.0, 6.0, if sobre { tema::DESTAQUE_FORTE } else { tema::DESTAQUE });
-        ui.tela.texto(24.0, 27.0, 13.0, tema::BRANCO, "Salvar");
+        ui.tela.retangulo(10.0, 7.0, 96.0, 30.0, 6.0, if sobre { tema::DESTAQUE_FORTE() } else { tema::DESTAQUE() });
+        ui.tela.texto(24.0, 27.0, 13.0, tema::BRANCO(), "Salvar");
         if ui.clicou(10.0, 7.0, 96.0, 30.0) {
             self.salvar();
         }
-        ui.tela.texto(120.0, 27.0, 12.0, tema::TEXTO_SECUNDARIO, "Ctrl+S salva");
+        ui.tela.texto(120.0, 27.0, 12.0, tema::TEXTO_SECUNDARIO(), "Ctrl+S salva");
 
         // Barra de baixo: posição e avisos.
-        ui.tela.retangulo(0.0, a - 26.0, l, 26.0, 0.0, tema::FUNDO);
+        ui.tela.retangulo(0.0, a - 26.0, l, 26.0, 0.0, tema::FUNDO());
         let pos = format!("Linha {}, coluna {}", self.cl + 1, self.cc + 1);
-        ui.tela.texto(12.0, a - 8.0, 12.0, tema::TEXTO_SECUNDARIO, &pos);
+        ui.tela.texto(12.0, a - 8.0, 12.0, tema::TEXTO_SECUNDARIO(), &pos);
         if let Some(av) = &self.aviso {
             let lt = desenho::medir(12.0, av);
-            ui.tela.texto(l - 12.0 - lt, a - 8.0, 12.0, tema::TEXTO, av);
+            ui.tela.texto(l - 12.0 - lt, a - 8.0, 12.0, tema::TEXTO(), av);
         }
 
         if let Some(nome) = &self.nome_salvar {
             let (cl, ca) = (420.0, 130.0);
             let (x, y) = ((l - cl) / 2.0, (a - ca) / 2.0);
             ui.tela.retangulo(x + 2.0, y + 4.0, cl, ca, 10.0, penas::Cor(0, 0, 0, 50));
-            ui.tela.retangulo(x, y, cl, ca, 10.0, tema::BORDA);
-            ui.tela.retangulo(x + 1.0, y + 1.0, cl - 2.0, ca - 2.0, 9.0, tema::BRANCO);
-            ui.tela.texto(x + 18.0, y + 30.0, 14.0, tema::TEXTO, "Salvar em Documentos como:");
-            ui.tela.retangulo(x + 16.0, y + 46.0, cl - 32.0, 34.0, 6.0, tema::DESTAQUE);
-            ui.tela.retangulo(x + 18.0, y + 48.0, cl - 36.0, 30.0, 5.0, tema::BRANCO);
-            let fim = ui.tela.texto(x + 26.0, y + 68.0, 14.0, tema::TEXTO, nome);
-            ui.tela.retangulo(x + 27.0 + fim, y + 53.0, 1.5, 20.0, 0.0, tema::DESTAQUE);
-            ui.tela.texto(x + 18.0, y + 108.0, 12.0, tema::TEXTO_SECUNDARIO, "Enter salva · Esc cancela");
+            ui.tela.retangulo(x, y, cl, ca, 10.0, tema::BORDA());
+            ui.tela.retangulo(x + 1.0, y + 1.0, cl - 2.0, ca - 2.0, 9.0, tema::JANELA());
+            ui.tela.texto(x + 18.0, y + 30.0, 14.0, tema::TEXTO(), "Salvar em Documentos como:");
+            ui.tela.retangulo(x + 16.0, y + 46.0, cl - 32.0, 34.0, 6.0, tema::DESTAQUE());
+            ui.tela.retangulo(x + 18.0, y + 48.0, cl - 36.0, 30.0, 5.0, tema::JANELA());
+            let fim = ui.tela.texto(x + 26.0, y + 68.0, 14.0, tema::TEXTO(), nome);
+            ui.tela.retangulo(x + 27.0 + fim, y + 53.0, 1.5, 20.0, 0.0, tema::DESTAQUE());
+            ui.tela.texto(x + 18.0, y + 108.0, 12.0, tema::TEXTO_SECUNDARIO(), "Enter salva · Esc cancela");
         }
     }
 }

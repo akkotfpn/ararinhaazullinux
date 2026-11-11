@@ -597,59 +597,59 @@ impl Explorador {
         ui.tela.retangulo(0.0, 0.0, l, a, 0.0, Cor(11, 26, 46, 90));
         let (x, y, cl, ca) = Self::caixa_mapear(l, a);
         ui.tela.retangulo(x + 3.0, y + 6.0, cl, ca, 12.0, Cor(0, 0, 0, 50));
-        ui.tela.retangulo(x, y, cl, ca, 12.0, tema::BORDA);
-        ui.tela.retangulo(x + 1.0, y + 1.0, cl - 2.0, ca - 2.0, 11.0, tema::BRANCO);
+        ui.tela.retangulo(x, y, cl, ca, 12.0, tema::BORDA());
+        ui.tela.retangulo(x + 1.0, y + 1.0, cl - 2.0, ca - 2.0, 11.0, tema::JANELA());
         desenhar_icone(ui.tela, "unidade-rede", x + 20.0, y + 14.0, 36.0);
-        ui.tela.texto(x + 66.0, y + 38.0, 17.0, tema::TEXTO, "Mapear unidade de rede");
+        ui.tela.texto(x + 66.0, y + 38.0, 17.0, tema::TEXTO(), "Mapear unidade de rede");
 
         // Letra.
-        ui.tela.texto(x + 160.0, y + 82.0, 13.0, tema::TEXTO_SECUNDARIO, "Unidade");
-        ui.tela.retangulo(x + 56.0, y + 62.0, 50.0, 30.0, 6.0, tema::DESTAQUE_SUAVE);
+        ui.tela.texto(x + 160.0, y + 82.0, 13.0, tema::TEXTO_SECUNDARIO(), "Unidade");
+        ui.tela.retangulo(x + 56.0, y + 62.0, 50.0, 30.0, 6.0, tema::DESTAQUE_SUAVE());
         let lt = format!("{}:", m.letra);
         let w = desenho::medir(16.0, &lt);
-        ui.tela.texto(x + 81.0 - w / 2.0, y + 83.0, 16.0, tema::TEXTO, &lt);
-        seta(ui.tela, x + 39.0, y + 77.0, 0.0, tema::TEXTO);
-        seta(ui.tela, x + 125.0, y + 77.0, 1.0, tema::TEXTO);
+        ui.tela.texto(x + 81.0 - w / 2.0, y + 83.0, 16.0, tema::TEXTO(), &lt);
+        seta(ui.tela, x + 39.0, y + 77.0, 0.0, tema::TEXTO());
+        seta(ui.tela, x + 125.0, y + 77.0, 1.0, tema::TEXTO());
 
         let rotulos = ["Pasta (por exemplo \\\\servidor\\documentos)", "Usuário (vazio = convidado)", "Senha"];
         let campos_y = [118.0, 190.0, 248.0];
         for i in 0..3 {
             let cy = y + campos_y[i];
-            ui.tela.texto(x + 26.0, cy - 6.0, 12.0, tema::TEXTO_SECUNDARIO, rotulos[i]);
+            ui.tela.texto(x + 26.0, cy - 6.0, 12.0, tema::TEXTO_SECUNDARIO(), rotulos[i]);
             let focado = m.foco == i;
-            ui.tela.retangulo(x + 24.0, cy, cl - 48.0, 34.0, 6.0, if focado { tema::DESTAQUE } else { tema::BORDA });
+            ui.tela.retangulo(x + 24.0, cy, cl - 48.0, 34.0, 6.0, if focado { tema::DESTAQUE() } else { tema::BORDA() });
             let e = if focado { 2.0 } else { 1.0 };
-            ui.tela.retangulo(x + 24.0 + e, cy + e, cl - 48.0 - 2.0 * e, 34.0 - 2.0 * e, 5.0, tema::BRANCO);
+            ui.tela.retangulo(x + 24.0 + e, cy + e, cl - 48.0 - 2.0 * e, 34.0 - 2.0 * e, 5.0, tema::JANELA());
             let texto = if i == 2 { "•".repeat(m.campos[2].chars().count()) } else { m.campos[i].clone() };
             let texto = desenho::encurtar(14.0, &texto, cl - 80.0);
-            let fim = ui.tela.texto(x + 34.0, cy + 23.0, 14.0, tema::TEXTO, &texto);
+            let fim = ui.tela.texto(x + 34.0, cy + 23.0, 14.0, tema::TEXTO(), &texto);
             if focado {
-                ui.tela.retangulo(x + 35.0 + fim, cy + 8.0, 1.5, 18.0, 0.0, tema::DESTAQUE);
+                ui.tela.retangulo(x + 35.0 + fim, cy + 8.0, 1.5, 18.0, 0.0, tema::DESTAQUE());
             }
         }
         // Reconectar ao entrar.
         let cx = x + 24.0;
         let cy = y + 294.0;
-        ui.tela.retangulo(cx, cy, 18.0, 18.0, 4.0, if m.reconectar { tema::DESTAQUE } else { tema::BORDA });
+        ui.tela.retangulo(cx, cy, 18.0, 18.0, 4.0, if m.reconectar { tema::DESTAQUE() } else { tema::BORDA() });
         if m.reconectar {
-            ui.tela.linha(cx + 4.0, cy + 9.0, cx + 8.0, cy + 13.0, 2.0, tema::BRANCO);
-            ui.tela.linha(cx + 8.0, cy + 13.0, cx + 14.0, cy + 5.0, 2.0, tema::BRANCO);
+            ui.tela.linha(cx + 4.0, cy + 9.0, cx + 8.0, cy + 13.0, 2.0, tema::BRANCO());
+            ui.tela.linha(cx + 8.0, cy + 13.0, cx + 14.0, cy + 5.0, 2.0, tema::BRANCO());
         } else {
-            ui.tela.retangulo(cx + 1.5, cy + 1.5, 15.0, 15.0, 3.0, tema::BRANCO);
+            ui.tela.retangulo(cx + 1.5, cy + 1.5, 15.0, 15.0, 3.0, tema::JANELA());
         }
-        ui.tela.texto(cx + 28.0, cy + 14.0, 13.0, tema::TEXTO, "Reconectar ao entrar");
+        ui.tela.texto(cx + 28.0, cy + 14.0, 13.0, tema::TEXTO(), "Reconectar ao entrar");
         if let Some(e) = &m.erro {
             let e = desenho::encurtar(12.5, e, cl - 48.0);
-            ui.tela.texto(x + 24.0, y + ca - 66.0, 12.5, tema::ERRO, &e);
+            ui.tela.texto(x + 24.0, y + ca - 66.0, 12.5, tema::ERRO(), &e);
         }
         // Botões.
         let by = y + ca - 54.0;
         let sobre_c = ui.sobre(x + cl - 228.0, by, 100.0, 36.0);
-        ui.tela.retangulo(x + cl - 228.0, by, 100.0, 36.0, 8.0, if sobre_c { tema::SUPERFICIE_ALTA } else { tema::FUNDO });
-        ui.tela.texto(x + cl - 207.0, by + 23.0, 13.5, tema::TEXTO, "Cancelar");
+        ui.tela.retangulo(x + cl - 228.0, by, 100.0, 36.0, 8.0, if sobre_c { tema::SUPERFICIE_ALTA() } else { tema::FUNDO() });
+        ui.tela.texto(x + cl - 207.0, by + 23.0, 13.5, tema::TEXTO(), "Cancelar");
         let sobre_o = ui.sobre(x + cl - 120.0, by, 100.0, 36.0);
-        ui.tela.retangulo(x + cl - 120.0, by, 100.0, 36.0, 8.0, if sobre_o { tema::DESTAQUE_FORTE } else { tema::DESTAQUE });
-        ui.tela.texto(x + cl - 102.0, by + 23.0, 13.5, tema::BRANCO, "Conectar");
+        ui.tela.retangulo(x + cl - 120.0, by, 100.0, 36.0, 8.0, if sobre_o { tema::DESTAQUE_FORTE() } else { tema::DESTAQUE() });
+        ui.tela.texto(x + cl - 102.0, by + 23.0, 13.5, tema::BRANCO(), "Conectar");
     }
 
     fn pasta_atual(&self) -> Option<PathBuf> {
@@ -922,7 +922,7 @@ fn icone_pasta(t: &mut Tela, x: f32, y: f32, s: f32) {
 fn icone_arquivo(t: &mut Tela, x: f32, y: f32, s: f32) {
     let borda = Cor::hex(0x9AA8B6);
     t.retangulo(x + 0.18 * s, y + 0.08 * s, 0.64 * s, 0.84 * s, 0.06 * s, borda);
-    t.retangulo(x + 0.18 * s + 1.0, y + 0.08 * s + 1.0, 0.64 * s - 2.0, 0.84 * s - 2.0, 0.05 * s, tema::BRANCO);
+    t.retangulo(x + 0.18 * s + 1.0, y + 0.08 * s + 1.0, 0.64 * s - 2.0, 0.84 * s - 2.0, 0.05 * s, tema::BRANCO());
     for k in 0..3 {
         let ly = y + (0.38 + 0.14 * k as f32) * s;
         t.linha(x + 0.3 * s, ly, x + 0.7 * s, ly, 0.05 * s, borda.com_alfa(160));
@@ -938,7 +938,7 @@ fn icone_unidade(t: &mut Tela, x: f32, y: f32, s: f32, sistema: bool) {
     t.retangulo(x + 0.75 * s, y + 0.62 * s, 0.1 * s, 0.05 * s, 0.02 * s, Cor::hex(0x3FBF6B));
     if sistema {
         // Bandeirinha azul: é a unidade do sistema.
-        t.retangulo(x + 0.14 * s, y + 0.4 * s, 0.16 * s, 0.16 * s, 0.03 * s, tema::DESTAQUE);
+        t.retangulo(x + 0.14 * s, y + 0.4 * s, 0.16 * s, 0.16 * s, 0.03 * s, tema::DESTAQUE());
     }
 }
 
@@ -947,7 +947,7 @@ fn icone_computador(t: &mut Tela, x: f32, y: f32, s: f32) {
         return;
     }
     t.retangulo(x + 0.08 * s, y + 0.16 * s, 0.84 * s, 0.54 * s, 0.06 * s, Cor::hex(0x3A4A5C));
-    t.retangulo(x + 0.12 * s, y + 0.2 * s, 0.76 * s, 0.46 * s, 0.04 * s, tema::DESTAQUE);
+    t.retangulo(x + 0.12 * s, y + 0.2 * s, 0.76 * s, 0.46 * s, 0.04 * s, tema::DESTAQUE());
     t.retangulo(x + 0.42 * s, y + 0.7 * s, 0.16 * s, 0.1 * s, 0.0, Cor::hex(0x3A4A5C));
     t.retangulo(x + 0.28 * s, y + 0.8 * s, 0.44 * s, 0.06 * s, 0.03 * s, Cor::hex(0x3A4A5C));
 }
@@ -1075,7 +1075,7 @@ impl App for Explorador {
         }
 
         let (l, a) = (ui.largura(), ui.altura());
-        ui.tela.limpar(tema::SUPERFICIE);
+        ui.tela.limpar(tema::SUPERFICIE());
 
         self.desenhar_lateral(ui, a);
         self.desenhar_barra(ui, l);
@@ -1090,11 +1090,11 @@ impl App for Explorador {
         // Aviso na parte de baixo.
         if let Some(aviso) = self.aviso.clone() {
             let y = a - 40.0;
-            ui.tela.retangulo(cx + 12.0, y, cl - 24.0, 30.0, 8.0, tema::DESTAQUE_SUAVE);
+            ui.tela.retangulo(cx + 12.0, y, cl - 24.0, 30.0, 8.0, tema::DESTAQUE_SUAVE());
             let txt = desenho::encurtar(13.0, &aviso, cl - 80.0);
-            ui.tela.texto(cx + 24.0, y + 20.0, 13.0, tema::TEXTO, &txt);
+            ui.tela.texto(cx + 24.0, y + 20.0, 13.0, tema::TEXTO(), &txt);
             let fx = cx + cl - 40.0;
-            let cor = if ui.sobre(fx, y, 24.0, 30.0) { tema::DESTAQUE } else { tema::TEXTO_SECUNDARIO };
+            let cor = if ui.sobre(fx, y, 24.0, 30.0) { tema::DESTAQUE() } else { tema::TEXTO_SECUNDARIO() };
             ui.tela.linha(fx + 7.0, y + 10.0, fx + 17.0, y + 20.0, 1.5, cor);
             ui.tela.linha(fx + 7.0, y + 20.0, fx + 17.0, y + 10.0, 1.5, cor);
             if ui.clicou(fx, y, 24.0, 30.0) {
@@ -1110,14 +1110,14 @@ impl App for Explorador {
             let my = my.min(a - h - 4.0).max(0.0);
             self.menu = Some((mx, my, alvo));
             ui.tela.retangulo(mx + 2.0, my + 4.0, MENU_L, h, 8.0, Cor(0, 0, 0, 40));
-            ui.tela.retangulo(mx, my, MENU_L, h, 8.0, tema::BORDA);
-            ui.tela.retangulo(mx + 1.0, my + 1.0, MENU_L - 2.0, h - 2.0, 7.0, tema::BRANCO);
+            ui.tela.retangulo(mx, my, MENU_L, h, 8.0, tema::BORDA());
+            ui.tela.retangulo(mx + 1.0, my + 1.0, MENU_L - 2.0, h - 2.0, 7.0, tema::JANELA());
             for (k, (nome, _, ativo)) in itens.iter().enumerate() {
                 let y = my + 6.0 + k as f32 * MENU_ITEM_A;
                 if *ativo && ui.sobre(mx, y, MENU_L, MENU_ITEM_A) {
-                    ui.tela.retangulo(mx + 4.0, y, MENU_L - 8.0, MENU_ITEM_A, 5.0, tema::DESTAQUE_SUAVE);
+                    ui.tela.retangulo(mx + 4.0, y, MENU_L - 8.0, MENU_ITEM_A, 5.0, tema::DESTAQUE_SUAVE());
                 }
-                let cor = if *ativo { tema::TEXTO } else { tema::BORDA };
+                let cor = if *ativo { tema::TEXTO() } else { tema::BORDA() };
                 ui.tela.texto(mx + 16.0, y + 20.0, 13.0, cor, nome);
             }
         }
@@ -1125,12 +1125,12 @@ impl App for Explorador {
         if let Some((mx, my, letra)) = self.menu_unidade {
             let h = MENU_ITEM_A + 12.0;
             ui.tela.retangulo(mx + 2.0, my + 4.0, MENU_L, h, 8.0, Cor(0, 0, 0, 40));
-            ui.tela.retangulo(mx, my, MENU_L, h, 8.0, tema::BORDA);
-            ui.tela.retangulo(mx + 1.0, my + 1.0, MENU_L - 2.0, h - 2.0, 7.0, tema::BRANCO);
+            ui.tela.retangulo(mx, my, MENU_L, h, 8.0, tema::BORDA());
+            ui.tela.retangulo(mx + 1.0, my + 1.0, MENU_L - 2.0, h - 2.0, 7.0, tema::JANELA());
             if ui.sobre(mx, my + 6.0, MENU_L, MENU_ITEM_A) {
-                ui.tela.retangulo(mx + 4.0, my + 6.0, MENU_L - 8.0, MENU_ITEM_A, 5.0, tema::DESTAQUE_SUAVE);
+                ui.tela.retangulo(mx + 4.0, my + 6.0, MENU_L - 8.0, MENU_ITEM_A, 5.0, tema::DESTAQUE_SUAVE());
             }
-            ui.tela.texto(mx + 16.0, my + 26.0, 13.0, tema::TEXTO, &format!("Desconectar {letra}:"));
+            ui.tela.texto(mx + 16.0, my + 26.0, 13.0, tema::TEXTO(), &format!("Desconectar {letra}:"));
         }
 
         if self.mapear.is_some() {
@@ -1142,8 +1142,8 @@ impl App for Explorador {
 impl Explorador {
     fn desenhar_barra(&mut self, ui: &mut Ui, l: f32) {
         let t = &mut *ui.tela;
-        t.retangulo(0.0, 0.0, l, BARRA_A, 0.0, tema::FUNDO);
-        t.retangulo(0.0, BARRA_A - 1.0, l, 1.0, 0.0, tema::BORDA);
+        t.retangulo(0.0, 0.0, l, BARRA_A, 0.0, tema::FUNDO());
+        t.retangulo(0.0, BARRA_A - 1.0, l, 1.0, 0.0, tema::BORDA());
         let botoes = [
             (0.0, !self.voltar.is_empty()),
             (1.0, !self.avancar.is_empty()),
@@ -1154,9 +1154,9 @@ impl Explorador {
             let x = 10.0 + i as f32 * 36.0;
             let sobre = *ativo && ui.sobre(x, 10.0, 32.0, 32.0);
             if sobre {
-                ui.tela.retangulo(x, 10.0, 32.0, 32.0, 6.0, tema::SUPERFICIE_ALTA);
+                ui.tela.retangulo(x, 10.0, 32.0, 32.0, 6.0, tema::SUPERFICIE_ALTA());
             }
-            let cor = if *ativo { tema::TEXTO } else { tema::BORDA };
+            let cor = if *ativo { tema::TEXTO() } else { tema::BORDA() };
             seta(ui.tela, x + 16.0, 26.0, *dir, cor);
             if *ativo && ui.clicou(x, 10.0, 32.0, 32.0) {
                 acao = Some(i);
@@ -1172,26 +1172,26 @@ impl Explorador {
         // Barra de endereço com as "migalhas" clicáveis.
         let ex = 122.0;
         let el = l - ex - 12.0;
-        ui.tela.retangulo(ex, 10.0, el, 32.0, 6.0, tema::BORDA);
-        ui.tela.retangulo(ex + 1.0, 11.0, el - 2.0, 30.0, 5.0, tema::BRANCO);
+        ui.tela.retangulo(ex, 10.0, el, 32.0, 6.0, tema::BORDA());
+        ui.tela.retangulo(ex + 1.0, 11.0, el - 2.0, 30.0, 5.0, tema::JANELA());
         icone_computador(ui.tela, ex + 8.0, 14.0, 22.0);
         let mut x = ex + 36.0;
         let migalhas = self.migalhas();
         let mut ir = None;
         for (i, (nome, destino)) in migalhas.iter().enumerate() {
             if i > 0 {
-                seta(ui.tela, x + 4.0, 26.0, 1.0, tema::TEXTO_SECUNDARIO);
+                seta(ui.tela, x + 4.0, 26.0, 1.0, tema::TEXTO_SECUNDARIO());
                 x += 14.0;
             }
             let lt = desenho::medir(13.0, nome);
             if x + lt > ex + el - 10.0 {
-                ui.tela.texto(x, 31.0, 13.0, tema::TEXTO_SECUNDARIO, "…");
+                ui.tela.texto(x, 31.0, 13.0, tema::TEXTO_SECUNDARIO(), "…");
                 break;
             }
             if ui.sobre(x - 4.0, 13.0, lt + 8.0, 26.0) {
-                ui.tela.retangulo(x - 4.0, 14.0, lt + 8.0, 24.0, 4.0, tema::DESTAQUE_SUAVE);
+                ui.tela.retangulo(x - 4.0, 14.0, lt + 8.0, 24.0, 4.0, tema::DESTAQUE_SUAVE());
             }
-            ui.tela.texto(x, 31.0, 13.0, tema::TEXTO, nome);
+            ui.tela.texto(x, 31.0, 13.0, tema::TEXTO(), nome);
             if ui.clicou(x - 4.0, 13.0, lt + 8.0, 26.0) {
                 ir = Some(destino.clone());
             }
@@ -1203,8 +1203,8 @@ impl Explorador {
     }
 
     fn desenhar_lateral(&mut self, ui: &mut Ui, a: f32) {
-        ui.tela.retangulo(0.0, BARRA_A, LATERAL_L, a - BARRA_A, 0.0, tema::FUNDO);
-        ui.tela.retangulo(LATERAL_L - 1.0, BARRA_A, 1.0, a - BARRA_A, 0.0, tema::BORDA);
+        ui.tela.retangulo(0.0, BARRA_A, LATERAL_L, a - BARRA_A, 0.0, tema::FUNDO());
+        ui.tela.retangulo(LATERAL_L - 1.0, BARRA_A, 1.0, a - BARRA_A, 0.0, tema::BORDA());
         let mut itens: Vec<(String, Local, u8)> = vec![("Este Computador".into(), Local::EsteComputador, 0)];
         for (nome, pasta) in PASTAS_USUARIO {
             itens.push((nome.into(), Local::Pasta(self.casa.join(pasta)), 1));
@@ -1214,21 +1214,21 @@ impl Explorador {
         let mut ir = None;
         for (i, (nome, destino, tipo)) in itens.iter().enumerate() {
             if i == 1 {
-                ui.tela.texto(16.0, y + 18.0, 11.5, tema::TEXTO_SECUNDARIO, "Acesso rápido");
+                ui.tela.texto(16.0, y + 18.0, 11.5, tema::TEXTO_SECUNDARIO(), "Acesso rápido");
                 y += 26.0;
             }
             let ativo = &self.local == destino;
             if ativo {
-                ui.tela.retangulo(8.0, y, LATERAL_L - 16.0, 30.0, 6.0, tema::DESTAQUE_SUAVE);
+                ui.tela.retangulo(8.0, y, LATERAL_L - 16.0, 30.0, 6.0, tema::DESTAQUE_SUAVE());
             } else if ui.sobre(8.0, y, LATERAL_L - 16.0, 30.0) {
-                ui.tela.retangulo(8.0, y, LATERAL_L - 16.0, 30.0, 6.0, tema::SUPERFICIE_ALTA);
+                ui.tela.retangulo(8.0, y, LATERAL_L - 16.0, 30.0, 6.0, tema::SUPERFICIE_ALTA());
             }
             if *tipo == 0 {
                 icone_computador(ui.tela, 16.0, y + 4.0, 22.0);
             } else {
                 icone_pasta(ui.tela, 16.0, y + 4.0, 22.0);
             }
-            ui.tela.texto(46.0, y + 20.0, 13.0, tema::TEXTO, nome);
+            ui.tela.texto(46.0, y + 20.0, 13.0, tema::TEXTO(), nome);
             if ui.clicou(8.0, y, LATERAL_L - 16.0, 30.0) {
                 ir = Some(destino.clone());
             }
@@ -1241,7 +1241,7 @@ impl Explorador {
 
     fn desenhar_este_computador(&mut self, ui: &mut Ui, x0: f32, y0: f32, l: f32) {
         let mut y = y0 + 34.0;
-        ui.tela.texto(x0 + 24.0, y, 15.0, tema::TEXTO, "Pastas");
+        ui.tela.texto(x0 + 24.0, y, 15.0, tema::TEXTO(), "Pastas");
         y += 14.0;
         let mut ir = None;
         let tile = 150.0;
@@ -1250,11 +1250,11 @@ impl Explorador {
             let (c, r) = (i % por_linha, i / por_linha);
             let (x, ty) = (x0 + 24.0 + c as f32 * (tile + 10.0), y + r as f32 * 70.0);
             if ui.sobre(x, ty, tile, 62.0) {
-                ui.tela.retangulo(x, ty, tile, 62.0, 8.0, tema::DESTAQUE_SUAVE);
+                ui.tela.retangulo(x, ty, tile, 62.0, 8.0, tema::DESTAQUE_SUAVE());
             }
             icone_pasta(ui.tela, x + 8.0, ty + 11.0, 40.0);
             let n = desenho::encurtar(13.0, nome, tile - 60.0);
-            ui.tela.texto(x + 54.0, ty + 36.0, 13.0, tema::TEXTO, &n);
+            ui.tela.texto(x + 54.0, ty + 36.0, 13.0, tema::TEXTO(), &n);
             if ui.clicou_duplo(x, ty, tile, 62.0) {
                 ir = Some(Local::Pasta(self.casa.join(pasta)));
             }
@@ -1262,7 +1262,7 @@ impl Explorador {
         let linhas = PASTAS_USUARIO.len().div_ceil(por_linha);
         y += linhas as f32 * 70.0 + 30.0;
 
-        ui.tela.texto(x0 + 24.0, y, 15.0, tema::TEXTO, "Dispositivos e unidades");
+        ui.tela.texto(x0 + 24.0, y, 15.0, tema::TEXTO(), "Dispositivos e unidades");
         y += 14.0;
         let ul = 300.0;
         let por_linha = ((l - 48.0) / (ul + 12.0)).floor().max(1.0) as usize;
@@ -1271,19 +1271,19 @@ impl Explorador {
             let (c, r) = (i % por_linha, i / por_linha);
             let (x, uy) = (x0 + 24.0 + c as f32 * (ul + 12.0), y + r as f32 * 84.0);
             if ui.sobre(x, uy, ul, 76.0) {
-                ui.tela.retangulo(x, uy, ul, 76.0, 8.0, tema::DESTAQUE_SUAVE);
+                ui.tela.retangulo(x, uy, ul, 76.0, 8.0, tema::DESTAQUE_SUAVE());
             }
             icone_unidade(ui.tela, x + 8.0, uy + 12.0, 52.0, u.letra == 'C');
             let nome = format!("{} ({}:)", u.nome, u.letra);
-            ui.tela.texto(x + 70.0, uy + 24.0, 13.5, tema::TEXTO, &desenho::encurtar(13.5, &nome, ul - 80.0));
+            ui.tela.texto(x + 70.0, uy + 24.0, 13.5, tema::TEXTO(), &desenho::encurtar(13.5, &nome, ul - 80.0));
             let bl = ul - 86.0;
-            ui.tela.retangulo(x + 70.0, uy + 34.0, bl, 12.0, 2.0, tema::SUPERFICIE_ALTA);
+            ui.tela.retangulo(x + 70.0, uy + 34.0, bl, 12.0, 2.0, tema::SUPERFICIE_ALTA());
             if u.total > 0 {
                 let usado = 1.0 - u.livre as f32 / u.total as f32;
-                let cor = if usado > 0.9 { tema::ERRO } else { tema::DESTAQUE };
+                let cor = if usado > 0.9 { tema::ERRO() } else { tema::DESTAQUE() };
                 ui.tela.retangulo(x + 70.0, uy + 34.0, bl * usado, 12.0, 2.0, cor);
                 let txt = format!("{} livres de {}", tamanho_legivel(u.livre), tamanho_legivel(u.total));
-                ui.tela.texto(x + 70.0, uy + 64.0, 12.0, tema::TEXTO_SECUNDARIO, &txt);
+                ui.tela.texto(x + 70.0, uy + 64.0, 12.0, tema::TEXTO_SECUNDARIO(), &txt);
             }
             if ui.clicou_duplo(x, uy, ul, 76.0) {
                 ir = Some(Local::Pasta(u.ponto.clone()));
@@ -1292,25 +1292,25 @@ impl Explorador {
         let linhas = locais.len().div_ceil(por_linha);
         y += linhas as f32 * 84.0 + 30.0;
 
-        ui.tela.texto(x0 + 24.0, y, 15.0, tema::TEXTO, "Locais de rede");
+        ui.tela.texto(x0 + 24.0, y, 15.0, tema::TEXTO(), "Locais de rede");
         y += 14.0;
         let redes: Vec<Unidade> = self.unidades.iter().filter(|u| u.rede).cloned().collect();
         for (i, u) in redes.iter().enumerate() {
             let (c, r) = (i % por_linha, i / por_linha);
             let (x, uy) = (x0 + 24.0 + c as f32 * (ul + 12.0), y + r as f32 * 84.0);
             if ui.sobre(x, uy, ul, 76.0) {
-                ui.tela.retangulo(x, uy, ul, 76.0, 8.0, tema::DESTAQUE_SUAVE);
+                ui.tela.retangulo(x, uy, ul, 76.0, 8.0, tema::DESTAQUE_SUAVE());
             }
             desenhar_icone(ui.tela, "unidade-rede", x + 8.0, uy + 12.0, 52.0);
             let nome = format!("{} ({}:)", u.nome, u.letra);
-            ui.tela.texto(x + 70.0, uy + 24.0, 13.5, tema::TEXTO, &desenho::encurtar(13.5, &nome, ul - 80.0));
+            ui.tela.texto(x + 70.0, uy + 24.0, 13.5, tema::TEXTO(), &desenho::encurtar(13.5, &nome, ul - 80.0));
             let bl = ul - 86.0;
-            ui.tela.retangulo(x + 70.0, uy + 34.0, bl, 12.0, 2.0, tema::SUPERFICIE_ALTA);
+            ui.tela.retangulo(x + 70.0, uy + 34.0, bl, 12.0, 2.0, tema::SUPERFICIE_ALTA());
             if u.total > 0 {
                 let usado = 1.0 - u.livre as f32 / u.total as f32;
-                ui.tela.retangulo(x + 70.0, uy + 34.0, bl * usado, 12.0, 2.0, tema::DESTAQUE);
+                ui.tela.retangulo(x + 70.0, uy + 34.0, bl * usado, 12.0, 2.0, tema::DESTAQUE());
                 let txt = format!("{} livres de {}", tamanho_legivel(u.livre), tamanho_legivel(u.total));
-                ui.tela.texto(x + 70.0, uy + 64.0, 12.0, tema::TEXTO_SECUNDARIO, &txt);
+                ui.tela.texto(x + 70.0, uy + 64.0, 12.0, tema::TEXTO_SECUNDARIO(), &txt);
             }
             if ui.clicou_duplo(x, uy, ul, 76.0) {
                 ir = Some(Local::Pasta(u.ponto.clone()));
@@ -1326,8 +1326,8 @@ impl Explorador {
         let bx = x0 + 74.0;
         let bl = 230.0;
         let sobre = ui.sobre(bx, y, bl, 40.0);
-        ui.tela.retangulo(bx, y, bl, 40.0, 8.0, if sobre { tema::DESTAQUE_FORTE } else { tema::DESTAQUE });
-        ui.tela.texto(bx + 18.0, y + 25.0, 13.5, tema::BRANCO, "Mapear unidade de rede…");
+        ui.tela.retangulo(bx, y, bl, 40.0, 8.0, if sobre { tema::DESTAQUE_FORTE() } else { tema::DESTAQUE() });
+        ui.tela.texto(bx + 18.0, y + 25.0, 13.5, tema::BRANCO(), "Mapear unidade de rede…");
         if ui.clicou(bx, y, bl, 40.0) {
             self.abrir_mapear();
         }
@@ -1340,13 +1340,13 @@ impl Explorador {
         // Cabeçalho das colunas.
         let col_data = x0 + l - 330.0;
         let col_tam = x0 + l - 140.0;
-        ui.tela.retangulo(x0, y0, l, 30.0, 0.0, tema::SUPERFICIE);
-        ui.tela.texto(x0 + 52.0, y0 + 20.0, 12.0, tema::TEXTO_SECUNDARIO, "Nome");
+        ui.tela.retangulo(x0, y0, l, 30.0, 0.0, tema::SUPERFICIE());
+        ui.tela.texto(x0 + 52.0, y0 + 20.0, 12.0, tema::TEXTO_SECUNDARIO(), "Nome");
         if l > 520.0 {
-            ui.tela.texto(col_data, y0 + 20.0, 12.0, tema::TEXTO_SECUNDARIO, "Data de modificação");
-            ui.tela.texto(col_tam, y0 + 20.0, 12.0, tema::TEXTO_SECUNDARIO, "Tamanho");
+            ui.tela.texto(col_data, y0 + 20.0, 12.0, tema::TEXTO_SECUNDARIO(), "Data de modificação");
+            ui.tela.texto(col_tam, y0 + 20.0, 12.0, tema::TEXTO_SECUNDARIO(), "Tamanho");
         }
-        ui.tela.retangulo(x0 + 12.0, y0 + 29.0, l - 24.0, 1.0, 0.0, tema::BORDA);
+        ui.tela.retangulo(x0 + 12.0, y0 + 29.0, l - 24.0, 1.0, 0.0, tema::BORDA());
 
         let topo = y0 + 34.0;
         let visivel = a - 34.0;
@@ -1363,7 +1363,7 @@ impl Explorador {
         }
 
         if self.entradas.is_empty() {
-            ui.tela.texto(x0 + 52.0, topo + 30.0, 13.0, tema::TEXTO_SECUNDARIO, "Esta pasta está vazia.");
+            ui.tela.texto(x0 + 52.0, topo + 30.0, 13.0, tema::TEXTO_SECUNDARIO(), "Esta pasta está vazia.");
         }
         let mut abrir = None;
         let primeiro = (self.rolagem / LINHA_A).floor() as usize;
@@ -1375,9 +1375,9 @@ impl Explorador {
             let e = &self.entradas[i];
             let sel = self.selecionado == Some(i);
             if sel {
-                ui.tela.retangulo(x0 + 8.0, y, l - 16.0, LINHA_A - 2.0, 4.0, tema::DESTAQUE_SUAVE);
+                ui.tela.retangulo(x0 + 8.0, y, l - 16.0, LINHA_A - 2.0, 4.0, tema::DESTAQUE_SUAVE());
             } else if ui.sobre(x0 + 8.0, y, l - 16.0, LINHA_A - 2.0) && ui.mouse.map(|m| m.1 > topo).unwrap_or(false) {
-                ui.tela.retangulo(x0 + 8.0, y, l - 16.0, LINHA_A - 2.0, 4.0, tema::SUPERFICIE_ALTA);
+                ui.tela.retangulo(x0 + 8.0, y, l - 16.0, LINHA_A - 2.0, 4.0, tema::SUPERFICIE_ALTA());
             }
             if e.pasta {
                 icone_pasta(ui.tela, x0 + 20.0, y + 3.0, 22.0);
@@ -1387,10 +1387,10 @@ impl Explorador {
             let max_nome = if l > 520.0 { col_data - x0 - 64.0 } else { l - 70.0 };
             match &self.renomeando {
                 Some((j, texto)) if *j == i => {
-                    ui.tela.retangulo(x0 + 48.0, y + 2.0, max_nome + 8.0, LINHA_A - 6.0, 4.0, tema::DESTAQUE);
-                    ui.tela.retangulo(x0 + 49.5, y + 3.5, max_nome + 5.0, LINHA_A - 9.0, 3.0, tema::BRANCO);
-                    let fim = ui.tela.texto(x0 + 54.0, y + 19.0, 13.0, tema::TEXTO, texto);
-                    ui.tela.retangulo(x0 + 55.0 + fim, y + 7.0, 1.5, LINHA_A - 16.0, 0.0, tema::DESTAQUE);
+                    ui.tela.retangulo(x0 + 48.0, y + 2.0, max_nome + 8.0, LINHA_A - 6.0, 4.0, tema::DESTAQUE());
+                    ui.tela.retangulo(x0 + 49.5, y + 3.5, max_nome + 5.0, LINHA_A - 9.0, 3.0, tema::JANELA());
+                    let fim = ui.tela.texto(x0 + 54.0, y + 19.0, 13.0, tema::TEXTO(), texto);
+                    ui.tela.retangulo(x0 + 55.0 + fim, y + 7.0, 1.5, LINHA_A - 16.0, 0.0, tema::DESTAQUE());
                 }
                 _ => {
                     let corte = self
@@ -1398,16 +1398,16 @@ impl Explorador {
                         .as_ref()
                         .map(|(v, c)| *c && v.contains(&e.caminho))
                         .unwrap_or(false);
-                    let cor = if corte { tema::TEXTO_SECUNDARIO } else { tema::TEXTO };
+                    let cor = if corte { tema::TEXTO_SECUNDARIO() } else { tema::TEXTO() };
                     ui.tela.texto(x0 + 52.0, y + 19.0, 13.0, cor, &desenho::encurtar(13.0, &e.nome, max_nome));
                 }
             }
             if l > 520.0 {
                 if let Some(m) = e.modificado {
-                    ui.tela.texto(col_data, y + 19.0, 12.0, tema::TEXTO_SECUNDARIO, &data_legivel(m));
+                    ui.tela.texto(col_data, y + 19.0, 12.0, tema::TEXTO_SECUNDARIO(), &data_legivel(m));
                 }
                 if !e.pasta {
-                    ui.tela.texto(col_tam, y + 19.0, 12.0, tema::TEXTO_SECUNDARIO, &tamanho_legivel(e.tamanho));
+                    ui.tela.texto(col_tam, y + 19.0, 12.0, tema::TEXTO_SECUNDARIO(), &tamanho_legivel(e.tamanho));
                 }
             }
             if y >= topo - 1.0 && ui.clicou(x0 + 8.0, y, l - 16.0, LINHA_A - 2.0) {
@@ -1438,13 +1438,13 @@ impl Explorador {
             self.confirmar_renomear();
         }
         // Cobre o que rolou para baixo do cabeçalho.
-        ui.tela.retangulo(x0, y0, l, 30.0, 0.0, tema::SUPERFICIE);
-        ui.tela.texto(x0 + 52.0, y0 + 20.0, 12.0, tema::TEXTO_SECUNDARIO, "Nome");
+        ui.tela.retangulo(x0, y0, l, 30.0, 0.0, tema::SUPERFICIE());
+        ui.tela.texto(x0 + 52.0, y0 + 20.0, 12.0, tema::TEXTO_SECUNDARIO(), "Nome");
         if l > 520.0 {
-            ui.tela.texto(col_data, y0 + 20.0, 12.0, tema::TEXTO_SECUNDARIO, "Data de modificação");
-            ui.tela.texto(col_tam, y0 + 20.0, 12.0, tema::TEXTO_SECUNDARIO, "Tamanho");
+            ui.tela.texto(col_data, y0 + 20.0, 12.0, tema::TEXTO_SECUNDARIO(), "Data de modificação");
+            ui.tela.texto(col_tam, y0 + 20.0, 12.0, tema::TEXTO_SECUNDARIO(), "Tamanho");
         }
-        ui.tela.retangulo(x0 + 12.0, y0 + 29.0, l - 24.0, 1.0, 0.0, tema::BORDA);
+        ui.tela.retangulo(x0 + 12.0, y0 + 29.0, l - 24.0, 1.0, 0.0, tema::BORDA());
         if let Some(e) = abrir {
             self.abrir(&e);
         }

@@ -186,10 +186,10 @@ impl HeaderBar {
         let (l, a) = (width as f32, HEADER_BAR_HEIGHT as f32);
         let mut t = Tela::nova(width as i32, HEADER_BAR_HEIGHT);
         // Vidro (Aero): azul-ararinha na janela ativa, mais apagado nas outras.
-        let tinta = if ativa { tema::DESTAQUE.com_alfa(70) } else { tema::FUNDO.com_alfa(150) };
+        let tinta = if ativa { tema::DESTAQUE().com_alfa(70) } else { tema::FUNDO().com_alfa(150) };
         t.vidro(0.0, 0.0, l, a + 1.0, 0.0, origem, tinta);
 
-        let cor_titulo = if ativa { tema::TEXTO } else { tema::TEXTO_SECUNDARIO };
+        let cor_titulo = if ativa { tema::TEXTO() } else { tema::TEXTO_SECUNDARIO() };
         let espaco = l - 3.0 * BOTAO_L as f32 - 24.0;
         if espaco > 20.0 {
             let txt = desenho::encurtar(13.0, titulo, espaco);
@@ -203,10 +203,10 @@ impl HeaderBar {
             let mut cor = cor_titulo;
             if sobre == Some(*botao) {
                 if *botao == Botao::Fechar {
-                    t.retangulo(x, 0.0, b, a - 1.0, 0.0, tema::ERRO);
-                    cor = tema::BRANCO;
+                    t.retangulo(x, 0.0, b, a - 1.0, 0.0, tema::ERRO());
+                    cor = tema::BRANCO();
                 } else {
-                    t.retangulo(x, 0.0, b, a - 1.0, 0.0, tema::BRANCO.com_alfa(110));
+                    t.retangulo(x, 0.0, b, a - 1.0, 0.0, tema::BRANCO().com_alfa(110));
                 }
             }
             match botao {

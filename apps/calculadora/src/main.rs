@@ -321,21 +321,21 @@ impl App for Calculadora {
         }
 
         let (l, a) = (ui.largura(), ui.altura());
-        ui.tela.limpar(tema::FUNDO);
+        ui.tela.limpar(tema::FUNDO());
         let m = 8.0;
         // Visor
         let visor_a = (a * 0.28).clamp(110.0, 200.0);
-        ui.tela.texto(16.0, 30.0, 14.0, tema::TEXTO, "Padrão");
+        ui.tela.texto(16.0, 30.0, 14.0, tema::TEXTO(), "Padrão");
         let h = desenho::encurtar(14.0, &self.historico, l - 32.0);
         let lh = desenho::medir(14.0, &h);
-        ui.tela.texto(l - 16.0 - lh, 58.0, 14.0, tema::TEXTO_SECUNDARIO, &h);
+        ui.tela.texto(l - 16.0 - lh, 58.0, 14.0, tema::TEXTO_SECUNDARIO(), &h);
         let visor = self.texto_visor();
         let mut tam = if self.erro.is_some() { 26.0 } else { 46.0 };
         while tam > 16.0 && desenho::medir(tam, &visor) > l - 32.0 {
             tam -= 2.0;
         }
         let lv = desenho::medir(tam, &visor);
-        ui.tela.texto(l - 16.0 - lv, visor_a - 14.0, tam, tema::TEXTO, &visor);
+        ui.tela.texto(l - 16.0 - lv, visor_a - 14.0, tam, tema::TEXTO(), &visor);
 
         // Teclas
         let gy = visor_a;
@@ -348,13 +348,13 @@ impl App for Calculadora {
                 let y = gy + m + li as f32 * (ba + m);
                 let sobre = ui.sobre(x, y, bl, ba);
                 let (fundo, texto) = match botao {
-                    Botao::Igual => (if sobre { tema::DESTAQUE_FORTE } else { tema::DESTAQUE }, tema::BRANCO),
+                    Botao::Igual => (if sobre { tema::DESTAQUE_FORTE() } else { tema::DESTAQUE() }, tema::BRANCO()),
                     Botao::Digito(_) | Botao::Virgula | Botao::Sinal => {
-                        (if sobre { tema::SUPERFICIE_ALTA } else { tema::SUPERFICIE }, tema::TEXTO)
+                        (if sobre { tema::SUPERFICIE_ALTA() } else { tema::SUPERFICIE() }, tema::TEXTO())
                     }
-                    _ => (if sobre { tema::BORDA } else { Cor::hex(0xEEF2F6) }, tema::TEXTO),
+                    _ => (if sobre { tema::BORDA() } else { tema::FUNDO() }, tema::TEXTO()),
                 };
-                ui.tela.retangulo(x, y, bl, ba, 6.0, tema::BORDA);
+                ui.tela.retangulo(x, y, bl, ba, 6.0, tema::BORDA());
                 ui.tela.retangulo(x + 1.0, y + 1.0, bl - 2.0, ba - 2.0, 5.0, fundo);
                 let ts = if matches!(botao, Botao::Digito(_)) { 20.0 } else { 17.0 };
                 let lt = desenho::medir(ts, rotulo);

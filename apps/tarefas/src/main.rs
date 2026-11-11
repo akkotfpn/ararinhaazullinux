@@ -264,7 +264,7 @@ impl Tarefas {
         // Cabeçalho com totais, como no Windows.
         let cpu_agora = self.hist_cpu.last().copied().unwrap_or(0.0);
         let mem_pct = if self.mem_total_kb > 0 { self.mem_usada_kb as f32 / self.mem_total_kb as f32 * 100.0 } else { 0.0 };
-        ui.tela.retangulo(0.0, y0, l, 46.0, 0.0, tema::SUPERFICIE);
+        ui.tela.retangulo(0.0, y0, l, 46.0, 0.0, tema::SUPERFICIE());
         for (titulo, ordem, x) in cols {
             let destaque = self.ordem == ordem;
             let texto = match ordem {
@@ -273,16 +273,16 @@ impl Tarefas {
                 _ => String::new(),
             };
             if !texto.is_empty() {
-                ui.tela.texto(x, y0 + 18.0, 14.0, tema::TEXTO, &texto);
+                ui.tela.texto(x, y0 + 18.0, 14.0, tema::TEXTO(), &texto);
             }
-            ui.tela.texto(x, y0 + 37.0, 12.5, if destaque { tema::DESTAQUE } else { tema::TEXTO_SECUNDARIO }, titulo);
+            ui.tela.texto(x, y0 + 37.0, 12.5, if destaque { tema::DESTAQUE() } else { tema::TEXTO_SECUNDARIO() }, titulo);
             let largura_col = if ordem == Ordem::Nome { l - 360.0 } else { 90.0 };
             if ui.clicou(x - 6.0, y0, largura_col, 46.0) {
                 self.ordem = ordem;
                 self.ordenar();
             }
         }
-        ui.tela.retangulo(0.0, y0 + 46.0, l, 1.0, 0.0, tema::BORDA);
+        ui.tela.retangulo(0.0, y0 + 46.0, l, 1.0, 0.0, tema::BORDA());
 
         let lista_y = y0 + 47.0;
         let lista_a = a - lista_y - rodape;
@@ -316,9 +316,9 @@ impl Tarefas {
             let sel = self.selecionado == Some(p.pid);
             let sobre = ui.sobre(0.0, y, l, LINHA_A) && ui.mouse.is_some_and(|(_, my)| my < lista_y + lista_a);
             if sel {
-                ui.tela.retangulo(0.0, y, l, LINHA_A, 0.0, tema::DESTAQUE_SUAVE);
+                ui.tela.retangulo(0.0, y, l, LINHA_A, 0.0, tema::DESTAQUE_SUAVE());
             } else if sobre {
-                ui.tela.retangulo(0.0, y, l, LINHA_A, 0.0, tema::SUPERFICIE_ALTA);
+                ui.tela.retangulo(0.0, y, l, LINHA_A, 0.0, tema::SUPERFICIE_ALTA());
             }
             // Fundo amarelado proporcional ao uso, como o Windows faz.
             let calor = |v: f32| Cor(255, 196, 0, (v.clamp(0.0, 100.0) * 1.4) as u8 + 18);
@@ -327,10 +327,10 @@ impl Tarefas {
             ui.tela.retangulo(cols[3].2 - 8.0, y, 124.0, LINHA_A, 0.0, calor(mem_rel * 4.0));
             let ty = y + 20.0;
             let nome = desenho::encurtar(13.0, &p.nome, l - 370.0);
-            ui.tela.texto(16.0, ty, 13.0, tema::TEXTO, &nome);
-            ui.tela.texto(cols[1].2, ty, 13.0, tema::TEXTO_SECUNDARIO, &p.pid.to_string());
-            ui.tela.texto(cols[2].2, ty, 13.0, tema::TEXTO, &format!("{:.1}%", p.cpu).replace('.', ","));
-            ui.tela.texto(cols[3].2, ty, 13.0, tema::TEXTO, &formatar_mem(p.memoria_kb));
+            ui.tela.texto(16.0, ty, 13.0, tema::TEXTO(), &nome);
+            ui.tela.texto(cols[1].2, ty, 13.0, tema::TEXTO_SECUNDARIO(), &p.pid.to_string());
+            ui.tela.texto(cols[2].2, ty, 13.0, tema::TEXTO(), &format!("{:.1}%", p.cpu).replace('.', ","));
+            ui.tela.texto(cols[3].2, ty, 13.0, tema::TEXTO(), &formatar_mem(p.memoria_kb));
             if (ui.clique || ui.clique_direito) && sobre {
                 clicado = Some(p.pid);
             }
@@ -342,21 +342,21 @@ impl Tarefas {
         if conteudo > lista_a {
             let ba = (lista_a / conteudo * lista_a).max(24.0);
             let by = lista_y + self.rolagem / (conteudo - lista_a) * (lista_a - ba);
-            ui.tela.retangulo(l - 7.0, by, 4.0, ba, 2.0, tema::BORDA);
+            ui.tela.retangulo(l - 7.0, by, 4.0, ba, 2.0, tema::BORDA());
         }
 
         // Rodapé
         let ry = a - rodape;
-        ui.tela.retangulo(0.0, ry, l, rodape, 0.0, tema::FUNDO);
-        ui.tela.retangulo(0.0, ry, l, 1.0, 0.0, tema::BORDA);
+        ui.tela.retangulo(0.0, ry, l, rodape, 0.0, tema::FUNDO());
+        ui.tela.retangulo(0.0, ry, l, 1.0, 0.0, tema::BORDA());
         let ativo = self.selecionado.is_some();
         let (bx, bl) = (l - 170.0, 154.0);
         let sobre = ativo && ui.sobre(bx, ry + 10.0, bl, 32.0);
-        let fundo = if !ativo { tema::SUPERFICIE_ALTA } else if sobre { tema::DESTAQUE_FORTE } else { tema::DESTAQUE };
+        let fundo = if !ativo { tema::SUPERFICIE_ALTA() } else if sobre { tema::DESTAQUE_FORTE() } else { tema::DESTAQUE() };
         ui.tela.retangulo(bx, ry + 10.0, bl, 32.0, 6.0, fundo);
         let rot = "Finalizar tarefa";
         let lr = desenho::medir(13.0, rot);
-        ui.tela.texto(bx + bl / 2.0 - lr / 2.0, ry + 31.0, 13.0, if ativo { tema::BRANCO } else { tema::TEXTO_SECUNDARIO }, rot);
+        ui.tela.texto(bx + bl / 2.0 - lr / 2.0, ry + 31.0, 13.0, if ativo { tema::BRANCO() } else { tema::TEXTO_SECUNDARIO() }, rot);
         let apertou_del = ui.teclas.iter().any(|t| matches!(t, Tecla::Outra(k) if *k == penas::Keysym::Delete));
         if ativo && (ui.clicou(bx, ry + 10.0, bl, 32.0) || apertou_del) {
             self.finalizar();
@@ -365,19 +365,19 @@ impl Tarefas {
             .aviso
             .clone()
             .unwrap_or_else(|| format!("{} processos", self.processos.len()));
-        ui.tela.texto(16.0, ry + 31.0, 12.5, tema::TEXTO_SECUNDARIO, &desenho::encurtar(12.5, &info, l - 210.0));
+        ui.tela.texto(16.0, ry + 31.0, 12.5, tema::TEXTO_SECUNDARIO(), &desenho::encurtar(12.5, &info, l - 210.0));
     }
 
     fn grafico(ui: &mut Ui, x: f32, y: f32, l: f32, a: f32, hist: &[f32], cor: Cor, fundo: Cor) {
         ui.tela.retangulo(x, y, l, a, 0.0, cor);
-        ui.tela.retangulo(x + 1.0, y + 1.0, l - 2.0, a - 2.0, 0.0, tema::BRANCO);
+        ui.tela.retangulo(x + 1.0, y + 1.0, l - 2.0, a - 2.0, 0.0, tema::JANELA());
         for i in 1..10 {
             let gx = x + l * i as f32 / 10.0;
-            ui.tela.retangulo(gx, y + 1.0, 1.0, a - 2.0, 0.0, Cor::hex(0xEEF2F6));
+            ui.tela.retangulo(gx, y + 1.0, 1.0, a - 2.0, 0.0, tema::SUPERFICIE_ALTA());
         }
         for i in 1..4 {
             let gy = y + a * i as f32 / 4.0;
-            ui.tela.retangulo(x + 1.0, gy, l - 2.0, 1.0, 0.0, Cor::hex(0xEEF2F6));
+            ui.tela.retangulo(x + 1.0, gy, l - 2.0, 1.0, 0.0, tema::SUPERFICIE_ALTA());
         }
         if hist.is_empty() {
             return;
@@ -405,18 +405,18 @@ impl Tarefas {
         let ga = ((a - y0 - 150.0) / 2.0).max(80.0);
         let cpu = self.hist_cpu.last().copied().unwrap_or(0.0);
         let mut y = y0 + 34.0;
-        ui.tela.texto(24.0, y, 18.0, tema::TEXTO, "Processador");
+        ui.tela.texto(24.0, y, 18.0, tema::TEXTO(), "Processador");
         let t = format!("{:.0}%  ·  {} núcleos", cpu, self.nucleos);
         let lt = desenho::medir(13.0, &t);
-        ui.tela.texto(l - 24.0 - lt, y, 13.0, tema::TEXTO_SECUNDARIO, &t);
+        ui.tela.texto(l - 24.0 - lt, y, 13.0, tema::TEXTO_SECUNDARIO(), &t);
         y += 12.0;
         Self::grafico(ui, 24.0, y, gl, ga, &self.hist_cpu, Cor::hex(0x2B7BC4), Cor(43, 123, 196, 40));
-        ui.tela.texto(24.0, y + ga + 16.0, 11.0, tema::TEXTO_SECUNDARIO, "60 segundos");
+        ui.tela.texto(24.0, y + ga + 16.0, 11.0, tema::TEXTO_SECUNDARIO(), "60 segundos");
         y += ga + 50.0;
-        ui.tela.texto(24.0, y, 18.0, tema::TEXTO, "Memória");
+        ui.tela.texto(24.0, y, 18.0, tema::TEXTO(), "Memória");
         let t = format!("{} de {} em uso", formatar_mem(self.mem_usada_kb), formatar_mem(self.mem_total_kb));
         let lt = desenho::medir(13.0, &t);
-        ui.tela.texto(l - 24.0 - lt, y, 13.0, tema::TEXTO_SECUNDARIO, &t);
+        ui.tela.texto(l - 24.0 - lt, y, 13.0, tema::TEXTO_SECUNDARIO(), &t);
         y += 12.0;
         Self::grafico(ui, 24.0, y, gl, ga, &self.hist_mem, Cor::hex(0x8B3FB8), Cor(139, 63, 184, 40));
     }
@@ -432,19 +432,19 @@ impl App for Tarefas {
         ui.acordar_em = Some(self.proxima.saturating_duration_since(Instant::now()));
 
         let l = ui.largura();
-        ui.tela.limpar(tema::BRANCO);
+        ui.tela.limpar(tema::JANELA());
         // Abas
-        ui.tela.retangulo(0.0, 0.0, l, 44.0, 0.0, tema::FUNDO);
+        ui.tela.retangulo(0.0, 0.0, l, 44.0, 0.0, tema::FUNDO());
         let mut x = 12.0;
         for (aba, nome) in [(Aba::Processos, "Processos"), (Aba::Desempenho, "Desempenho")] {
             let w = desenho::medir(14.0, nome) + 28.0;
             let sel = self.aba == aba;
             if !sel && ui.sobre(x, 6.0, w, 34.0) {
-                ui.tela.retangulo(x, 6.0, w, 34.0, 6.0, tema::SUPERFICIE_ALTA);
+                ui.tela.retangulo(x, 6.0, w, 34.0, 6.0, tema::SUPERFICIE_ALTA());
             }
-            ui.tela.texto(x + 14.0, 28.0, 14.0, if sel { tema::TEXTO } else { tema::TEXTO_SECUNDARIO }, nome);
+            ui.tela.texto(x + 14.0, 28.0, 14.0, if sel { tema::TEXTO() } else { tema::TEXTO_SECUNDARIO() }, nome);
             if sel {
-                ui.tela.retangulo(x + 10.0, 38.0, w - 20.0, 3.0, 1.5, tema::DESTAQUE);
+                ui.tela.retangulo(x + 10.0, 38.0, w - 20.0, 3.0, 1.5, tema::DESTAQUE());
             }
             if ui.clicou(x, 6.0, w, 34.0) {
                 self.aba = aba;
@@ -452,7 +452,7 @@ impl App for Tarefas {
             }
             x += w + 4.0;
         }
-        ui.tela.retangulo(0.0, 44.0, l, 1.0, 0.0, tema::BORDA);
+        ui.tela.retangulo(0.0, 44.0, l, 1.0, 0.0, tema::BORDA());
         match self.aba {
             Aba::Processos => self.processos(ui, 45.0),
             Aba::Desempenho => self.desempenho(ui, 45.0),

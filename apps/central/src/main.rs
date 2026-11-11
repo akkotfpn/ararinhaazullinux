@@ -190,16 +190,16 @@ impl Central {
     /// Uma linha de app com o botão de ação. Devolve a ação clicada.
     fn linha(&self, ui: &mut Ui, app: &AppInfo, x: f32, y: f32, l: f32) -> Option<u8> {
         if ui.sobre(x, y, l, LINHA_A - 6.0) {
-            ui.tela.retangulo(x, y, l, LINHA_A - 6.0, 8.0, tema::SUPERFICIE_ALTA);
+            ui.tela.retangulo(x, y, l, LINHA_A - 6.0, 8.0, tema::SUPERFICIE_ALTA());
         }
         // Ícone: a inicial num quadrado azul (o ícone real aparece depois de instalado, no menu).
-        ui.tela.retangulo(x + 10.0, y + 9.0, 40.0, 40.0, 10.0, tema::DESTAQUE);
+        ui.tela.retangulo(x + 10.0, y + 9.0, 40.0, 40.0, 10.0, tema::DESTAQUE());
         let ini: String = app.nome.chars().next().map(|c| c.to_uppercase().collect()).unwrap_or_default();
         let li = desenho::medir(20.0, &ini);
-        ui.tela.texto(x + 30.0 - li / 2.0, y + 36.0, 20.0, tema::BRANCO, &ini);
+        ui.tela.texto(x + 30.0 - li / 2.0, y + 36.0, 20.0, tema::BRANCO(), &ini);
         let largura_texto = l - 260.0;
-        ui.tela.texto(x + 64.0, y + 26.0, 15.0, tema::TEXTO, &desenho::encurtar(15.0, &app.nome, largura_texto));
-        ui.tela.texto(x + 64.0, y + 46.0, 12.5, tema::TEXTO_SECUNDARIO, &desenho::encurtar(12.5, &app.descricao, largura_texto));
+        ui.tela.texto(x + 64.0, y + 26.0, 15.0, tema::TEXTO(), &desenho::encurtar(15.0, &app.nome, largura_texto));
+        ui.tela.texto(x + 64.0, y + 46.0, 12.5, tema::TEXTO_SECUNDARIO(), &desenho::encurtar(12.5, &app.descricao, largura_texto));
 
         let ocupado = self.trabalho.is_some();
         let instalado = self.esta_instalado(&app.id);
@@ -212,9 +212,9 @@ impl Central {
             bx -= bl;
             let sobre = !ocupado && ui.sobre(bx, y + 13.0, bl, 32.0);
             let (fundo, cor) = if *principal {
-                (if sobre { tema::DESTAQUE_FORTE } else { tema::DESTAQUE }, tema::BRANCO)
+                (if sobre { tema::DESTAQUE_FORTE() } else { tema::DESTAQUE() }, tema::BRANCO())
             } else {
-                (if sobre { tema::SUPERFICIE_ALTA } else { tema::FUNDO }, tema::TEXTO)
+                (if sobre { tema::SUPERFICIE_ALTA() } else { tema::FUNDO() }, tema::TEXTO())
             };
             let fundo = if ocupado { fundo.com_alfa(120) } else { fundo };
             ui.tela.retangulo(bx, y + 13.0, bl, 32.0, 8.0, fundo);
@@ -254,19 +254,19 @@ impl App for Central {
             }
         }
         let (l, a) = (ui.largura(), ui.altura());
-        ui.tela.limpar(tema::BRANCO);
+        ui.tela.limpar(tema::JANELA());
 
         // Barra de cima: abas, busca e atualizar.
-        ui.tela.retangulo(0.0, 0.0, l, BARRA_A, 0.0, tema::FUNDO);
-        ui.tela.retangulo(0.0, BARRA_A - 1.0, l, 1.0, 0.0, tema::BORDA);
+        ui.tela.retangulo(0.0, 0.0, l, BARRA_A, 0.0, tema::FUNDO());
+        ui.tela.retangulo(0.0, BARRA_A - 1.0, l, 1.0, 0.0, tema::BORDA());
         let mut x = 16.0;
         for (aba, nome) in [(Aba::Inicio, "Descobrir"), (Aba::Instalados, "Instalados")] {
             let lt = desenho::medir(14.0, nome);
             let ativa = self.aba == aba;
             if ativa || ui.sobre(x - 8.0, 14.0, lt + 16.0, 36.0) {
-                ui.tela.retangulo(x - 8.0, 14.0, lt + 16.0, 36.0, 8.0, if ativa { tema::DESTAQUE_SUAVE } else { tema::SUPERFICIE_ALTA });
+                ui.tela.retangulo(x - 8.0, 14.0, lt + 16.0, 36.0, 8.0, if ativa { tema::DESTAQUE_SUAVE() } else { tema::SUPERFICIE_ALTA() });
             }
-            ui.tela.texto(x, 37.0, 14.0, tema::TEXTO, nome);
+            ui.tela.texto(x, 37.0, 14.0, tema::TEXTO(), nome);
             if ui.clicou(x - 8.0, 14.0, lt + 16.0, 36.0) {
                 self.aba = aba;
                 self.rolagem = 0.0;
@@ -274,19 +274,19 @@ impl App for Central {
             x += lt + 28.0;
         }
         let (bx, bl) = (x + 10.0, (l - x - 190.0).max(160.0));
-        ui.tela.retangulo(bx, 14.0, bl, 36.0, 18.0, tema::DESTAQUE);
-        ui.tela.retangulo(bx + 2.0, 16.0, bl - 4.0, 32.0, 16.0, tema::BRANCO);
+        ui.tela.retangulo(bx, 14.0, bl, 36.0, 18.0, tema::DESTAQUE());
+        ui.tela.retangulo(bx + 2.0, 16.0, bl - 4.0, 32.0, 16.0, tema::JANELA());
         if self.busca.is_empty() {
-            ui.tela.texto(bx + 18.0, 37.0, 14.0, tema::TEXTO_SECUNDARIO, "Procurar aplicativos (Enter)");
+            ui.tela.texto(bx + 18.0, 37.0, 14.0, tema::TEXTO_SECUNDARIO(), "Procurar aplicativos (Enter)");
         } else {
-            let fim = ui.tela.texto(bx + 18.0, 37.0, 14.0, tema::TEXTO, &self.busca);
-            ui.tela.retangulo(bx + 19.0 + fim, 23.0, 1.5, 18.0, 0.0, tema::DESTAQUE);
+            let fim = ui.tela.texto(bx + 18.0, 37.0, 14.0, tema::TEXTO(), &self.busca);
+            ui.tela.retangulo(bx + 19.0 + fim, 23.0, 1.5, 18.0, 0.0, tema::DESTAQUE());
         }
         let ux = l - 160.0;
         let ocupado = self.trabalho.is_some();
         let sobre = !ocupado && ui.sobre(ux, 14.0, 144.0, 36.0);
-        ui.tela.retangulo(ux, 14.0, 144.0, 36.0, 8.0, if sobre { tema::SUPERFICIE_ALTA } else { tema::BRANCO });
-        ui.tela.texto(ux + 16.0, 37.0, 13.5, tema::TEXTO, "Atualizar tudo");
+        ui.tela.retangulo(ux, 14.0, 144.0, 36.0, 8.0, if sobre { tema::SUPERFICIE_ALTA() } else { tema::JANELA() });
+        ui.tela.texto(ux + 16.0, 37.0, 13.5, tema::TEXTO(), "Atualizar tudo");
         if !ocupado && ui.clicou(ux, 14.0, 144.0, 36.0) {
             self.atualizar_tudo();
         }
@@ -315,10 +315,10 @@ impl App for Central {
         let visivel = a - topo - 60.0;
         let total = lista.len() as f32 * LINHA_A + 40.0;
         self.rolagem = (self.rolagem + ui.rolagem * 2.0).clamp(0.0, (total - visivel).max(0.0));
-        ui.tela.texto(24.0, topo + 22.0 - self.rolagem, 18.0, tema::TEXTO, &titulo);
+        ui.tela.texto(24.0, topo + 22.0 - self.rolagem, 18.0, tema::TEXTO(), &titulo);
         if lista.is_empty() && !ocupado {
             let msg = if self.aba == Aba::Instalados { "Nenhum aplicativo instalado ainda." } else { "Nada encontrado." };
-            ui.tela.texto(24.0, topo + 60.0, 13.5, tema::TEXTO_SECUNDARIO, msg);
+            ui.tela.texto(24.0, topo + 60.0, 13.5, tema::TEXTO_SECUNDARIO(), msg);
         }
         let mut acao: Option<(u8, AppInfo)> = None;
         for (i, app) in lista.iter().enumerate() {
@@ -337,22 +337,22 @@ impl App for Central {
             _ => {}
         }
         // A barra de cima fica por cima do que rolou.
-        ui.tela.retangulo(0.0, BARRA_A, l, 8.0, 0.0, tema::BRANCO);
+        ui.tela.retangulo(0.0, BARRA_A, l, 8.0, 0.0, tema::JANELA());
 
         // Rodapé: andamento ou aviso.
-        ui.tela.retangulo(0.0, a - 44.0, l, 44.0, 0.0, tema::FUNDO);
-        ui.tela.retangulo(0.0, a - 44.0, l, 1.0, 0.0, tema::BORDA);
+        ui.tela.retangulo(0.0, a - 44.0, l, 44.0, 0.0, tema::FUNDO());
+        ui.tela.retangulo(0.0, a - 44.0, l, 1.0, 0.0, tema::BORDA());
         if let Some((desc, _)) = &self.trabalho {
             // Barrinha animada.
             let fase = (self.quadro % 60) as f32 / 60.0;
-            ui.tela.retangulo(16.0, a - 26.0, 120.0, 6.0, 3.0, tema::DESTAQUE_SUAVE);
-            ui.tela.retangulo(16.0 + fase * 90.0, a - 26.0, 30.0, 6.0, 3.0, tema::DESTAQUE);
-            ui.tela.texto(150.0, a - 17.0, 13.0, tema::TEXTO, &desenho::encurtar(13.0, desc, l - 170.0));
+            ui.tela.retangulo(16.0, a - 26.0, 120.0, 6.0, 3.0, tema::DESTAQUE_SUAVE());
+            ui.tela.retangulo(16.0 + fase * 90.0, a - 26.0, 30.0, 6.0, 3.0, tema::DESTAQUE());
+            ui.tela.texto(150.0, a - 17.0, 13.0, tema::TEXTO(), &desenho::encurtar(13.0, desc, l - 170.0));
             ui.redesenhar = true;
         } else if let Some(av) = &self.aviso {
-            ui.tela.texto(16.0, a - 17.0, 13.0, tema::TEXTO, &desenho::encurtar(13.0, av, l - 32.0));
+            ui.tela.texto(16.0, a - 17.0, 13.0, tema::TEXTO(), &desenho::encurtar(13.0, av, l - 32.0));
         } else {
-            ui.tela.texto(16.0, a - 17.0, 12.5, tema::TEXTO_SECUNDARIO, "Os aplicativos vêm do Flathub e são instalados só para a sua conta.");
+            ui.tela.texto(16.0, a - 17.0, 12.5, tema::TEXTO_SECUNDARIO(), "Os aplicativos vêm do Flathub e são instalados só para a sua conta.");
         }
     }
 }

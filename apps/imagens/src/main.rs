@@ -105,7 +105,7 @@ impl App for Visualizador {
             }
         } else if let Some(e) = &self.erro {
             let lt = desenho::medir(14.0, e);
-            ui.tela.texto((l - lt) / 2.0, a / 2.0, 14.0, tema::BRANCO, e);
+            ui.tela.texto((l - lt) / 2.0, a / 2.0, 14.0, tema::BRANCO(), e);
         }
 
         // Barra de baixo: anterior, nome, próxima.
@@ -131,8 +131,8 @@ impl App for Visualizador {
             }
             let (cx, cy) = (x + 20.0, by + 24.0);
             let s = if i == 0 { 1.0 } else { -1.0 };
-            ui.tela.linha(cx + 4.0 * s, cy - 7.0, cx - 3.0 * s, cy, 2.0, tema::BRANCO);
-            ui.tela.linha(cx - 3.0 * s, cy, cx + 4.0 * s, cy + 7.0, 2.0, tema::BRANCO);
+            ui.tela.linha(cx + 4.0 * s, cy - 7.0, cx - 3.0 * s, cy, 2.0, tema::BRANCO());
+            ui.tela.linha(cx - 3.0 * s, cy, cx + 4.0 * s, cy + 7.0, 2.0, tema::BRANCO());
             if ui.clicou(*x, by + 6.0, 40.0, 36.0) {
                 self.mover(*d);
             }

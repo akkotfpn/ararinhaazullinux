@@ -231,6 +231,7 @@ impl std::fmt::Debug for Painel {
 
 impl Default for Painel {
     fn default() -> Self {
+        desenho::tema::definir_escuro(ler_chave("tema").as_deref() == Some("escuro"));
         Painel {
             menu_aberto: false,
             segurando: false,
@@ -457,6 +458,7 @@ impl Painel {
             self.menu = None;
             // Papel de parede (e o vidro feito dele) podem ter mudado.
             crate::fundo::VERSAO.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            desenho::tema::definir_escuro(ler_chave("tema").as_deref() == Some("escuro"));
         }
         self.config_visto = (seg, v);
     }
@@ -507,23 +509,23 @@ impl Painel {
     fn desenhar_rede(&self, origem: Point<i32, Logical>) -> Tela {
         let mut t = Tela::nova(SOM_L, SOM_A);
         let (l, a) = (SOM_L as f32, SOM_A as f32);
-        t.vidro(0.0, 0.0, l, a, 12.0, (origem.x, origem.y), tema::FUNDO.com_alfa(175));
+        t.vidro(0.0, 0.0, l, a, 12.0, (origem.x, origem.y), tema::FUNDO().com_alfa(175));
         let tipo = if self.rede.sem_fio { "Wi-Fi" } else { "Rede cabeada" };
-        t.texto(16.0, 28.0, 13.0, tema::TEXTO, tipo);
-        icone_rede(&mut t, 16.0, 44.0, 32.0, &self.rede, tema::TEXTO);
+        t.texto(16.0, 28.0, 13.0, tema::TEXTO(), tipo);
+        icone_rede(&mut t, 16.0, 44.0, 32.0, &self.rede, tema::TEXTO());
         if self.rede.conectado {
-            t.texto(60.0, 60.0, 14.0, tema::TEXTO, "Conectado");
+            t.texto(60.0, 60.0, 14.0, tema::TEXTO(), "Conectado");
             let det = format!("{} · {}", self.rede.interface, self.rede.ip);
             let det = desenho::encurtar(12.0, &det, l - 76.0);
-            t.texto(60.0, 80.0, 12.0, tema::TEXTO_SECUNDARIO, &det);
+            t.texto(60.0, 80.0, 12.0, tema::TEXTO_SECUNDARIO(), &det);
         } else {
-            t.texto(60.0, 60.0, 14.0, tema::TEXTO, "Sem conexão");
+            t.texto(60.0, 60.0, 14.0, tema::TEXTO(), "Sem conexão");
             let det = if self.rede.interface.is_empty() {
                 "Nenhuma placa de rede encontrada.".to_string()
             } else {
                 format!("Verifique o cabo ({}).", self.rede.interface)
             };
-            t.texto(60.0, 80.0, 12.0, tema::TEXTO_SECUNDARIO, &desenho::encurtar(12.0, &det, l - 76.0));
+            t.texto(60.0, 80.0, 12.0, tema::TEXTO_SECUNDARIO(), &desenho::encurtar(12.0, &det, l - 76.0));
         }
         t
     }
@@ -548,28 +550,28 @@ impl Painel {
     fn desenhar_som(&self, hover: Option<Alvo>, origem: Point<i32, Logical>) -> Tela {
         let mut t = Tela::nova(SOM_L, SOM_A);
         let (l, a) = (SOM_L as f32, SOM_A as f32);
-        t.vidro(0.0, 0.0, l, a, 12.0, (origem.x, origem.y), tema::FUNDO.com_alfa(175));
-        t.texto(16.0, 28.0, 13.0, tema::TEXTO, "Volume");
+        t.vidro(0.0, 0.0, l, a, 12.0, (origem.x, origem.y), tema::FUNDO().com_alfa(175));
+        t.texto(16.0, 28.0, 13.0, tema::TEXTO(), "Volume");
         let Some(vol) = self.som.volume else {
-            t.texto(16.0, 70.0, 13.0, tema::TEXTO_SECUNDARIO, "Nenhuma saída de som encontrada.");
+            t.texto(16.0, 70.0, 13.0, tema::TEXTO_SECUNDARIO(), "Nenhuma saída de som encontrada.");
             return t;
         };
         if hover == Some(Alvo::SomMudo) {
-            t.retangulo(12.0, 44.0, 40.0, 40.0, 8.0, tema::BRANCO.com_alfa(150));
+            t.retangulo(12.0, 44.0, 40.0, 40.0, 8.0, tema::BRANCO().com_alfa(150));
         }
-        alto_falante(&mut t, 18.0, 50.0, 28.0, vol, self.som.mudo, tema::TEXTO);
+        alto_falante(&mut t, 18.0, 50.0, 28.0, vol, self.som.mudo, tema::TEXTO());
         let v = vol.clamp(0.0, 1.0);
         let y = 64.0;
-        t.retangulo(SOM_BARRA_X0, y - 2.0, SOM_BARRA_X1 - SOM_BARRA_X0, 4.0, 2.0, tema::TEXTO_SECUNDARIO.com_alfa(90));
-        let cor = if self.som.mudo { tema::TEXTO_SECUNDARIO } else { tema::DESTAQUE };
+        t.retangulo(SOM_BARRA_X0, y - 2.0, SOM_BARRA_X1 - SOM_BARRA_X0, 4.0, 2.0, tema::TEXTO_SECUNDARIO().com_alfa(90));
+        let cor = if self.som.mudo { tema::TEXTO_SECUNDARIO() } else { tema::DESTAQUE() };
         let xk = SOM_BARRA_X0 + v * (SOM_BARRA_X1 - SOM_BARRA_X0);
         t.retangulo(SOM_BARRA_X0, y - 2.0, xk - SOM_BARRA_X0, 4.0, 2.0, cor);
         let r = if matches!(hover, Some(Alvo::SomBarra(_))) { 9.0 } else { 8.0 };
-        t.retangulo(xk - r, y - r, 2.0 * r, 2.0 * r, r, tema::BRANCO);
+        t.retangulo(xk - r, y - r, 2.0 * r, 2.0 * r, r, tema::BRANCO());
         t.retangulo(xk - r + 3.0, y - r + 3.0, 2.0 * r - 6.0, 2.0 * r - 6.0, r - 3.0, cor);
         let pct = format!("{}", (vol * 100.0).round() as i32);
         let lp = desenho::medir(13.0, &pct);
-        t.texto(l - 18.0 - lp, y + 5.0, 13.0, tema::TEXTO, &pct);
+        t.texto(l - 18.0 - lp, y + 5.0, 13.0, tema::TEXTO(), &pct);
         t
     }
 
@@ -706,10 +708,10 @@ impl Painel {
             for (i, (nome, _)) in ICONES_AREA.iter().enumerate() {
                 let y = (i as i32 * (ICONE_A + 6)) as f32;
                 if self.icone_sel == Some(i) {
-                    t.retangulo(0.0, y, ICONE_L as f32, ICONE_A as f32, 6.0, tema::DESTAQUE.com_alfa(110));
-                    t.retangulo(1.0, y + 1.0, ICONE_L as f32 - 2.0, ICONE_A as f32 - 2.0, 5.0, tema::BRANCO.com_alfa(40));
+                    t.retangulo(0.0, y, ICONE_L as f32, ICONE_A as f32, 6.0, tema::DESTAQUE().com_alfa(110));
+                    t.retangulo(1.0, y + 1.0, ICONE_L as f32 - 2.0, ICONE_A as f32 - 2.0, 5.0, tema::BRANCO().com_alfa(40));
                 } else if sobre == Some(i) {
-                    t.retangulo(0.0, y, ICONE_L as f32, ICONE_A as f32, 6.0, tema::BRANCO.com_alfa(55));
+                    t.retangulo(0.0, y, ICONE_L as f32, ICONE_A as f32, 6.0, tema::BRANCO().com_alfa(55));
                 }
                 if let Some(img) = self.imagens_area.get(i).and_then(|o| o.as_ref()) {
                     t.imagem((ICONE_L - 48) / 2, y as i32 + 8, img);
@@ -729,7 +731,7 @@ impl Painel {
                     let x = ICONE_L as f32 / 2.0 - ln / 2.0;
                     let yl = y + 72.0 + k as f32 * 14.0;
                     t.texto(x + 1.0, yl + 1.0, 12.0, desenho::Cor(0, 0, 0, 170), linha);
-                    t.texto(x, yl, 12.0, tema::BRANCO, linha);
+                    t.texto(x, yl, 12.0, tema::BRANCO(), linha);
                 }
             }
             self.area_buf = Some((chave, t.em_buffer()));
@@ -899,11 +901,11 @@ impl Painel {
             t.imagem(x.round() as i32, y.round() as i32, &r);
             return;
         }
-        t.retangulo(x, y, lado, lado, lado * 0.25, tema::DESTAQUE);
+        t.retangulo(x, y, lado, lado, lado * 0.25, tema::DESTAQUE());
         let ini = letra(nome);
         let ti = lado * 0.56;
         let li = desenho::medir(ti, &ini);
-        t.texto(x + lado / 2.0 - li / 2.0, y + lado / 2.0 + ti * 0.36, ti, tema::BRANCO, &ini);
+        t.texto(x + lado / 2.0 - li / 2.0, y + lado / 2.0 + ti * 0.36, ti, tema::BRANCO(), &ini);
     }
 
     fn desenhar_barra(
@@ -918,7 +920,7 @@ impl Painel {
         let mut t = Tela::nova(largura, h);
         let l = largura as f32;
         // Vidro (Aero): papel de parede desfocado com tinta clara.
-        t.vidro(-1.0, 0.0, l + 2.0, hf + 1.0, 0.0, (0, altura_tela - h), tema::SUPERFICIE.com_alfa(120));
+        t.vidro(-1.0, 0.0, l + 2.0, hf + 1.0, 0.0, (0, altura_tela - h), tema::SUPERFICIE().com_alfa(120));
 
         let bh = hf - 8.0; // altura dos botões
         let meio = hf / 2.0;
@@ -926,21 +928,21 @@ impl Painel {
         // Botão iniciar com o Mingau.
         let il = Self::iniciar_l() as f32;
         if self.menu_aberto || hover == Some(Alvo::Iniciar) {
-            t.retangulo(INICIAR_X as f32, 4.0, il, bh, 8.0, tema::BRANCO.com_alfa(150));
-            t.retangulo(INICIAR_X as f32, 4.0, il, bh, 8.0, tema::DESTAQUE.com_alfa(40));
+            t.retangulo(INICIAR_X as f32, 4.0, il, bh, 8.0, tema::BRANCO().com_alfa(150));
+            t.retangulo(INICIAR_X as f32, 4.0, il, bh, 8.0, tema::DESTAQUE().com_alfa(40));
         }
         if let Some(logo) = &self.logo {
             let lado = logo.width() as i32;
             t.imagem(INICIAR_X + (Self::iniciar_l() - lado) / 2, (h - lado) / 2, logo);
         } else {
-            t.retangulo(INICIAR_X as f32 + 6.0, meio - 14.0, 28.0, 28.0, 14.0, tema::DESTAQUE);
+            t.retangulo(INICIAR_X as f32 + 6.0, meio - 14.0, 28.0, 28.0, 14.0, tema::DESTAQUE());
         }
 
         // Apps fixados (ícone só).
         for i in 0..FIXADOS.len() {
             let x = (Self::fixados_x() + i as i32 * FIXADO_L) as f32;
             if hover == Some(Alvo::Fixado(i)) {
-                t.retangulo(x + 2.0, 4.0, FIXADO_L as f32 - 4.0, bh, 6.0, tema::BRANCO.com_alfa(130));
+                t.retangulo(x + 2.0, 4.0, FIXADO_L as f32 - 4.0, bh, 6.0, tema::BRANCO().com_alfa(130));
             }
             let app = self.app_fixado(i);
             let nome = app.map(|a| a.nome.clone()).unwrap_or_else(|| FIXADOS[i].to_string());
@@ -953,7 +955,7 @@ impl Painel {
             1.0,
             hf * 0.44,
             0.0,
-            tema::TEXTO_SECUNDARIO.com_alfa(70),
+            tema::TEXTO_SECUNDARIO().com_alfa(70),
         );
 
         // Um botão por janela.
@@ -963,16 +965,16 @@ impl Painel {
         for (i, (nome, ativa, minimizada, app)) in janelas.iter().enumerate() {
             let x = (Self::tarefas_x() + i as i32 * (lt + 4)) as f32;
             if *ativa && !*minimizada {
-                t.retangulo(x, 4.0, lt as f32, bh, 6.0, tema::BRANCO.com_alfa(170));
-                t.retangulo(x, 4.0, lt as f32, bh, 6.0, tema::DESTAQUE.com_alfa(45));
+                t.retangulo(x, 4.0, lt as f32, bh, 6.0, tema::BRANCO().com_alfa(170));
+                t.retangulo(x, 4.0, lt as f32, bh, 6.0, tema::DESTAQUE().com_alfa(45));
             } else if hover == Some(Alvo::Tarefa(i)) {
-                t.retangulo(x, 4.0, lt as f32, bh, 6.0, tema::BRANCO.com_alfa(120));
+                t.retangulo(x, 4.0, lt as f32, bh, 6.0, tema::BRANCO().com_alfa(120));
             }
             // Indicador embaixo: longo na ativa, curto nas outras.
             let (il, cor) = if *ativa && !*minimizada {
-                (20.0, tema::DESTAQUE)
+                (20.0, tema::DESTAQUE())
             } else {
-                (8.0, tema::TEXTO_SECUNDARIO.com_alfa(150))
+                (8.0, tema::TEXTO_SECUNDARIO().com_alfa(150))
             };
             t.retangulo(x + lt as f32 / 2.0 - il / 2.0, hf - 6.0, il, 3.0, 1.5, cor);
 
@@ -980,7 +982,7 @@ impl Painel {
             self.desenhar_icone(&mut t, app, nome, x + 8.0, meio - icone / 2.0, icone);
             if lt > 60 {
                 let txt = desenho::encurtar(tam_txt, nome, lt as f32 - icone - 24.0);
-                let cor = if *minimizada { tema::TEXTO_SECUNDARIO } else { tema::TEXTO };
+                let cor = if *minimizada { tema::TEXTO_SECUNDARIO() } else { tema::TEXTO() };
                 t.texto_com_brilho(x + icone + 16.0, meio + tam_txt * 0.36, tam_txt, cor, &txt);
             }
         }
@@ -990,12 +992,12 @@ impl Painel {
         let bx = l - (RELOGIO_L + BANDEJA_L) as f32;
         let lado = (hf * 0.45).clamp(16.0, 24.0);
         if self.rede_aberta || hover == Some(Alvo::Rede) {
-            t.retangulo(bx + 2.0, 4.0, ib - 4.0, bh, 6.0, tema::BRANCO.com_alfa(150));
+            t.retangulo(bx + 2.0, 4.0, ib - 4.0, bh, 6.0, tema::BRANCO().com_alfa(150));
         }
-        icone_rede(&mut t, bx + (ib - lado) / 2.0, meio - lado / 2.0, lado, &self.rede, tema::TEXTO);
+        icone_rede(&mut t, bx + (ib - lado) / 2.0, meio - lado / 2.0, lado, &self.rede, tema::TEXTO());
         let bx = bx + ib;
         if self.som_aberto || hover == Some(Alvo::Som) {
-            t.retangulo(bx + 2.0, 4.0, ib - 4.0, bh, 6.0, tema::BRANCO.com_alfa(150));
+            t.retangulo(bx + 2.0, 4.0, ib - 4.0, bh, 6.0, tema::BRANCO().com_alfa(150));
         }
         alto_falante(
             &mut t,
@@ -1004,7 +1006,7 @@ impl Painel {
             lado,
             self.som.volume.unwrap_or(0.0),
             self.som.mudo || self.som.volume.is_none(),
-            tema::TEXTO,
+            tema::TEXTO(),
         );
 
         // Relógio à direita (uma linha só na barra pequena).
@@ -1012,12 +1014,12 @@ impl Painel {
         if h < 42 {
             let txt = format!("{hora}  {data}");
             let lx = desenho::medir(12.0, &txt);
-            t.texto(l - 12.0 - lx, meio + 4.5, 12.0, tema::TEXTO, &txt);
+            t.texto(l - 12.0 - lx, meio + 4.5, 12.0, tema::TEXTO(), &txt);
         } else {
             let lh = desenho::medir(13.0, hora);
             let ld = desenho::medir(12.0, data);
-            t.texto_com_brilho(l - 14.0 - lh, meio - 3.0, 13.0, tema::TEXTO, hora);
-            t.texto(l - 14.0 - ld, meio + 14.0, 12.0, tema::TEXTO, data);
+            t.texto_com_brilho(l - 14.0 - lh, meio - 3.0, 13.0, tema::TEXTO(), hora);
+            t.texto(l - 14.0 - ld, meio + 14.0, 12.0, tema::TEXTO(), data);
         }
         t
     }
@@ -1026,34 +1028,34 @@ impl Painel {
         let mut t = Tela::nova(MENU_L, MENU_A);
         let (l, a) = (MENU_L as f32, MENU_A as f32);
         // Vidro com tinta mais forte que a da barra: o menu tem muito texto.
-        t.vidro(0.0, 0.0, l, a, 12.0, (origem.x, origem.y), tema::FUNDO.com_alfa(175));
+        t.vidro(0.0, 0.0, l, a, 12.0, (origem.x, origem.y), tema::FUNDO().com_alfa(175));
 
         // Cabeçalho com o Mingau.
         if let Some(m) = &self.mingau {
             t.imagem(16, 12, m);
         }
-        t.texto(72.0, 36.0, 17.0, tema::TEXTO, "Ararinha Azul Linux");
-        t.texto(72.0, 56.0, 12.5, tema::TEXTO_SECUNDARIO, "O Mingau te ajuda a começar.");
-        t.retangulo(12.0, 76.0, l - 24.0, 1.0, 0.0, tema::BORDA);
+        t.texto(72.0, 36.0, 17.0, tema::TEXTO(), "Ararinha Azul Linux");
+        t.texto(72.0, 56.0, 12.5, tema::TEXTO_SECUNDARIO(), "O Mingau te ajuda a começar.");
+        t.retangulo(12.0, 76.0, l - 24.0, 1.0, 0.0, tema::BORDA());
 
-        t.texto(16.0, 100.0, 12.0, tema::TEXTO_SECUNDARIO, "Aplicativos");
+        t.texto(16.0, 100.0, 12.0, tema::TEXTO_SECUNDARIO(), "Aplicativos");
         let apps = self.apps.as_deref().unwrap_or(&[]);
         if apps.is_empty() {
-            t.texto(16.0, (APPS_Y + 26) as f32, 13.0, tema::TEXTO_SECUNDARIO, "Nenhum aplicativo instalado.");
+            t.texto(16.0, (APPS_Y + 26) as f32, 13.0, tema::TEXTO_SECUNDARIO(), "Nenhum aplicativo instalado.");
         }
         for (i, app) in apps.iter().take(Self::max_apps()).enumerate() {
             let y = (APPS_Y + i as i32 * APP_A) as f32;
             if hover == Some(Alvo::App(i)) {
-                t.retangulo(8.0, y, l - 16.0, (APP_A - 4) as f32, 8.0, tema::DESTAQUE_SUAVE);
+                t.retangulo(8.0, y, l - 16.0, (APP_A - 4) as f32, 8.0, tema::DESTAQUE_SUAVE());
             }
             self.desenhar_icone(&mut t, Some(app), &app.nome, 16.0, y + 6.0, 28.0);
             let nome = desenho::encurtar(14.0, &app.nome, l - 80.0);
-            t.texto(56.0, y + 26.0, 14.0, tema::TEXTO, &nome);
+            t.texto(56.0, y + 26.0, 14.0, tema::TEXTO(), &nome);
         }
 
         // Rodapé: Sair, Reiniciar, Desligar.
         let ry = a - RODAPE_A as f32;
-        t.retangulo(12.0, ry, l - 24.0, 1.0, 0.0, tema::BORDA);
+        t.retangulo(12.0, ry, l - 24.0, 1.0, 0.0, tema::BORDA());
         let bl = ((MENU_L - 24) / 3) as f32;
         for (i, (alvo, nome)) in [(Alvo::Sair, "Sair"), (Alvo::Reiniciar, "Reiniciar"), (Alvo::Desligar, "Desligar")]
             .iter()
@@ -1062,13 +1064,13 @@ impl Painel {
             let x = 12.0 + i as f32 * bl;
             let sobre = hover == Some(*alvo);
             if sobre {
-                let cor = if *alvo == Alvo::Desligar { tema::ERRO } else { tema::SUPERFICIE_ALTA };
+                let cor = if *alvo == Alvo::Desligar { tema::ERRO() } else { tema::SUPERFICIE_ALTA() };
                 t.retangulo(x + 2.0, ry + 12.0, bl - 4.0, 40.0, 8.0, cor);
             }
             let cor_txt = match (*alvo, sobre) {
-                (Alvo::Desligar, true) => tema::BRANCO,
-                (Alvo::Desligar, false) => tema::ERRO,
-                _ => tema::TEXTO,
+                (Alvo::Desligar, true) => tema::BRANCO(),
+                (Alvo::Desligar, false) => tema::ERRO(),
+                _ => tema::TEXTO(),
             };
             let lt = desenho::medir(13.0, nome);
             t.texto(x + bl / 2.0 - lt / 2.0, ry + 37.0, 13.0, cor_txt, nome);
