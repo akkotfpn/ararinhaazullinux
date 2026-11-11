@@ -70,7 +70,11 @@ k=$(find /usr/share/keymaps -name 'br-abnt2.map*' | head -n1)
 [ -n "$k" ] || { echo "initramfs: faltou o mapa br-abnt2"; exit 1; }
 mkdir -p $I$(dirname $k) && cp $k $I$k
 find /usr/share/keymaps -type d -name include | while read -r d; do mkdir -p $I$d && cp -a $d/. $I$d/; done
-scripts/config --set-str INITRAMFS_SOURCE "$I" --set-val INITRAMFS_ROOT_UID 0 --set-val INITRAMFS_ROOT_GID 0 \
+# Nós de dispositivo que o kernel precisa antes do /init montar o devtmpfs
+# (sem /dev/console: "unable to open an initial console" e o /init fica
+# sem tela). Uma pasta não guarda nós; vão numa lista do gen_init_cpio.
+printf 'dir /dev 0755 0 0\nnod /dev/console 0600 0 0 c 5 1\nnod /dev/null 0666 0 0 c 1 3\nnod /dev/tty1 0620 0 0 c 4 1\n' > $PWD/../initramfs-nos.lista
+scripts/config --set-str INITRAMFS_SOURCE "$I $PWD/../initramfs-nos.lista" --set-val INITRAMFS_ROOT_UID 0 --set-val INITRAMFS_ROOT_GID 0 \
                --enable INITRAMFS_COMPRESSION_ZSTD
 make olddefconfig
 make
