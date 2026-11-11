@@ -267,7 +267,24 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         }
 
         // Barra de tarefas e menu iniciar ficam por cima das janelas.
-        if !self.pointer.is_grabbed() && self.clique_na_interface(wl_pointer::ButtonState::Pressed == state) {
+        if !self.pointer.is_grabbed()
+            && self.clique_na_interface(wl_pointer::ButtonState::Pressed == state, button == 0x111)
+        {
+            return;
+        }
+
+        // Botão direito na área de trabalho (fundo ou ícone): menu.
+        let pos_area = self.pointer.current_location();
+        if wl_pointer::ButtonState::Pressed == state
+            && button == 0x111
+            && !self.pointer.is_grabbed()
+            && self.surface_under(pos_area).is_none()
+        {
+            if let Some(geo) = self.space.outputs().next().and_then(|o| self.space.output_geometry(o)) {
+                let local = pos_area - geo.loc.to_f64();
+                let icone = self.painel.icone_em(local);
+                self.painel.contexto_area(local.to_i32_round(), geo.size, icone);
+            }
             return;
         }
 

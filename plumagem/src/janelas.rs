@@ -152,7 +152,7 @@ impl<B: Backend> AnvilState<B> {
 
     /// Trata cliques na barra e no menu. Devolve `true` se o clique foi da
     /// interface (e não deve chegar às janelas).
-    pub fn clique_na_interface(&mut self, pressionado: bool) -> bool {
+    pub fn clique_na_interface(&mut self, pressionado: bool, direito: bool) -> bool {
         let pos = self.pointer.current_location();
         let Some(output) = self.space.output_under(pos).next().cloned() else { return false };
         if output
@@ -174,8 +174,35 @@ impl<B: Backend> AnvilState<B> {
             self.painel.menu_aberto = false;
             self.painel.som_aberto = false;
             self.painel.rede_aberta = false;
-            return false;
+            let tinha_contexto = self.painel.menu_contexto.take().is_some();
+            // Clique fora do menu de contexto só fecha o menu.
+            return tinha_contexto && !direito;
         };
+        // Item do menu do botão direito.
+        if let Alvo::Contexto(i) = alvo {
+            if let Some(m) = self.painel.menu_contexto.take() {
+                if let Some((_, acao)) = m.itens.get(i) {
+                    match acao.as_str() {
+                        "#atualizar" => {}
+                        "#papel" => self.painel.proximo_papel(),
+                        "#area" => self.mostrar_area_de_trabalho(),
+                        cmd => self.executar_programa(cmd),
+                    }
+                }
+            }
+            self.painel.segurando = true;
+            return true;
+        }
+        self.painel.menu_contexto = None;
+        // Botão direito na barra de tarefas: menu da barra.
+        if direito {
+            if matches!(alvo, Alvo::Barra | Alvo::Tarefa(_) | Alvo::Iniciar | Alvo::Fixado(_)) {
+                let p = (pos - geo.loc.to_f64()).to_i32_round();
+                self.painel.contexto_barra(p, geo.size);
+            }
+            self.painel.segurando = true;
+            return true;
+        }
         if !matches!(alvo, Alvo::Som | Alvo::SomBarra(_) | Alvo::SomMudo | Alvo::SomPainel) {
             self.painel.som_aberto = false;
         }
@@ -247,7 +274,7 @@ impl<B: Backend> AnvilState<B> {
             }
             Alvo::SomBarra(f) => self.painel.definir_volume(f as f32 / 1000.0),
             Alvo::SomMudo => self.painel.alternar_mudo(),
-            Alvo::Barra | Alvo::Menu | Alvo::SomPainel => {}
+            Alvo::Barra | Alvo::Menu | Alvo::SomPainel | Alvo::Contexto(_) => {}
         }
         true
     }

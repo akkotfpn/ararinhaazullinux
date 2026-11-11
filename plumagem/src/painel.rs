@@ -55,6 +55,31 @@ pub fn ler_chave(chave: &str) -> Option<String> {
     None
 }
 
+/// Grava `chave = valor` na configuração do usuário, mantendo o resto.
+pub fn gravar_chave(chave: &str, valor: &str) {
+    let Ok(casa) = std::env::var("HOME") else { return };
+    let p = std::path::PathBuf::from(casa).join(".config/plumagem/plumagem.conf");
+    if let Some(d) = p.parent() {
+        let _ = std::fs::create_dir_all(d);
+    }
+    let atual = std::fs::read_to_string(&p).unwrap_or_default();
+    let mut achou = false;
+    let mut linhas: Vec<String> = atual
+        .lines()
+        .map(|l| match l.split_once('=') {
+            Some((k, _)) if k.trim() == chave && !l.trim_start().starts_with('#') => {
+                achou = true;
+                format!("{chave} = {valor}")
+            }
+            _ => l.to_string(),
+        })
+        .collect();
+    if !achou {
+        linhas.push(format!("{chave} = {valor}"));
+    }
+    let _ = std::fs::write(&p, linhas.join("\n") + "\n");
+}
+
 fn ler_altura() -> i32 {
     for caminho in caminhos_config() {
         let Ok(texto) = std::fs::read_to_string(&caminho) else { continue };
@@ -152,7 +177,20 @@ pub enum Alvo {
     RedeConfig,
     /// Uma notificação (o clique fecha).
     Aviso(usize),
+    /// Item do menu do botão direito (área de trabalho ou barra).
+    Contexto(usize),
 }
+
+/// Menu do botão direito: onde abriu e os itens (rótulo, ação). A ação é um
+/// comando ou, começando com '#', algo da própria Plumagem.
+#[derive(Debug, Clone)]
+pub struct MenuContexto {
+    pub origem: Point<i32, Logical>,
+    pub itens: Vec<(String, String)>,
+}
+
+const CTX_L: i32 = 250;
+const CTX_ITEM: i32 = 32;
 
 /// Notificação mostrada no canto da tela por alguns segundos.
 #[derive(Debug, Clone)]
@@ -240,6 +278,8 @@ pub struct Painel {
     wifi_disponivel: bool,
     painel_rede: Option<(String, MemoryRenderBuffer)>,
     pub avisos: Vec<Aviso>,
+    pub menu_contexto: Option<MenuContexto>,
+    ctx_buf: Option<(String, MemoryRenderBuffer)>,
     avisos_buf: Option<(String, MemoryRenderBuffer)>,
     avisos_visto: std::time::Instant,
     /// Ícone selecionado na área de trabalho e o último clique (clique duplo).
@@ -285,6 +325,8 @@ impl Default for Painel {
             wifi_disponivel: false,
             painel_rede: None,
             avisos: Vec::new(),
+            menu_contexto: None,
+            ctx_buf: None,
             avisos_buf: None,
             avisos_visto: std::time::Instant::now(),
             icone_sel: None,
@@ -382,6 +424,13 @@ impl Painel {
     /// O que está em `p` (coordenadas da tela), se for a interface.
     pub fn alvo(&self, p: Point<f64, Logical>, tela: Size<i32, Logical>) -> Option<Alvo> {
         let (x, y) = (p.x as i32, p.y as i32);
+        if let Some(m) = &self.menu_contexto {
+            let a = m.itens.len() as i32 * CTX_ITEM + 12;
+            if x >= m.origem.x && x < m.origem.x + CTX_L && y >= m.origem.y && y < m.origem.y + a {
+                let i = (y - m.origem.y - 6).max(0) / CTX_ITEM;
+                return Some(Alvo::Contexto(i as usize));
+            }
+        }
         if !self.avisos.is_empty() {
             let o = Self::avisos_origem(tela, self.avisos.len());
             if x >= o.x && x < o.x + AVISO_L && y >= o.y {
@@ -462,6 +511,89 @@ impl Painel {
             }
         }
         Some(Alvo::Barra)
+    }
+
+    /// Abre o menu do botão direito em `p`, sem sair da tela.
+    fn abrir_contexto(&mut self, p: Point<i32, Logical>, tela: Size<i32, Logical>, itens: Vec<(&str, &str)>) {
+        let a = itens.len() as i32 * CTX_ITEM + 12;
+        let x = p.x.min(tela.w - CTX_L - 4).max(0);
+        let y = if p.y + a > tela.h - 4 { (p.y - a).max(0) } else { p.y };
+        self.menu_contexto = Some(MenuContexto {
+            origem: (x, y).into(),
+            itens: itens.into_iter().map(|(a, b)| (a.to_string(), b.to_string())).collect(),
+        });
+        self.menu_aberto = false;
+        self.som_aberto = false;
+        self.rede_aberta = false;
+    }
+
+    /// Botão direito na área de trabalho (num ícone ou no fundo).
+    pub fn contexto_area(&mut self, p: Point<i32, Logical>, tela: Size<i32, Logical>, icone: Option<usize>) {
+        let itens: Vec<(&str, &str)> = match icone {
+            Some(0) => vec![("Abrir", ICONES_AREA[0].1), ("Propriedades", "configuracoes sobre")],
+            Some(1) => vec![
+                ("Abrir", ICONES_AREA[1].1),
+                ("Abrir no terminal", "sh -c 'cd \"$HOME\" && exec alacritty'"),
+            ],
+            Some(_) => vec![("Abrir", ICONES_AREA[2].1)],
+            None => vec![
+                ("Atualizar", "#atualizar"),
+                ("Próximo papel de parede", "#papel"),
+                ("Abrir o terminal", "alacritty"),
+                ("Gerenciador de Tarefas", "tarefas"),
+                ("Personalizar", "configuracoes"),
+            ],
+        };
+        if let Some(i) = icone {
+            self.icone_sel = Some(i);
+        }
+        self.abrir_contexto(p, tela, itens);
+    }
+
+    /// Botão direito na barra de tarefas.
+    pub fn contexto_barra(&mut self, p: Point<i32, Logical>, tela: Size<i32, Logical>) {
+        self.abrir_contexto(
+            p,
+            tela,
+            vec![
+                ("Gerenciador de Tarefas", "tarefas"),
+                ("Mostrar a área de trabalho", "#area"),
+                ("Configurações da barra de tarefas", "configuracoes"),
+            ],
+        );
+    }
+
+    /// Troca para o próximo papel de parede da pasta do sistema.
+    pub fn proximo_papel(&mut self) {
+        let mut ids: Vec<String> = std::fs::read_dir(crate::fundo::PASTA_PAPEIS)
+            .map(|rd| {
+                rd.flatten()
+                    .filter_map(|e| e.file_name().to_str().and_then(|n| n.strip_suffix(".png")).map(String::from))
+                    .collect()
+            })
+            .unwrap_or_default();
+        if ids.is_empty() {
+            return;
+        }
+        ids.sort();
+        let atual = ler_chave("papel").unwrap_or_else(|| "spix".into());
+        let i = ids.iter().position(|x| *x == atual).map(|i| (i + 1) % ids.len()).unwrap_or(0);
+        gravar_chave("papel", &ids[i]);
+    }
+
+    fn desenhar_contexto(&self, m: &MenuContexto, hover: Option<Alvo>) -> Tela {
+        let a = m.itens.len() as i32 * CTX_ITEM + 12;
+        let mut t = Tela::nova(CTX_L, a);
+        let (l, af) = (CTX_L as f32, a as f32);
+        t.vidro(0.0, 0.0, l, af, 10.0, (m.origem.x, m.origem.y), tema::FUNDO().com_alfa(200));
+        for (i, (rotulo, _)) in m.itens.iter().enumerate() {
+            let y = 6.0 + (i as i32 * CTX_ITEM) as f32;
+            if hover == Some(Alvo::Contexto(i)) {
+                t.retangulo(6.0, y, l - 12.0, CTX_ITEM as f32, 6.0, tema::DESTAQUE().com_alfa(60));
+            }
+            t.texto(18.0, y + 21.0, 13.0, tema::TEXTO(), &desenho::encurtar(13.0, rotulo, l - 30.0));
+        }
+        t
     }
 
     fn avisos_origem(tela: Size<i32, Logical>, n: usize) -> Point<i32, Logical> {
@@ -931,6 +1063,28 @@ impl Painel {
         self.ver_config();
         self.ler_avisos();
         let mut elementos = Vec::new();
+
+        // Menu do botão direito: o primeiro da lista fica por cima de tudo.
+        if let Some(m) = self.menu_contexto.clone() {
+            let chave = format!("{:?}|{:?}|{hover:?}|{}", m.origem, m.itens, desenho::tema::escuro());
+            if self.ctx_buf.as_ref().map(|(c, _)| c != &chave).unwrap_or(true) {
+                let t = self.desenhar_contexto(&m, hover);
+                self.ctx_buf = Some((chave, t.em_buffer()));
+            }
+            if let Some((_, buf)) = &self.ctx_buf {
+                if let Ok(e) = MemoryRenderBufferRenderElement::from_buffer(
+                    renderer,
+                    m.origem.to_f64().to_physical(escala),
+                    buf,
+                    None,
+                    None,
+                    None,
+                    Kind::Unspecified,
+                ) {
+                    elementos.push(e);
+                }
+            }
+        }
 
         if !self.avisos.is_empty() {
             let o = Self::avisos_origem(tela, self.avisos.len());
