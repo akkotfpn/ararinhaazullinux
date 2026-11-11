@@ -13,7 +13,9 @@
 | 2.3 Rust dentro do Ararinha | Construído em 10/11/2026. Receita `rust` 1.98.1: compilado do código-fonte e sem rede; o compilador inicial (stage0 1.97.1) entra como fonte travada pelos hashes oficiais |
 | 2.4 Plumagem v0 | Compositor em `plumagem/` (Smithay 0.7, baseado no Anvil): backend udev/DRM, papel de parede Spix com o Mingau, teclado ABNT2, Super+Enter abre o Alacritty. Receitas `plumagem`, `alacritty`, `fonte-inter` e `fonte-jetbrains-mono`; crates do Cargo.lock baixadas e travadas pela Ninhada. Primeira construção completa: 10/11/2026, 11h01. Primeira tela gráfica (Mingau no papel de parede, cursor) às 11h53; primeira janela (Alacritty, Ctrl+Alt+T) às 12h06. **Plumagem v1** (10/11, 13h28): barra de tarefas com o Mingau, botões das janelas e relógio; menu iniciar com aplicativos, Sair, Reiniciar e Desligar (também Ctrl+Esc); barra de título com Minimizar/Maximizar/Fechar; maximizar sem cobrir a barra; interface automática no tty1. A fazer: ícones reais, Ninho (login gráfico), arrastar e redimensionar pelas bordas |
 | 2.5 Som e rede | Receitas `receitas/multimidia/` (alsa-lib, pcre2, glib, lua, pipewire, wireplumber), iniciadas pela `plumagem-sessao` com D-Bus de sessão. Bandeja da barra com volume (wpctl) e estado da rede (cabo/Wi-Fi, IP). A fazer: Wi-Fi com iwd (procurar e conectar), Bluetooth |
-| 2.6 Ninho v0 e Primeiro Voo v1 | Ninho (`plumagem --ninho`, `ninho.service` no tty1): relógio, cartão de vidro com o Mingau, senha conferida no /etc/shadow; sem contas comuns, cria a primeira conta (grupos seat, video, audio, input). Sessões dos usuários via seatd. A fazer: Primeiro Voo gráfico (idioma, fuso, teclado) no lugar das perguntas em texto |
+| 2.6 Ninho v0 e Primeiro Voo v1 | Ninho (`plumagem --ninho`, `ninho.service` no tty1): relógio, cartão de vidro com o Mingau, senha conferida no /etc/shadow; sem contas comuns, cria a primeira conta (grupos seat, video, audio, input). Sessões dos usuários via seatd. **Primeiro Voo gráfico** (idioma, fuso e teclado no próprio Ninho, gravados em /etc/locale.conf, /etc/localtime e /etc/plumagem/teclado); a raiz cresce sozinha no primeiro boot (systemd-repart + x-systemd.growfs) |
+| 2.7 Flatpak e Flathub | Construído em 11/11/2026. Receitas em `receitas/flatpak/`: ca-certificates, libxml2, curl, a família GnuPG (libgpg-error, libassuan, libgcrypt, libksba, npth, gnupg, gpgme), libarchive, libseccomp, json-glib, fuse3, libfyaml, libxmlb, appstream, shared-mime-info, gdk-pixbuf, bubblewrap, xdg-dbus-proxy, ostree e flatpak 1.18.4, com o Flathub configurado. A sessão adiciona o Flathub do usuário e põe os apps exportados no menu Iniciar. A fazer: xdg-desktop-portal |
+| 2.8 Unidades de rede | `cifs-utils` (com `talloc`) e o ajudante setuid `ararinha-unidade`: Mapear unidade de rede no Explorador (letra, \\servidor\pasta, usuário e senha), reconexão ao entrar e desconexão pelo botão direito. As unidades aparecem em Este Computador > Locais de rede |
 
 Referência: *Beyond Linux From Scratch*, versão systemd
 ([linuxfromscratch.org/blfs](https://www.linuxfromscratch.org/blfs/)).
@@ -31,7 +33,17 @@ pelo smithay-client-toolkit e o mesmo desenho da Plumagem):
   e nos ícones da área de trabalho (Este Computador, Pasta pessoal,
   Lixeira).
 - **Visualizador de Imagens** e **Bloco de Notas**, abertos pelo Explorador.
-- **Configurações**: tamanho da barra de tarefas (aplicado na hora) e Sobre.
+  **v2** (11/11): ícones e coluna Tipo por extensão, seleção múltipla
+  (Ctrl/Shift+clique, Ctrl+A), busca (filtra na hora; Enter procura nas
+  subpastas), arrastar para pastas (Ctrl copia), Propriedades (Alt+Enter)
+  e Lixeira com Restaurar e Esvaziar.
+- **Configurações**: tamanho da barra de tarefas, modo claro/escuro, papel
+  de parede (Spix, Noite no Sertão, Velho Chico, Aero Azul, Caatinga em
+  Flor), plano de energia (Padrão, Econômico, Desempenho máximo, pelo
+  ajudante `ararinha-energia`) e Sobre com créditos. Tudo vale na hora.
+- **Central de Apps**: instala, abre, remove e atualiza apps do Flathub.
+- **Calculadora** (padrão, com teclado) e **Gerenciador de Tarefas**
+  (processos com Finalizar tarefa; gráficos de processador e memória).
 
 Atalhos do Windows na Plumagem: Alt+Tab, Alt+F4, Win+D / Ctrl+Alt+D,
 Win+E / Ctrl+Alt+E, Ctrl+Esc (menu) e Ctrl+Alt+T (terminal).
