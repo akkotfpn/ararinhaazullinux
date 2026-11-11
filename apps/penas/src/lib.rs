@@ -146,6 +146,30 @@ fn arquivos_config() -> [std::path::PathBuf; 2] {
 }
 
 /// `tema = escuro` na configuração da Plumagem (a do usuário vale mais).
+/// Valor de uma chave do plumagem.conf (o do usuário vale mais).
+fn ler_chave_config(chave: &str) -> Option<String> {
+    for c in arquivos_config() {
+        let Ok(t) = std::fs::read_to_string(&c) else { continue };
+        for l in t.lines() {
+            if l.trim_start().starts_with('#') {
+                continue;
+            }
+            if let Some((k, v)) = l.split_once('=') {
+                if k.trim() == chave {
+                    return Some(v.trim().trim_matches('"').to_string());
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Aplica o tema e a cor de destaque da configuração.
+fn aplicar_tema() {
+    tema::definir_escuro(ler_tema_escuro());
+    tema::definir_destaque(ler_chave_config("destaque").as_deref().unwrap_or("azul"));
+}
+
 fn ler_tema_escuro() -> bool {
     for c in arquivos_config() {
         let Ok(t) = std::fs::read_to_string(&c) else { continue };
@@ -278,7 +302,7 @@ pub fn executar(opcoes: Opcoes, app: Box<dyn App>) {
         tela: Tela::nova(l as i32, a as i32),
     };
 
-    tema::definir_escuro(ler_tema_escuro());
+    aplicar_tema();
     // O tema mudou nas Configurações? O inotify avisa; sem ele, confere a
     // cada 2 s. Parado, o laço não acorda à toa.
     let vigia = vigiar_config(&event_loop);
@@ -288,7 +312,7 @@ pub fn executar(opcoes: Opcoes, app: Box<dyn App>) {
             janela.config_mudou = false;
             let v = versao_config();
             if v != config.1 {
-                tema::definir_escuro(ler_tema_escuro());
+                aplicar_tema();
                 janela.sujo = true;
             }
             config = (Instant::now(), v);

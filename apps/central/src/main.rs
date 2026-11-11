@@ -2,6 +2,7 @@
 //! Central de Apps do Ararinha: busca, instala, atualiza e remove aplicativos
 //! do Flathub (pelo comando flatpak, instalando para o usuário).
 
+use std::sync::{Arc, Mutex};
 use std::{
     process::Command,
     sync::mpsc::{channel, Receiver},
@@ -59,6 +60,8 @@ struct Central {
     aviso: Option<String>,
     rolagem: f32,
     quadro: u64,
+    /// Progresso da instalação/atualização em andamento (o flatpak informa).
+    progresso: Arc<Mutex<Progresso>>,
     /// Ícones já lidos do catálogo do Flathub (None = não tem).
     icones: std::cell::RefCell<std::collections::HashMap<String, Option<penas::desenho::Imagem>>>,
 }
@@ -84,6 +87,118 @@ fn flatpak(args: &[&str]) -> Result<String, String> {
         Ok(o) if o.status.success() => Ok(String::from_utf8_lossy(&o.stdout).to_string()),
         Ok(o) => Err(String::from_utf8_lossy(&o.stderr).trim().lines().last().unwrap_or("").to_string()),
         Err(e) => Err(format!("Flatpak não encontrado: {e}")),
+    }
+}
+
+/// O que o flatpak está fazendo agora.
+#[derive(Default)]
+struct Progresso {
+    /// 0 a 100, quando o flatpak mostra porcentagem.
+    pct: Option<f32>,
+    /// Última linha de estado ("Instalando 2/3… 45% 1,2 MB/s").
+    texto: String,
+    /// Grupo de processos do flatpak (para cancelar).
+    grupo: Option<i32>,
+    cancelado: bool,
+}
+
+extern "C" {
+    fn kill(pid: i32, sinal: i32) -> i32;
+}
+
+/// Tira as sequências de cor/cursor (ESC [ ... letra) de uma linha de terminal.
+fn sem_escapes(s: &str) -> String {
+    let mut r = String::new();
+    let mut it = s.chars().peekable();
+    while let Some(c) = it.next() {
+        if c == '\u{1b}' {
+            if it.peek() == Some(&'[') {
+                it.next();
+                while let Some(d) = it.next() {
+                    if d.is_ascii_alphabetic() {
+                        break;
+                    }
+                }
+            }
+            continue;
+        }
+        if !c.is_control() {
+            r.push(c);
+        }
+    }
+    r
+}
+
+/// Roda o flatpak num terminal falso (o `script`), para ele mostrar o
+/// progresso, e vai lendo a porcentagem. Pode ser cancelado.
+fn flatpak_com_progresso(args: &[&str], prog: &Arc<Mutex<Progresso>>) -> Result<(), String> {
+    use std::io::Read;
+    use std::os::unix::process::CommandExt;
+    // Só ids e opções simples chegam aqui; nada vai para o sh sem conferir.
+    if args.iter().any(|a| !a.chars().all(|c| c.is_ascii_alphanumeric() || "._-/=".contains(c))) {
+        return Err("nome de app inválido".into());
+    }
+    let linha = format!("nice -n 15 flatpak {}", args.join(" "));
+    let mut filho = Command::new("script")
+        .args(["-qfec", &linha, "/dev/null"])
+        .env("COLUMNS", "120")
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .process_group(0)
+        .spawn()
+        .map_err(|e| format!("não deu para rodar o flatpak: {e}"))?;
+    {
+        let mut p = prog.lock().unwrap();
+        *p = Progresso { grupo: Some(filho.id() as i32), texto: "Preparando…".into(), ..Default::default() };
+    }
+    let mut saida = filho.stdout.take().ok_or("sem saída")?;
+    let mut buf = [0u8; 4096];
+    let mut atual = String::new();
+    let mut ultimas: Vec<String> = Vec::new();
+    loop {
+        let n = match saida.read(&mut buf) {
+            Ok(0) | Err(_) => break,
+            Ok(n) => n,
+        };
+        for ch in String::from_utf8_lossy(&buf[..n]).chars() {
+            if ch == '\r' || ch == '\n' {
+                let limpa = sem_escapes(&atual).trim().to_string();
+                atual.clear();
+                if limpa.is_empty() {
+                    continue;
+                }
+                let pct = limpa
+                    .split_whitespace()
+                    .filter_map(|t| t.strip_suffix('%').and_then(|n| n.parse::<f32>().ok()))
+                    .last();
+                let mut p = prog.lock().unwrap();
+                if let Some(v) = pct {
+                    p.pct = Some(v.clamp(0.0, 100.0));
+                }
+                // Sem as barrinhas de blocos do terminal.
+                p.texto = limpa.chars().filter(|c| !('\u{2580}'..='\u{259F}').contains(c)).collect::<String>().split_whitespace().collect::<Vec<_>>().join(" ");
+                drop(p);
+                ultimas.push(limpa);
+                if ultimas.len() > 8 {
+                    ultimas.remove(0);
+                }
+            } else {
+                atual.push(ch);
+            }
+        }
+    }
+    let status = filho.wait().map_err(|e| e.to_string())?;
+    let cancelado = prog.lock().unwrap().cancelado;
+    *prog.lock().unwrap() = Progresso::default();
+    if cancelado {
+        return Err("cancelado".into());
+    }
+    if status.success() {
+        Ok(())
+    } else {
+        let erro = ultimas.iter().rev().find(|l| l.to_lowercase().contains("error") || l.contains("erro")).cloned();
+        Err(erro.or_else(|| ultimas.last().cloned()).unwrap_or_else(|| "o flatpak parou com erro".into()))
     }
 }
 
@@ -120,6 +235,7 @@ impl Central {
             rolagem: 0.0,
             quadro: 0,
             icones: Default::default(),
+            progresso: Default::default(),
         };
         c.rodar("Preparando o Flathub…", || {
             let _ = flatpak(&["remote-add", "--user", "--if-not-exists", "flathub", "/usr/share/flatpak/flathub.flatpakrepo"]);
@@ -157,11 +273,17 @@ impl Central {
     fn instalar(&mut self, app: &AppInfo) {
         let id = app.id.clone();
         let nome = app.nome.clone();
-        self.rodar(&format!("Instalando {nome}… (pode levar alguns minutos)"), move || {
-            match flatpak(&["install", "--user", "-y", "--noninteractive", "flathub", &id]) {
+        let prog = self.progresso.clone();
+        self.rodar(&format!("Instalando {nome}…"), move || {
+            match flatpak_com_progresso(&["install", "--user", "-y", "flathub", &id], &prog) {
                 Ok(_) => {
                     criar_atalho(&id);
                     Resultado::Feito(format!("{nome} instalado: está no menu Iniciar e na área de trabalho."))
+                }
+                Err(e) if e == "cancelado" => {
+                    // Desfaz o que ficou pela metade.
+                    let _ = flatpak(&["uninstall", "--user", "-y", "--noninteractive", &id]);
+                    Resultado::Feito(format!("Instalação de {nome} cancelada."))
                 }
                 Err(e) => Resultado::Erro(format!("Não deu para instalar {nome}: {e}")),
             }
@@ -185,9 +307,11 @@ impl Central {
     }
 
     fn atualizar_tudo(&mut self) {
-        self.rodar("Atualizando os aplicativos…", || {
-            match flatpak(&["update", "--user", "-y", "--noninteractive"]) {
+        let prog = self.progresso.clone();
+        self.rodar("Atualizando os aplicativos…", move || {
+            match flatpak_com_progresso(&["update", "--user", "-y"], &prog) {
                 Ok(_) => Resultado::Feito("Tudo atualizado.".into()),
+                Err(e) if e == "cancelado" => Resultado::Feito("Atualização cancelada.".into()),
                 Err(e) => Resultado::Erro(format!("Não deu para atualizar: {e}")),
             }
         });
@@ -381,11 +505,40 @@ impl App for Central {
         ui.tela.retangulo(0.0, a - 44.0, l, 44.0, 0.0, tema::FUNDO());
         ui.tela.retangulo(0.0, a - 44.0, l, 1.0, 0.0, tema::BORDA());
         if let Some((desc, _)) = &self.trabalho {
-            // Barrinha animada.
-            let fase = (self.quadro % 60) as f32 / 60.0;
+            let (pct, texto, cancelavel) = {
+                let p = self.progresso.lock().unwrap();
+                (p.pct, p.texto.clone(), p.grupo.is_some() && !p.cancelado)
+            };
             ui.tela.retangulo(16.0, a - 26.0, 120.0, 6.0, 3.0, tema::DESTAQUE_SUAVE());
-            ui.tela.retangulo(16.0 + fase * 90.0, a - 26.0, 30.0, 6.0, 3.0, tema::DESTAQUE());
-            ui.tela.texto(150.0, a - 17.0, 13.0, tema::TEXTO(), &desenho::encurtar(13.0, desc, l - 170.0));
+            if let Some(v) = pct {
+                // Progresso de verdade.
+                ui.tela.retangulo(16.0, a - 26.0, 120.0 * v / 100.0, 6.0, 3.0, tema::DESTAQUE());
+            } else {
+                // Barrinha animada enquanto o flatpak não diz quanto falta.
+                let fase = (self.quadro % 60) as f32 / 60.0;
+                ui.tela.retangulo(16.0 + fase * 90.0, a - 26.0, 30.0, 6.0, 3.0, tema::DESTAQUE());
+            }
+            let linha = if texto.is_empty() { desc.clone() } else { format!("{desc}  ·  {texto}") };
+            let fim = if cancelavel { l - 300.0 } else { l - 170.0 };
+            ui.tela.texto(150.0, a - 17.0, 13.0, tema::TEXTO(), &desenho::encurtar(13.0, &linha, fim));
+            if cancelavel {
+                let (bx, by, bw) = (l - 120.0, a - 38.0, 104.0);
+                let s = ui.sobre(bx, by, bw, 30.0);
+                ui.tela.retangulo(bx, by, bw, 30.0, 6.0, if s { tema::TEXTO_SECUNDARIO() } else { tema::BORDA() });
+                ui.tela.retangulo(bx + 1.0, by + 1.0, bw - 2.0, 28.0, 5.0, tema::JANELA());
+                ui.tela.texto(bx + 22.0, by + 20.0, 13.0, tema::TEXTO(), "Cancelar");
+                if ui.clicou(bx, by, bw, 30.0) {
+                    let mut p = self.progresso.lock().unwrap();
+                    if let Some(g) = p.grupo {
+                        p.cancelado = true;
+                        // SAFETY: sinal para o grupo de processos do flatpak que criamos.
+                        unsafe { kill(-g, 15) };
+                        // O `script` põe o flatpak numa sessão própria: avisa
+                        // ele também.
+                        let _ = Command::new("pkill").args(["-TERM", "-u", &std::env::var("USER").unwrap_or_default(), "-f", "flatpak (install|update) --user -y"]).status();
+                    }
+                }
+            }
             // Animação leve (12 quadros/s): não roubar CPU de quem instala.
             ui.acordar_em = Some(std::time::Duration::from_millis(80));
         } else if let Some(av) = &self.aviso {

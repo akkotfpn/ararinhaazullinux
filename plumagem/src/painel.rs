@@ -461,6 +461,7 @@ impl std::fmt::Debug for Painel {
 impl Default for Painel {
     fn default() -> Self {
         desenho::tema::definir_escuro(ler_chave("tema").as_deref() == Some("escuro"));
+        desenho::tema::definir_destaque(ler_chave("destaque").as_deref().unwrap_or("azul"));
         Painel {
             menu_aberto: false,
             segurando: false,
@@ -1068,6 +1069,7 @@ impl Painel {
             // Papel de parede (e o vidro feito dele) podem ter mudado.
             crate::fundo::VERSAO.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             desenho::tema::definir_escuro(ler_chave("tema").as_deref() == Some("escuro"));
+            desenho::tema::definir_destaque(ler_chave("destaque").as_deref().unwrap_or("azul"));
         }
         self.config_visto = (seg, v);
     }

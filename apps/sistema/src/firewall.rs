@@ -9,6 +9,8 @@ use std::{fs, process::Command};
 
 const CONF: &str = "/etc/ararinha/firewall.conf";
 const REGRAS: &str = "/etc/ararinha/firewall.nft";
+/// Existe quando a pessoa desligou o firewall (o boot respeita).
+const DESLIGADO: &str = "/etc/ararinha/firewall-desligado";
 
 #[derive(Default)]
 struct Estado {
@@ -68,6 +70,10 @@ fn gravar_e_aplicar(e: &Estado) -> Result<(), String> {
     }
     fs::write(CONF, conf).map_err(|e| format!("{CONF}: {e}"))?;
     fs::write(REGRAS, nft).map_err(|e| format!("{REGRAS}: {e}"))?;
+    if std::path::Path::new(DESLIGADO).exists() {
+        // Desligado: guarda as escolhas, mas não carrega regras.
+        return Ok(());
+    }
     let s = Command::new("/usr/sbin/nft")
         .args(["-f", "/etc/nftables.conf"])
         .output()
@@ -93,6 +99,21 @@ pub fn estado() -> String {
         if e.casa { "casa" } else { "publica" },
         portas.join(",")
     )
+}
+
+/// Liga ou desliga o firewall (e lembra para o próximo boot).
+pub fn ligar(sim: bool) -> Result<String, String> {
+    if sim {
+        let _ = fs::remove_file(DESLIGADO);
+        gravar_e_aplicar(&ler())?;
+    } else {
+        fs::write(DESLIGADO, "").map_err(|e| format!("{DESLIGADO}: {e}"))?;
+        let s = Command::new("/usr/sbin/nft").args(["flush", "ruleset"]).output().map_err(|e| format!("nft: {e}"))?;
+        if !s.status.success() {
+            return Err(format!("nft: {}", String::from_utf8_lossy(&s.stderr).trim()));
+        }
+    }
+    Ok(estado())
 }
 
 pub fn definir_perfil(p: &str) -> Result<String, String> {

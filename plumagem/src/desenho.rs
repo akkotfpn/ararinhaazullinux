@@ -55,10 +55,49 @@ pub mod tema {
         };
     }
 
+    /// Cores de destaque que a pessoa pode escolher: nome e, para claro e
+    /// escuro, (destaque, forte, suave).
+    pub const DESTAQUES: [(&str, [u32; 3], [u32; 3]); 6] = [
+        ("azul", [0x2B7BC4, 0x1E5FA3, 0xD6E8F7], [0x3B8DD8, 0x5AA8EC, 0x163A5E]),
+        ("verde", [0x2E8B57, 0x1F6B42, 0xD5EFE0], [0x3FAE6F, 0x62C98C, 0x173D2A]),
+        ("roxo", [0x7B4FC9, 0x5E37A6, 0xE6DCF7], [0x9670DC, 0xB091E8, 0x2E2150]),
+        ("laranja", [0xD9731A, 0xB35A0C, 0xFAE3CF], [0xE88B3A, 0xF0A562, 0x45290F]),
+        ("rosa", [0xC94A86, 0xA3336A, 0xF6D9E7], [0xDC6CA0, 0xE88EB7, 0x47203A]),
+        ("grafite", [0x4A5A6A, 0x34414E, 0xE1E6EB], [0x8EA0B2, 0xAAB9C8, 0x24303D]),
+    ];
+
+    static DESTAQUE_ATUAL: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+    /// Escolhe a cor de destaque pelo nome ("azul", "verde"...).
+    pub fn definir_destaque(nome: &str) {
+        let i = DESTAQUES.iter().position(|d| d.0 == nome).unwrap_or(0);
+        DESTAQUE_ATUAL.store(i, Ordering::Relaxed);
+    }
+
+    pub fn destaque_atual() -> &'static str {
+        DESTAQUES[DESTAQUE_ATUAL.load(Ordering::Relaxed).min(DESTAQUES.len() - 1)].0
+    }
+
+    fn destaque(k: usize) -> Cor {
+        let d = &DESTAQUES[DESTAQUE_ATUAL.load(Ordering::Relaxed).min(DESTAQUES.len() - 1)];
+        Cor::hex(if escuro() { d.2[k] } else { d.1[k] })
+    }
+
+    /// Cor de destaque (botões principais, seleção).
+    #[allow(non_snake_case)]
+    pub fn DESTAQUE() -> Cor {
+        destaque(0)
+    }
+    #[allow(non_snake_case)]
+    pub fn DESTAQUE_FORTE() -> Cor {
+        destaque(1)
+    }
+    #[allow(non_snake_case)]
+    pub fn DESTAQUE_SUAVE() -> Cor {
+        destaque(2)
+    }
+
     cores! {
-        DESTAQUE = 0x2B7BC4, 0x3B8DD8;
-        DESTAQUE_FORTE = 0x1E5FA3, 0x5AA8EC;
-        DESTAQUE_SUAVE = 0xD6E8F7, 0x163A5E;
         FUNDO = 0xF4F7FA, 0x0B1A2E;
         SUPERFICIE = 0xFFFFFF, 0x152A44;
         SUPERFICIE_ALTA = 0xEAF0F5, 0x1A3150;

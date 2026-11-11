@@ -272,7 +272,7 @@ impl Configuracoes {
 
     fn personalizacao(&mut self, ui: &mut Ui, x0: f32, l: f32) {
         // Conteúdo maior que a janela: rola com a roda do mouse.
-        let altura_total = 410.0 + ((self.papeis.len() + 2) / 3) as f32 * 140.0 + 40.0;
+        let altura_total = 480.0 + ((self.papeis.len() + 2) / 3) as f32 * 140.0 + 40.0;
         self.rolagem = (self.rolagem + ui.rolagem).clamp(0.0, (altura_total - ui.altura()).max(0.0));
         let oy = -self.rolagem;
 
@@ -356,7 +356,33 @@ impl Configuracoes {
             }
         }
 
-        let y_papel = oy + 350.0;
+        // Cor de destaque
+        let y_cor = y_modo + 74.0;
+        ui.tela.texto(x0 + 32.0, y_cor, 15.0, tema::TEXTO(), "Cor de destaque");
+        let atual = tema::destaque_atual();
+        let mut nova_cor = None;
+        for (i, d) in tema::DESTAQUES.iter().enumerate() {
+            let (bx, by) = (x0 + 32.0 + i as f32 * 50.0, y_cor + 14.0);
+            let cor = Cor::hex(if tema::escuro() { d.2[0] } else { d.1[0] });
+            if d.0 == atual {
+                ui.tela.retangulo(bx - 3.0, by - 3.0, 42.0, 42.0, 21.0, tema::TEXTO());
+                ui.tela.retangulo(bx - 1.0, by - 1.0, 38.0, 38.0, 19.0, tema::JANELA());
+            } else if ui.sobre(bx, by, 36.0, 36.0) {
+                ui.tela.retangulo(bx - 2.0, by - 2.0, 40.0, 40.0, 20.0, tema::BORDA());
+            }
+            ui.tela.retangulo(bx + 2.0, by + 2.0, 32.0, 32.0, 16.0, cor);
+            if ui.clicou(bx, by, 36.0, 36.0) && d.0 != atual {
+                nova_cor = Some(d.0);
+            }
+        }
+        if let Some(c) = nova_cor {
+            if self.salvar("destaque", c) {
+                tema::definir_destaque(c);
+                ui.redesenhar = true;
+            }
+        }
+
+        let y_papel = oy + 420.0;
         ui.tela.texto(x0 + 32.0, y_papel, 15.0, tema::TEXTO(), "Papel de parede");
         ui.tela.texto(x0 + 32.0, y_papel + 22.0, 12.5, tema::TEXTO_SECUNDARIO(), "Vale também para o vidro da barra e das janelas.");
         let (ml, ma) = (176.0, 99.0);

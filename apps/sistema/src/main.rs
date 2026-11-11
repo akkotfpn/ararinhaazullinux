@@ -97,6 +97,14 @@ fn atender(quem: &Quem, pedido: &str) -> Result<String, String> {
             admin()?;
             firewall::definir_perfil(p)
         }
+        ["firewall", "ligar"] => {
+            admin()?;
+            firewall::ligar(true)
+        }
+        ["firewall", "desligar"] => {
+            admin()?;
+            firewall::ligar(false)
+        }
         ["firewall", "abrir", porta] => {
             admin()?;
             firewall::abrir(porta)

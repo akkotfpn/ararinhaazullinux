@@ -2198,7 +2198,10 @@ impl Explorador {
         }
         // Clique no fundo (fora dos itens) desmarca tudo.
         let fim_lista = topo + self.entradas.len() as f32 * LINHA_A - self.rolagem;
-        if ui.clique && !ui.ctrl && !ui.shift && ui.mouse.is_some_and(|(mx, my)| mx > x0 && my > fim_lista.max(topo)) {
+        // (A barra de baixo do modo escolher não conta: o clique em "Abrir"
+        // não pode desmarcar o arquivo antes de entregar.)
+        let fundo_lista = if self.escolha.is_some() { ui.altura() - 64.0 } else { ui.altura() };
+        if ui.clique && !ui.ctrl && !ui.shift && ui.mouse.is_some_and(|(mx, my)| mx > x0 && my > fim_lista.max(topo) && my < fundo_lista) {
             self.selecionado = None;
             self.selecionados.clear();
         }

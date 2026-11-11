@@ -327,13 +327,17 @@ impl PaginaRede {
         ui.tela.texto(x0 + 32.0, 82.0, 13.0, tema::TEXTO_SECUNDARIO(), &estado);
 
         let Some(placa) = self.placa.clone() else {
+            // Sem adaptador: diz claro, num cartão, e explica o caso da VM.
+            let w = (ui.largura() - x0 - 64.0).min(620.0);
             ui.tela.texto(x0 + 32.0, 130.0, 15.0, tema::TEXTO(), "Wi-Fi");
-            ui.tela.texto(
-                x0 + 32.0,
-                154.0,
-                13.0,
-                tema::TEXTO_SECUNDARIO(),
-                "Nenhuma placa Wi-Fi encontrada. Se o computador tem uma, ela pode precisar de firmware.",
+            ui.tela.retangulo(x0 + 32.0, 146.0, w, 104.0, 8.0, tema::SUPERFICIE_ALTA());
+            ui.tela.texto(x0 + 52.0, 178.0, 14.5, tema::TEXTO(), "Nenhum adaptador Wi-Fi encontrado");
+            penas::componentes::paragrafo(
+                ui,
+                x0 + 52.0,
+                202.0,
+                w - 40.0,
+                "Este computador não tem placa de Wi-Fi, ou ela precisa de firmware. Em máquina virtual (Proxmox, VirtualBox) o normal é não ter: a internet vem pelo cabo virtual.",
             );
             return;
         };

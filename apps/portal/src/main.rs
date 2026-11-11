@@ -192,6 +192,30 @@ impl Config {
         m.insert("accent-color".to_string(), valor((43.0f64 / 255.0, 123.0f64 / 255.0, 196.0f64 / 255.0)));
         m
     }
+
+    /// Botões da barra de título para apps que desenham a própria (Chromium,
+    /// apps GTK/Electron): minimizar, maximizar e fechar à direita, como no
+    /// Windows. Sem isso, o GTK usa o padrão do GNOME (só fechar).
+    fn janelas() -> HashMap<String, OwnedValue> {
+        let mut m = HashMap::new();
+        m.insert("button-layout".to_string(), valor(":minimize,maximize,close".to_string()));
+        m
+    }
+
+    fn interface() -> HashMap<String, OwnedValue> {
+        let mut m = HashMap::new();
+        m.insert("color-scheme".to_string(), valor(if tema_escuro() { "prefer-dark".to_string() } else { "default".to_string() }));
+        m.insert("font-name".to_string(), valor("Inter 10".to_string()));
+        m
+    }
+
+    fn todos() -> Vec<(&'static str, HashMap<String, OwnedValue>)> {
+        vec![
+            ("org.freedesktop.appearance", Config::aparencia()),
+            ("org.gnome.desktop.wm.preferences", Config::janelas()),
+            ("org.gnome.desktop.interface", Config::interface()),
+        ]
+    }
 }
 
 #[interface(name = "org.freedesktop.impl.portal.Settings")]
@@ -202,16 +226,20 @@ impl Config {
             namespaces.is_empty()
                 || namespaces.iter().any(|n| n == ns || (n.ends_with('*') && ns.starts_with(n.trim_end_matches('*'))))
         };
-        if quer("org.freedesktop.appearance") {
-            r.insert("org.freedesktop.appearance".to_string(), Config::aparencia());
+        for (ns, valores) in Config::todos() {
+            if quer(ns) {
+                r.insert(ns.to_string(), valores);
+            }
         }
         r
     }
 
     fn read(&self, namespace: String, key: String) -> fdo::Result<OwnedValue> {
-        if namespace == "org.freedesktop.appearance" {
-            if let Some(v) = Config::aparencia().remove(&key) {
-                return Ok(v);
+        for (ns, mut valores) in Config::todos() {
+            if ns == namespace {
+                if let Some(v) = valores.remove(&key) {
+                    return Ok(v);
+                }
             }
         }
         Err(fdo::Error::Failed(format!("configuração desconhecida: {namespace} {key}")))

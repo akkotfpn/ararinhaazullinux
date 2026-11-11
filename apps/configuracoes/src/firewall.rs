@@ -21,6 +21,8 @@ pub struct PaginaFirewall {
     pub aviso: Option<String>,
     rx: Option<Receiver<Result<String, String>>>,
     lido: bool,
+    /// Pediu para desligar: mostra o aviso e espera a confirmação.
+    confirmar_desligar: bool,
 }
 
 impl PaginaFirewall {
@@ -46,6 +48,12 @@ impl PaginaFirewall {
     }
 
     pub fn desenhar(&mut self, ui: &mut Ui, x0: f32, l: f32) {
+        // Com o diálogo aberto, nada embaixo dele responde a cliques.
+        let modal = self.confirmar_desligar;
+        let clique_real = ui.clique;
+        if modal {
+            ui.clique = false;
+        }
         if !self.lido {
             self.lido = true;
             self.pedir("firewall estado".into());
@@ -87,6 +95,22 @@ impl PaginaFirewall {
         ui.tela.retangulo(x, 104.0, w, 48.0, 8.0, tema::SUPERFICIE_ALTA());
         ui.tela.retangulo(x + 16.0, 120.0, 16.0, 16.0, 8.0, cor);
         ui.tela.texto(x + 44.0, 133.0, 14.0, tema::TEXTO(), txt);
+        // Ligar/desligar, com confirmação antes de desligar.
+        if let Some(ativo) = self.ativo {
+            let livre = self.rx.is_none();
+            if ativo {
+                let rot = "Desligar";
+                if c::botao(ui, x + w - c::largura_botao(rot) - 6.0, 110.0, rot, c::Estilo::Comum, livre) {
+                    self.confirmar_desligar = true;
+                }
+            } else {
+                let rot = "Ligar";
+                if c::botao(ui, x + w - c::largura_botao(rot) - 6.0, 110.0, rot, c::Estilo::Principal, livre) {
+                    self.pedir("firewall ligar".into());
+                }
+            }
+        }
+
 
         // Perfis.
         ui.tela.texto(x, 182.0, 16.0, tema::TEXTO(), "Tipo de rede");
@@ -158,6 +182,26 @@ impl PaginaFirewall {
                 self.pedir(format!("firewall abrir {n}/{}", if self.udp { "udp" } else { "tcp" }));
                 self.nova.clear();
                 self.foco = false;
+            }
+        }
+        if modal {
+            ui.clique = clique_real;
+            // Diálogo por cima da página.
+            let (dl, da) = (w.min(460.0), 186.0);
+            let (dx, dy) = (x + (w - dl) / 2.0, 150.0);
+            ui.tela.retangulo(0.0, 0.0, ui.largura(), ui.altura(), 0.0, penas::Cor(0, 0, 0, 90));
+            ui.tela.retangulo(dx - 1.0, dy - 1.0, dl + 2.0, da + 2.0, 13.0, tema::BORDA());
+            ui.tela.retangulo(dx, dy, dl, da, 12.0, tema::JANELA());
+            ui.tela.texto(dx + 24.0, dy + 38.0, 17.0, tema::TEXTO(), "Desligar o firewall?");
+            c::paragrafo(ui, dx + 24.0, dy + 66.0, dl - 48.0, "Qualquer aparelho da rede poderá tentar se conectar a este computador. Só desligue para testar algo e ligue de novo logo depois.");
+            let by = dy + da - 56.0;
+            if c::botao_direita(ui, dx + dl - 24.0, by, "Desligar", c::Estilo::Perigo, true) {
+                self.confirmar_desligar = false;
+                self.pedir("firewall desligar".into());
+            }
+            let lv = c::largura_botao("Desligar") + 10.0;
+            if c::botao_direita(ui, dx + dl - 24.0 - lv, by, "Cancelar", c::Estilo::Comum, true) {
+                self.confirmar_desligar = false;
             }
         }
     }

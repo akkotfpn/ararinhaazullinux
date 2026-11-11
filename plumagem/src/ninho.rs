@@ -42,6 +42,8 @@ const CARTAO_A_CRIAR: i32 = 500;
 const CAMPO_X: f32 = 40.0;
 const CAMPO_L: f32 = 320.0;
 const CAMPO_A: f32 = 40.0;
+/// Linha das bolinhas de cor de destaque no Primeiro Voo.
+const COR_Y: f32 = 300.0;
 const RELOGIO_A: i32 = 110;
 const ENERGIA_L: i32 = 236;
 const ENERGIA_A: i32 = 48;
@@ -62,6 +64,8 @@ enum Modo {
     Idioma,
     /// Primeiro Voo: fuso horário.
     Fuso,
+    /// Primeiro Voo: tema claro/escuro e cor de destaque (com prévia).
+    Aparencia,
 }
 
 /// Opções do Primeiro Voo.
@@ -95,7 +99,8 @@ pub enum Pedido {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Alvo {
-    /// Opção do Primeiro Voo: grupo (0 idioma, 1 teclado, 2 fuso) e índice.
+    /// Opção do Primeiro Voo: grupo (0 idioma, 1 teclado, 2 fuso, 3 tema,
+    /// 4 cor de destaque) e índice.
     Opcao(u8, usize),
     Campo(usize),
     Botao,
@@ -108,6 +113,8 @@ enum Alvo {
 pub struct Ninho {
     /// Escolhas do Primeiro Voo: idioma, teclado e fuso.
     voo: (usize, usize, usize),
+    /// Primeiro Voo: (tema escuro, índice da cor de destaque).
+    aparencia: (bool, usize),
     usuarios: Vec<Usuario>,
     sel: usize,
     modo: Modo,
@@ -222,6 +229,7 @@ impl Ninho {
         };
         let mut n = Ninho {
             voo: (0, 0, 0),
+            aparencia: (false, 0),
             usuarios,
             sel: 0,
             modo,
@@ -241,7 +249,7 @@ impl Ninho {
         self.campos = match self.modo {
             Modo::Entrar => vec![String::new()],
             Modo::Criar => vec![String::new(), String::new(), String::new()],
-            Modo::Idioma | Modo::Fuso => vec![String::new()],
+            Modo::Idioma | Modo::Fuso | Modo::Aparencia => vec![String::new()],
         };
         self.foco = 0;
     }
@@ -253,7 +261,7 @@ impl Ninho {
     fn cartao_a(&self) -> i32 {
         match self.modo {
             Modo::Entrar => CARTAO_A_ENTRAR,
-            Modo::Criar | Modo::Idioma | Modo::Fuso => CARTAO_A_CRIAR,
+            Modo::Criar | Modo::Idioma | Modo::Fuso | Modo::Aparencia => CARTAO_A_CRIAR,
         }
     }
 
@@ -267,7 +275,7 @@ impl Ninho {
         match self.modo {
             Modo::Entrar => (vec![236.0], 290.0),
             Modo::Criar => (vec![196.0, 290.0, 344.0], 404.0),
-            Modo::Idioma | Modo::Fuso => (vec![], 430.0),
+            Modo::Idioma | Modo::Fuso | Modo::Aparencia => (vec![], 430.0),
         }
     }
 
@@ -281,6 +289,7 @@ impl Ninho {
                 v
             }
             Modo::Fuso => FUSOS.iter().enumerate().map(|(i, o)| (2, i, 168.0 + i as f32 * 36.0, o.0)).collect(),
+            Modo::Aparencia => vec![(3, 0, 196.0, "Claro"), (3, 1, 232.0, "Escuro")],
             _ => Vec::new(),
         }
     }
@@ -310,6 +319,14 @@ impl Ninho {
                 return Some(Alvo::Opcao(g, i));
             }
         }
+        if self.modo == Modo::Aparencia && (COR_Y..COR_Y + 36.0).contains(&cy) {
+            for i in 0..tema::DESTAQUES.len() {
+                let bx = CAMPO_X + i as f32 * 54.0;
+                if (bx..bx + 36.0).contains(&cx) {
+                    return Some(Alvo::Opcao(4, i));
+                }
+            }
+        }
         if self.modo == Modo::Entrar && self.usuarios.len() > 1 && (176.0..212.0).contains(&cy) {
             if (CAMPO_X..CAMPO_X + 36.0).contains(&cx) {
                 return Some(Alvo::Anterior);
@@ -327,7 +344,15 @@ impl Ninho {
             Some(Alvo::Opcao(g, i)) => match g {
                 0 => self.voo.0 = i,
                 1 => self.voo.1 = i,
-                _ => self.voo.2 = i,
+                2 => self.voo.2 = i,
+                3 => {
+                    self.aparencia.0 = i == 1;
+                    self.aplicar_aparencia();
+                }
+                _ => {
+                    self.aparencia.1 = i;
+                    self.aplicar_aparencia();
+                }
             },
             Some(Alvo::Campo(i)) => self.foco = i,
             Some(Alvo::Botao) => self.enviar(),
@@ -352,15 +377,24 @@ impl Ninho {
         self.pedido = Some(match self.modo {
             Modo::Entrar => Pedido::Entrar,
             Modo::Criar => Pedido::Criar,
-            Modo::Idioma | Modo::Fuso => Pedido::Continuar,
+            Modo::Idioma | Modo::Fuso | Modo::Aparencia => Pedido::Continuar,
         });
     }
 
     pub fn tecla(&mut self, sym: Keysym, mods: ModifiersState) {
         // Primeiro Voo: setas escolhem, Enter continua.
-        if matches!(self.modo, Modo::Idioma | Modo::Fuso) {
+        if matches!(self.modo, Modo::Idioma | Modo::Fuso | Modo::Aparencia) {
             match sym {
                 Keysym::Return | Keysym::KP_Enter => self.enviar(),
+                Keysym::Up | Keysym::Down if self.modo == Modo::Aparencia => {
+                    self.aparencia.0 = !self.aparencia.0;
+                    self.aplicar_aparencia();
+                }
+                Keysym::Left | Keysym::Right if self.modo == Modo::Aparencia => {
+                    let n = tema::DESTAQUES.len();
+                    self.aparencia.1 = if sym == Keysym::Right { (self.aparencia.1 + 1) % n } else { (self.aparencia.1 + n - 1) % n };
+                    self.aplicar_aparencia();
+                }
                 Keysym::Down if self.modo == Modo::Fuso => self.voo.2 = (self.voo.2 + 1).min(FUSOS.len() - 1),
                 Keysym::Up if self.modo == Modo::Fuso => self.voo.2 = self.voo.2.saturating_sub(1),
                 Keysym::Down => self.voo.1 = (self.voo.1 + 1).min(TECLADOS.len() - 1),
@@ -434,6 +468,8 @@ impl Ninho {
             Pedido::Continuar => {
                 if self.modo == Modo::Idioma {
                     self.modo = Modo::Fuso;
+                } else if self.modo == Modo::Fuso {
+                    self.modo = Modo::Aparencia;
                 } else {
                     self.aplicar_voo();
                     self.modo = Modo::Criar;
@@ -451,8 +487,19 @@ impl Ninho {
         }
     }
 
+    /// Mostra o tema escolhido na hora (o próprio Ninho é a prévia).
+    fn aplicar_aparencia(&mut self) {
+        tema::definir_escuro(self.aparencia.0);
+        tema::definir_destaque(tema::DESTAQUES[self.aparencia.1].0);
+        crate::fundo::VERSAO.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.cache.clear();
+    }
+
     /// Grava idioma, teclado e fuso escolhidos no Primeiro Voo.
     fn aplicar_voo(&mut self) {
+        // Tema e destaque viram o padrão do sistema (cada conta pode mudar).
+        gravar_padrao("tema", if self.aparencia.0 { "escuro" } else { "claro" });
+        gravar_padrao("destaque", tema::DESTAQUES[self.aparencia.1].0);
         let (idioma, teclado, fuso) = (IDIOMAS[self.voo.0].1, TECLADOS[self.voo.1], FUSOS[self.voo.2].1);
         let _ = std::fs::write("/etc/locale.conf", format!("LANG={idioma}\n"));
         let _ = std::fs::write("/etc/vconsole.conf", format!("KEYMAP={}\nFONT=eurlatgr\n", teclado.3));
@@ -731,11 +778,11 @@ impl Ninho {
                 self.campo(&mut t, 0, campos[0], "Senha", true, hover);
                 self.botao(&mut t, botao, "Entrar", hover);
             }
-            Modo::Idioma | Modo::Fuso => {
-                let (titulo, sub) = if self.modo == Modo::Idioma {
-                    ("Bem-vindo ao Ararinha!", "Escolha o idioma e o teclado.")
-                } else {
-                    ("Qual é o seu fuso horário?", "O relógio usa este fuso.")
+            Modo::Idioma | Modo::Fuso | Modo::Aparencia => {
+                let (titulo, sub) = match self.modo {
+                    Modo::Idioma => ("Bem-vindo ao Ararinha!", "Escolha o idioma e o teclado."),
+                    Modo::Fuso => ("Qual é o seu fuso horário?", "O relógio usa este fuso."),
+                    _ => ("Como prefere o visual?", "Dá para mudar depois nas Configurações."),
                 };
                 Self::centralizado(&mut t, 136.0, 21.0, tema::TEXTO(), titulo);
                 Self::centralizado(&mut t, 158.0, 13.0, tema::TEXTO_SECUNDARIO(), sub);
@@ -743,10 +790,34 @@ impl Ninho {
                     t.texto(CAMPO_X, 190.0, 12.0, tema::TEXTO_SECUNDARIO(), "Idioma");
                     t.texto(CAMPO_X, 300.0, 12.0, tema::TEXTO_SECUNDARIO(), "Teclado");
                 }
+                if self.modo == Modo::Aparencia {
+                    t.texto(CAMPO_X, 190.0, 12.0, tema::TEXTO_SECUNDARIO(), "Tema");
+                    t.texto(CAMPO_X, COR_Y - 10.0, 12.0, tema::TEXTO_SECUNDARIO(), "Cor de destaque");
+                    for (i, d) in tema::DESTAQUES.iter().enumerate() {
+                        let bx = CAMPO_X + i as f32 * 54.0;
+                        let cor = Cor::hex(if self.aparencia.0 { d.2[0] } else { d.1[0] });
+                        if i == self.aparencia.1 {
+                            t.retangulo(bx - 3.0, COR_Y - 3.0, 42.0, 42.0, 21.0, tema::TEXTO());
+                            t.retangulo(bx - 1.0, COR_Y - 1.0, 38.0, 38.0, 19.0, tema::JANELA());
+                        } else if hover == Some(Alvo::Opcao(4, i)) {
+                            t.retangulo(bx - 2.0, COR_Y - 2.0, 40.0, 40.0, 20.0, tema::BORDA());
+                        }
+                        t.retangulo(bx + 2.0, COR_Y + 2.0, 32.0, 32.0, 16.0, cor);
+                    }
+                    // Prévia: uma janelinha com as cores escolhidas.
+                    let (px, py, pl, pa) = (CAMPO_X, COR_Y + 50.0, CAMPO_L, 64.0);
+                    t.retangulo(px, py, pl, pa, 8.0, tema::BORDA());
+                    t.retangulo(px + 1.0, py + 1.0, pl - 2.0, pa - 2.0, 7.0, tema::JANELA());
+                    t.retangulo(px + 1.0, py + 1.0, pl - 2.0, 18.0, 7.0, tema::DESTAQUE_FORTE());
+                    t.texto(px + 12.0, py + 47.0, 12.5, tema::TEXTO(), "Prévia do visual");
+                    t.retangulo(px + pl - 96.0, py + 30.0, 84.0, 26.0, 6.0, tema::DESTAQUE());
+                    t.texto(px + pl - 80.0, py + 48.0, 12.0, tema::BRANCO(), "Botão");
+                }
                 for (g, i, oy, nome) in self.opcoes() {
                     let sel = match g {
                         0 => self.voo.0 == i,
                         1 => self.voo.1 == i,
+                        3 => self.aparencia.0 == (i == 1),
                         _ => self.voo.2 == i,
                     };
                     let oy = if g == 2 { oy } else { oy + 4.0 };
@@ -805,4 +876,26 @@ fn marcar_tempo_de_boot() {
     tracing::info!(segundos, "Ninho na tela");
     let _ = std::fs::create_dir_all("/run/ararinha");
     let _ = std::fs::write("/run/ararinha/ninho-pronto", format!("{segundos}\n"));
+}
+
+/// Grava uma chave no /etc/plumagem/plumagem.conf (padrão de todas as contas).
+fn gravar_padrao(chave: &str, valor: &str) {
+    let p = std::path::Path::new("/etc/plumagem/plumagem.conf");
+    let _ = std::fs::create_dir_all("/etc/plumagem");
+    let atual = std::fs::read_to_string(p).unwrap_or_default();
+    let mut achou = false;
+    let mut linhas: Vec<String> = atual
+        .lines()
+        .map(|l| match l.split_once('=') {
+            Some((k, _)) if k.trim() == chave && !l.trim_start().starts_with('#') => {
+                achou = true;
+                format!("{chave} = {valor}")
+            }
+            _ => l.to_string(),
+        })
+        .collect();
+    if !achou {
+        linhas.push(format!("{chave} = {valor}"));
+    }
+    let _ = std::fs::write(p, linhas.join("\n") + "\n");
 }
