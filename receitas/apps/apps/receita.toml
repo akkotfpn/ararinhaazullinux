@@ -50,6 +50,7 @@ cd ../apps
 install -vDm755 target/release/explorador /usr/bin/explorador
 install -vDm644 explorador/recursos/explorador.desktop /usr/share/applications/explorador.desktop
 install -vDm644 explorador/recursos/explorador.png /usr/share/icons/hicolor/64x64/apps/explorador.png
+install -vDm644 explorador/recursos/explorador-128.png /usr/share/icons/hicolor/128x128/apps/explorador.png
 # Ajudante das unidades de rede: setuid root (ver apps/unidade).
 install -vDm4755 target/release/ararinha-unidade /usr/bin/ararinha-unidade
 # Tela de bloqueio: confere a senha da própria conta (setuid root).
@@ -139,11 +140,13 @@ for app in imagens notas configuracoes central calculadora tarefas paciencia mus
   install -vDm755 target/release/$app /usr/bin/$app
   install -vDm644 $app/recursos/$app.desktop /usr/share/applications/$app.desktop
   install -vDm644 $app/recursos/$app.png /usr/share/icons/hicolor/64x64/apps/$app.png
+  if [ -f $app/recursos/$app-128.png ]; then install -vDm644 $app/recursos/$app-128.png /usr/share/icons/hicolor/128x128/apps/$app.png; fi
 done
 install -vDm644 configuracoes/recursos/sobre.desktop /usr/share/applications/sobre.desktop
 install -vDm755 target/release/painel-de-controle /usr/bin/painel-de-controle
 install -vDm644 painel/recursos/painel-de-controle.desktop /usr/share/applications/painel-de-controle.desktop
 install -vDm644 painel/recursos/painel-de-controle.png /usr/share/icons/hicolor/64x64/apps/painel-de-controle.png
+install -vDm644 painel/recursos/painel-de-controle-128.png /usr/share/icons/hicolor/128x128/apps/painel-de-controle.png
 install -vDm755 target/release/ararinha-som /usr/bin/ararinha-som
 # Portais do Flatpak (Abrir/Salvar, tema, notificações) e notificações da sessão.
 install -vDm755 target/release/xdg-desktop-portal-ararinha /usr/libexec/xdg-desktop-portal-ararinha
