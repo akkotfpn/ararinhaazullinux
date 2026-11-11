@@ -178,6 +178,8 @@ struct Explorador {
     escolha: Option<Escolha>,
     /// Fecha a janela no fim do quadro (escolha feita).
     sair: bool,
+    /// "Deseja executar este aplicativo?" (AppImage baixado).
+    executar_app: Option<PathBuf>,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -384,12 +386,29 @@ impl Explorador {
             propriedades: None,
             escolha: None,
             sair: false,
+            executar_app: None,
         };
-        // Abre numa pasta passada como argumento, se houver.
-        if let Some(p) = std::env::args().nth(1).map(PathBuf::from).filter(|p| p.is_dir()) {
-            e.local = Local::Pasta(p);
+        // Abre numa pasta passada como argumento (ou na pasta de um arquivo,
+        // já selecionado: "Mostrar na pasta" do navegador). Aceita file://.
+        let arg = std::env::args().nth(1).filter(|a| !a.starts_with("--")).map(|a| {
+            let a = a.strip_prefix("file://").map(desfazer_uri).unwrap_or(a);
+            PathBuf::from(a)
+        });
+        let mut selecionar = None;
+        if let Some(p) = arg {
+            if p.is_dir() {
+                e.local = Local::Pasta(p);
+            } else if let (Some(pai), true) = (p.parent(), p.exists()) {
+                e.local = Local::Pasta(pai.to_path_buf());
+                selecionar = Some(p.clone());
+            }
         }
         e.recarregar();
+        if let Some(alvo) = selecionar {
+            if let Some(i) = e.entradas.iter().position(|x| x.caminho == alvo) {
+                e.selecionar_so(i);
+            }
+        }
         e
     }
 
@@ -1225,6 +1244,11 @@ impl Explorador {
             } else {
                 None
             };
+            if ext == "appimage" {
+                // Como o Windows com um .exe baixado: pergunta antes.
+                self.executar_app = Some(e.caminho.clone());
+                return;
+            }
             match programa {
                 Some(p) => {
                     if let Err(err) = Command::new(p).arg(&e.caminho).spawn() {
@@ -1504,6 +1528,19 @@ impl App for Explorador {
             ui.clique_direito = false;
             ui.rolagem = 0.0;
         }
+        if let Some(app) = self.executar_app.clone() {
+            let (x, y, cl, ca) = Self::caixa_executar(l_tela, a_tela);
+            if ui.clicou(x + cl - 130.0, y + ca - 56.0, 110.0, 36.0) {
+                self.executar_app = None;
+                self.rodar_appimage(&app);
+            } else if ui.clicou(x + cl - 250.0, y + ca - 56.0, 110.0, 36.0) {
+                self.executar_app = None;
+            }
+            ui.clique = false;
+            ui.duplo = false;
+            ui.clique_direito = false;
+            ui.rolagem = 0.0;
+        }
         self.alvo_soltar = None;
         // Arraste: vira arraste quando o mouse anda uns pixels apertado.
         if let (Some((ax, ay, ativo)), Some((mx, my))) = (self.arraste, ui.mouse) {
@@ -1649,6 +1686,27 @@ impl App for Explorador {
         if self.propriedades.is_some() {
             self.desenhar_propriedades(ui, l, a);
         }
+        if let Some(app) = self.executar_app.clone() {
+            let (x, y, cl, ca) = Self::caixa_executar(l, a);
+            ui.tela.retangulo(0.0, 0.0, l, a, 0.0, Cor(11, 26, 46, 90));
+            ui.tela.retangulo(x, y, cl, ca, 12.0, tema::BORDA());
+            ui.tela.retangulo(x + 1.0, y + 1.0, cl - 2.0, ca - 2.0, 11.0, tema::JANELA());
+            tipos::icone_tipo(ui.tela, tipos::Categoria::Programa, x + 24.0, y + 24.0, 48.0);
+            ui.tela.texto(x + 88.0, y + 46.0, 16.0, tema::TEXTO(), "Deseja executar este aplicativo?");
+            let nome = app.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+            ui.tela.texto(x + 88.0, y + 70.0, 13.0, tema::TEXTO(), &desenho::encurtar(13.0, &nome, cl - 110.0));
+            ui.tela.texto(x + 24.0, y + 108.0, 12.5, tema::TEXTO_SECUNDARIO(), "Só execute programas de quem você confia: ele terá acesso");
+            ui.tela.texto(x + 24.0, y + 126.0, 12.5, tema::TEXTO_SECUNDARIO(), "aos seus arquivos. Apps da Central de Apps são mais seguros.");
+            let (bx, by) = (x + cl - 130.0, y + ca - 56.0);
+            let s = ui.sobre(bx, by, 110.0, 36.0);
+            ui.tela.retangulo(bx, by, 110.0, 36.0, 8.0, if s { tema::DESTAQUE_FORTE() } else { tema::DESTAQUE() });
+            ui.tela.texto(bx + 26.0, by + 23.0, 13.5, tema::BRANCO(), "Executar");
+            let cx = x + cl - 250.0;
+            let s = ui.sobre(cx, by, 110.0, 36.0);
+            ui.tela.retangulo(cx, by, 110.0, 36.0, 8.0, tema::BORDA());
+            ui.tela.retangulo(cx + 1.0, by + 1.0, 108.0, 34.0, 7.0, if s { tema::SUPERFICIE_ALTA() } else { tema::JANELA() });
+            ui.tela.texto(cx + 24.0, by + 23.0, 13.5, tema::TEXTO(), "Cancelar");
+        }
         if self.sair {
             ui.fechar = true;
         }
@@ -1656,6 +1714,25 @@ impl App for Explorador {
 }
 
 impl Explorador {
+    fn caixa_executar(l: f32, a: f32) -> (f32, f32, f32, f32) {
+        let (cl, ca) = (480.0_f32.min(l - 20.0), 210.0);
+        ((l - cl) / 2.0, (a - ca) / 2.0, cl, ca)
+    }
+
+    /// Dá permissão de execução e roda o AppImage (sem precisar de FUSE).
+    fn rodar_appimage(&mut self, app: &Path) {
+        use std::os::unix::fs::PermissionsExt;
+        if let Ok(m) = fs::metadata(app) {
+            let mut p = m.permissions();
+            p.set_mode(p.mode() | 0o700);
+            let _ = fs::set_permissions(app, p);
+        }
+        match Command::new(app).env("APPIMAGE_EXTRACT_AND_RUN", "1").current_dir(app.parent().unwrap_or(Path::new("/"))).spawn() {
+            Ok(_) => self.aviso = Some("Abrindo o aplicativo… (a primeira vez pode demorar alguns segundos)".into()),
+            Err(e) => self.aviso = Some(format!("Não deu para executar: {e}")),
+        }
+    }
+
     fn caixa_propriedades(&self, l: f32, a: f32) -> (f32, f32, f32, f32) {
         let n = self.propriedades.as_ref().map(|p| p.linhas.len()).unwrap_or(0) as f32;
         let (cl, ca) = (460.0_f32.min(l - 20.0), (150.0 + n * 30.0 + 70.0).min(a - 20.0));
@@ -2186,4 +2263,23 @@ fn main() {
         },
         Box::new(Explorador::novo()),
     );
+}
+
+/// Desfaz o %XX de um caminho vindo de uma URI file://.
+fn desfazer_uri(s: &str) -> String {
+    let b = s.as_bytes();
+    let mut out = Vec::with_capacity(b.len());
+    let mut i = 0;
+    while i < b.len() {
+        if b[i] == b'%' && i + 2 < b.len() {
+            if let Ok(v) = u8::from_str_radix(&s[i + 1..i + 3], 16) {
+                out.push(v);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(b[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).to_string()
 }

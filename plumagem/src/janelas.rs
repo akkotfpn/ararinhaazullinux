@@ -282,6 +282,18 @@ impl<B: Backend> AnvilState<B> {
                         "#atualizar" => {}
                         "#papel" => self.painel.proximo_papel(),
                         "#area" => self.mostrar_area_de_trabalho(),
+                        a if a.starts_with("#apagar:") => {
+                            // Só apaga atalhos e pastas vazias da Área de Trabalho
+                            // (pasta com coisas vai para a Lixeira pelo Explorador).
+                            let caminho = std::path::PathBuf::from(&a["#apagar:".len()..]);
+                            if caminho.starts_with(painel::pasta_area().unwrap_or_default()) {
+                                let _ = if caminho.is_dir() {
+                                    std::fs::remove_dir(&caminho)
+                                } else {
+                                    std::fs::remove_file(&caminho)
+                                };
+                            }
+                        }
                         cmd => self.executar_programa(cmd),
                     }
                 }

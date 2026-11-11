@@ -307,16 +307,48 @@ impl Notificacoes {
     }
 }
 
+// ------------------------------------------------------------ FileManager1
+
+/// org.freedesktop.FileManager1: "Mostrar na pasta" dos apps (o portal
+/// OpenDirectory chama este). Abre o Explorador com o item selecionado.
+struct GerenciadorArquivos;
+
+fn abrir_explorador(uris: &[String]) {
+    for u in uris.iter().take(4) {
+        let _ = Command::new("explorador").arg(u).stdout(Stdio::null()).stderr(Stdio::null()).spawn();
+    }
+}
+
+#[interface(name = "org.freedesktop.FileManager1")]
+impl GerenciadorArquivos {
+    fn show_folders(&self, uris: Vec<String>, _startup_id: String) {
+        abrir_explorador(&uris);
+    }
+
+    fn show_items(&self, uris: Vec<String>, _startup_id: String) {
+        abrir_explorador(&uris);
+    }
+
+    fn show_item_properties(&self, uris: Vec<String>, _startup_id: String) {
+        abrir_explorador(&uris);
+    }
+}
+
 fn main() -> zbus::Result<()> {
     let conexao = zbus::blocking::connection::Builder::session()?
         .serve_at("/org/freedesktop/portal/desktop", Escolhedor)?
         .serve_at("/org/freedesktop/portal/desktop", Config)?
         .serve_at("/org/freedesktop/portal/desktop", AvisosPortal)?
         .serve_at("/org/freedesktop/Notifications", Notificacoes { proximo: AtomicU32::new(1) })?
+        .serve_at("/org/freedesktop/FileManager1", GerenciadorArquivos)?
         .build()?;
     // Os dois nomes; se outro processo já tiver um deles, fica com o outro.
     let mut algum = false;
-    for nome in ["org.freedesktop.impl.portal.desktop.ararinha", "org.freedesktop.Notifications"] {
+    for nome in [
+        "org.freedesktop.impl.portal.desktop.ararinha",
+        "org.freedesktop.Notifications",
+        "org.freedesktop.FileManager1",
+    ] {
         match conexao.request_name(nome) {
             Ok(_) => algum = true,
             Err(e) => eprintln!("xdg-desktop-portal-ararinha: {nome}: {e}"),

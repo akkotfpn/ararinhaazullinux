@@ -195,7 +195,7 @@ fn conexao_atual() -> Option<(String, String)> {
         let c: Vec<&str> = l.split_whitespace().collect();
         (c.len() > 2 && c[1] == "00000000").then(|| c[0].to_string())
     })?;
-    let ip = Command::new("ip")
+    let ip = std::process::Command::new(if std::path::Path::new("/usr/sbin/ip").exists() { "/usr/sbin/ip" } else { "ip" })
         .args(["-4", "-o", "addr", "show", "dev", &iface])
         .output()
         .ok()

@@ -62,7 +62,8 @@ struct Central {
 }
 
 fn flatpak(args: &[&str]) -> Result<String, String> {
-    match Command::new("flatpak").args(args).output() {
+    // Prioridade baixa (nice/ionice): instalar não trava o resto do sistema.
+    match Command::new("nice").arg("-n").arg("15").arg("flatpak").args(args).output() {
         Ok(o) if o.status.success() => Ok(String::from_utf8_lossy(&o.stdout).to_string()),
         Ok(o) => Err(String::from_utf8_lossy(&o.stderr).trim().lines().last().unwrap_or("").to_string()),
         Err(e) => Err(format!("Flatpak não encontrado: {e}")),
@@ -138,7 +139,10 @@ impl Central {
         let nome = app.nome.clone();
         self.rodar(&format!("Instalando {nome}… (pode levar alguns minutos)"), move || {
             match flatpak(&["install", "--user", "-y", "--noninteractive", "flathub", &id]) {
-                Ok(_) => Resultado::Feito(format!("{nome} instalado. Ele já está no menu iniciar.")),
+                Ok(_) => {
+                    criar_atalho(&id);
+                    Resultado::Feito(format!("{nome} instalado: está no menu Iniciar e na área de trabalho."))
+                }
                 Err(e) => Resultado::Erro(format!("Não deu para instalar {nome}: {e}")),
             }
         });
@@ -149,7 +153,12 @@ impl Central {
         let nome = app.nome.clone();
         self.rodar(&format!("Removendo {nome}…"), move || {
             match flatpak(&["uninstall", "--user", "-y", "--noninteractive", &id]) {
-                Ok(_) => Resultado::Feito(format!("{nome} removido.")),
+                Ok(_) => {
+                    if let Ok(casa) = std::env::var("HOME") {
+                        let _ = std::fs::remove_file(format!("{casa}/Área de Trabalho/{id}.desktop"));
+                    }
+                    Resultado::Feito(format!("{nome} removido."))
+                }
                 Err(e) => Resultado::Erro(format!("Não deu para remover {nome}: {e}")),
             }
         });
@@ -367,4 +376,16 @@ fn main() {
         },
         Box::new(Central::nova()),
     );
+}
+
+/// Copia o atalho do app instalado para a Área de Trabalho, como no Windows.
+fn criar_atalho(id: &str) {
+    let Ok(casa) = std::env::var("HOME") else { return };
+    let casa = std::path::PathBuf::from(casa);
+    let origem = casa.join(format!(".local/share/flatpak/exports/share/applications/{id}.desktop"));
+    let pasta = casa.join("Área de Trabalho");
+    let _ = std::fs::create_dir_all(&pasta);
+    if origem.exists() {
+        let _ = std::fs::copy(&origem, pasta.join(format!("{id}.desktop")));
+    }
 }

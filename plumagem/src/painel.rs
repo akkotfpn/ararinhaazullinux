@@ -133,6 +133,65 @@ static LOGO_PNG: &[u8] = include_bytes!("../resources/logo-64.png");
 static ESTE_PC_PNG: &[u8] = include_bytes!("../resources/este-computador-48.png");
 static LIXEIRA_PNG: &[u8] = include_bytes!("../resources/lixeira-48.png");
 
+/// Ícone da área de trabalho: nome, comando ao abrir, imagem e o arquivo
+/// de atalho (para os da pasta Área de Trabalho).
+pub struct IconeArea {
+    pub nome: String,
+    pub cmd: String,
+    img: Option<image::RgbaImage>,
+    pub arquivo: Option<std::path::PathBuf>,
+}
+
+fn icones_fixos() -> Vec<IconeArea> {
+    let imgs = [
+        desenho::icone(ESTE_PC_PNG, 48, 48),
+        desenho::icone(include_bytes!("../resources/logo-64.png"), 48, 48),
+        desenho::icone(LIXEIRA_PNG, 48, 48),
+    ];
+    ICONES_AREA
+        .iter()
+        .zip(imgs)
+        .map(|((n, c), img)| IconeArea { nome: n.to_string(), cmd: c.to_string(), img, arquivo: None })
+        .collect()
+}
+
+/// Pasta "Área de Trabalho" do usuário.
+pub fn pasta_area() -> Option<std::path::PathBuf> {
+    std::env::var("HOME").ok().map(|h| std::path::PathBuf::from(h).join("Área de Trabalho"))
+}
+
+/// Aspas simples para o sh.
+fn aspas(s: &str) -> String {
+    format!("'{}'", s.replace('\'', "'\\''"))
+}
+
+/// Ícones da pasta Área de Trabalho: atalhos (.desktop) e pastas.
+fn icones_da_pasta(pasta: &std::path::Path) -> Vec<IconeArea> {
+    let Ok(rd) = std::fs::read_dir(pasta) else { return Vec::new() };
+    let mut v: Vec<(String, IconeArea)> = Vec::new();
+    for e in rd.flatten() {
+        let caminho = e.path();
+        let nome_arq = e.file_name().to_string_lossy().to_string();
+        if nome_arq.starts_with('.') {
+            continue;
+        }
+        if caminho.extension().and_then(|x| x.to_str()) == Some("desktop") {
+            let id = caminho.file_stem().and_then(|n| n.to_str()).unwrap_or("").to_string();
+            if let Some(app) = std::fs::read_to_string(&caminho).ok().and_then(|t| ler_desktop(&t, &id)) {
+                let img = app.icone.map(|i| image::imageops::resize(&i, 48, 48, image::imageops::FilterType::Triangle));
+                v.push((app.nome.to_lowercase(), IconeArea { nome: app.nome, cmd: app.exec, img, arquivo: Some(caminho) }));
+            }
+        } else if caminho.is_dir() {
+            let img = achar_icone("explorador")
+                .map(|i| image::imageops::resize(&i, 48, 48, image::imageops::FilterType::Triangle));
+            let cmd = format!("explorador {}", aspas(&caminho.to_string_lossy()));
+            v.push((nome_arq.to_lowercase(), IconeArea { nome: nome_arq, cmd, img, arquivo: Some(caminho) }));
+        }
+    }
+    v.sort_by(|a, b| a.0.cmp(&b.0));
+    v.into_iter().map(|(_, i)| i).collect()
+}
+
 /// Ícones da área de trabalho: nome e comando ao abrir (clique duplo).
 const ICONES_AREA: [(&str, &str); 3] = [
     ("Este Computador", "explorador"),
@@ -291,7 +350,12 @@ pub struct Painel {
     pub icone_sel: Option<usize>,
     ultimo_clique_icone: Option<(usize, std::time::Instant)>,
     area_buf: Option<(String, MemoryRenderBuffer)>,
-    imagens_area: Vec<Option<image::RgbaImage>>,
+    /// Ícones da área de trabalho: os três fixos e os da pasta
+    /// "Área de Trabalho" (atalhos .desktop e pastas).
+    icones_area: Vec<IconeArea>,
+    area_visto: (std::time::Instant, Option<std::time::SystemTime>),
+    /// Quantos ícones cabem numa coluna (calculado ao desenhar).
+    area_linhas: usize,
     pub apps: Option<Vec<App>>,
     relogio: (u64, String, String),
     barra: Option<(String, MemoryRenderBuffer)>,
@@ -337,11 +401,9 @@ impl Default for Painel {
             icone_sel: None,
             ultimo_clique_icone: None,
             area_buf: None,
-            imagens_area: vec![
-                desenho::icone(ESTE_PC_PNG, 48, 48),
-                desenho::icone(include_bytes!("../resources/logo-64.png"), 48, 48),
-                desenho::icone(LIXEIRA_PNG, 48, 48),
-            ],
+            icones_area: icones_fixos(),
+            area_visto: (std::time::Instant::now() - std::time::Duration::from_secs(10), None),
+            area_linhas: 6,
             apps: None,
             relogio: (0, String::new(), String::new()),
             barra: None,
@@ -543,11 +605,27 @@ impl Painel {
                 ("Abrir", ICONES_AREA[1].1),
                 ("Abrir no terminal", "sh -c 'cd \"$HOME\" && exec alacritty'"),
             ],
-            Some(_) => vec![("Abrir", ICONES_AREA[2].1)],
+            Some(2) => vec![("Abrir", ICONES_AREA[2].1)],
+            Some(i) => {
+                // Atalho ou pasta da Área de Trabalho.
+                if let Some(ic) = self.icones_area.get(i) {
+                    let cmd = ic.cmd.clone();
+                    let apagar = ic.arquivo.as_ref().map(|a| format!("#apagar:{}", a.display()));
+                    self.icone_sel = Some(i);
+                    let mut v: Vec<(String, String)> = vec![("Abrir".into(), cmd)];
+                    if let Some(a) = apagar {
+                        v.push(("Remover da área de trabalho".into(), a));
+                    }
+                    let v2: Vec<(&str, &str)> = v.iter().map(|(a, b)| (a.as_str(), b.as_str())).collect();
+                    self.abrir_contexto(p, tela, v2);
+                }
+                return;
+            }
             None => vec![
                 ("Atualizar", "#atualizar"),
                 ("Próximo papel de parede", "#papel"),
                 ("Abrir o terminal", "alacritty"),
+                ("Central de Apps", "central"),
                 ("Gerenciador de Tarefas", "tarefas"),
                 ("Personalizar", "configuracoes"),
             ],
@@ -753,7 +831,7 @@ impl Painel {
         {
             r.conectado = true;
             r.sem_fio = std::path::Path::new(&format!("/sys/class/net/{iface}/wireless")).exists();
-            r.ip = std::process::Command::new("ip")
+            r.ip = std::process::Command::new(if std::path::Path::new("/usr/sbin/ip").exists() { "/usr/sbin/ip" } else { "ip" })
                 .args(["-4", "-o", "addr", "show", "dev", &iface])
                 .output()
                 .ok()
@@ -944,16 +1022,21 @@ impl Painel {
     /// Ícone da área de trabalho em `p` (coordenadas da tela).
     pub fn icone_em(&self, p: Point<f64, Logical>) -> Option<usize> {
         let (x, y) = (p.x as i32 - AREA_X, p.y as i32 - AREA_Y);
-        if x < 0 || y < 0 || x >= ICONE_L {
+        if x < 0 || y < 0 || x % (ICONE_L + 6) >= ICONE_L {
             return None;
         }
-        let i = (y / (ICONE_A + 6)) as usize;
-        (i < ICONES_AREA.len() && y % (ICONE_A + 6) < ICONE_A).then_some(i)
+        let coluna = (x / (ICONE_L + 6)) as usize;
+        let linha = (y / (ICONE_A + 6)) as usize;
+        if linha >= self.area_linhas {
+            return None;
+        }
+        let i = coluna * self.area_linhas + linha;
+        (i < self.icones_area.len() && y % (ICONE_A + 6) < ICONE_A).then_some(i)
     }
 
     /// Clique num ícone da área de trabalho: seleciona; no segundo clique
     /// rápido devolve o comando para abrir.
-    pub fn clicar_icone(&mut self, i: usize) -> Option<&'static str> {
+    pub fn clicar_icone(&mut self, i: usize) -> Option<String> {
         let agora = std::time::Instant::now();
         let duplo = self
             .ultimo_clique_icone
@@ -961,7 +1044,11 @@ impl Painel {
             .unwrap_or(false);
         self.icone_sel = Some(i);
         self.ultimo_clique_icone = if duplo { None } else { Some((i, agora)) };
-        duplo.then(|| ICONES_AREA[i].1)
+        if duplo {
+            self.icones_area.get(i).map(|c| c.cmd.clone())
+        } else {
+            None
+        }
     }
 
     /// Ícones da área de trabalho (ficam por baixo das janelas).
@@ -984,34 +1071,57 @@ impl Painel {
         } else {
             None
         };
-        let chave = format!("{sobre:?}|{:?}", self.icone_sel);
-        if self.area_buf.as_ref().map(|(c, _)| c != &chave).unwrap_or(true) {
-            let n = ICONES_AREA.len() as i32;
-            let mut t = Tela::nova(ICONE_L, n * (ICONE_A + 6));
-            for (i, (nome, _)) in ICONES_AREA.iter().enumerate() {
-                let y = (i as i32 * (ICONE_A + 6)) as f32;
-                if self.icone_sel == Some(i) {
-                    t.retangulo(0.0, y, ICONE_L as f32, ICONE_A as f32, 6.0, tema::DESTAQUE().com_alfa(110));
-                    t.retangulo(1.0, y + 1.0, ICONE_L as f32 - 2.0, ICONE_A as f32 - 2.0, 5.0, tema::BRANCO().com_alfa(40));
-                } else if sobre == Some(i) {
-                    t.retangulo(0.0, y, ICONE_L as f32, ICONE_A as f32, 6.0, tema::BRANCO().com_alfa(55));
+        // A pasta Área de Trabalho mudou? (olha a cada 2 s)
+        let mut mudou = false;
+        if self.area_visto.0.elapsed() >= std::time::Duration::from_secs(2) {
+            let pasta = pasta_area();
+            let m = pasta.as_ref().and_then(|p| std::fs::metadata(p).and_then(|m| m.modified()).ok());
+            if m != self.area_visto.1 {
+                let mut v = icones_fixos();
+                if let Some(p) = &pasta {
+                    v.extend(icones_da_pasta(p));
                 }
-                if let Some(img) = self.imagens_area.get(i).and_then(|o| o.as_ref()) {
-                    t.imagem((ICONE_L - 48) / 2, y as i32 + 8, img);
+                self.icones_area = v;
+                mudou = true;
+            }
+            self.area_visto = (std::time::Instant::now(), m);
+        }
+        let linhas = (((geo.size.h - altura() - AREA_Y) / (ICONE_A + 6)).max(1)) as usize;
+        if linhas != self.area_linhas {
+            self.area_linhas = linhas;
+            mudou = true;
+        }
+        let chave = format!("{sobre:?}|{:?}|{}|{}", self.icone_sel, self.icones_area.len(), linhas);
+        if mudou || self.area_buf.as_ref().map(|(c, _)| c != &chave).unwrap_or(true) {
+            let n = self.icones_area.len();
+            let colunas = n.div_ceil(linhas).max(1) as i32;
+            let mut t = Tela::nova(colunas * (ICONE_L + 6), linhas.min(n.max(1)) as i32 * (ICONE_A + 6));
+            for (i, icone) in self.icones_area.iter().enumerate() {
+                let nome = icone.nome.as_str();
+                let x0 = ((i / linhas) as i32 * (ICONE_L + 6)) as f32;
+                let y = ((i % linhas) as i32 * (ICONE_A + 6)) as f32;
+                if self.icone_sel == Some(i) {
+                    t.retangulo(x0, y, ICONE_L as f32, ICONE_A as f32, 6.0, tema::DESTAQUE().com_alfa(110));
+                    t.retangulo(x0 + 1.0, y + 1.0, ICONE_L as f32 - 2.0, ICONE_A as f32 - 2.0, 5.0, tema::BRANCO().com_alfa(40));
+                } else if sobre == Some(i) {
+                    t.retangulo(x0, y, ICONE_L as f32, ICONE_A as f32, 6.0, tema::BRANCO().com_alfa(55));
+                }
+                if let Some(img) = icone.img.as_ref() {
+                    t.imagem(x0 as i32 + (ICONE_L - 48) / 2, y as i32 + 8, img);
                 }
                 // Nome em branco com sombra, em até duas linhas (como no Windows).
                 let max = ICONE_L as f32 - 6.0;
-                let linhas: Vec<String> = if desenho::medir(12.0, nome) <= max {
+                let rotulo: Vec<String> = if desenho::medir(12.0, nome) <= max {
                     vec![nome.to_string()]
                 } else {
                     match nome.split_once(' ') {
-                        Some((a, b)) => vec![a.to_string(), desenho::encurtar(12.0, b, max)],
+                        Some((a, b)) => vec![desenho::encurtar(12.0, a, max), desenho::encurtar(12.0, b, max)],
                         None => vec![desenho::encurtar(12.0, nome, max)],
                     }
                 };
-                for (k, linha) in linhas.iter().enumerate() {
+                for (k, linha) in rotulo.iter().enumerate() {
                     let ln = desenho::medir(12.0, linha);
-                    let x = ICONE_L as f32 / 2.0 - ln / 2.0;
+                    let x = x0 + ICONE_L as f32 / 2.0 - ln / 2.0;
                     let yl = y + 72.0 + k as f32 * 14.0;
                     t.texto(x + 1.0, yl + 1.0, 12.0, desenho::Cor(0, 0, 0, 170), linha);
                     t.texto(x, yl, 12.0, tema::BRANCO(), linha);

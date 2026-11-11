@@ -307,7 +307,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             let geo = self.space.outputs().next().and_then(|o| self.space.output_geometry(o));
             if let Some(i) = geo.and_then(|g| self.painel.icone_em(pos - g.loc.to_f64())) {
                 if let Some(cmd) = self.painel.clicar_icone(i) {
-                    self.executar_programa(cmd);
+                    self.executar_programa(&cmd);
                 }
                 return;
             }
