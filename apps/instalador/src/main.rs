@@ -4,6 +4,8 @@
 //! O trabalho pesado é do ajudante `ararinha-instalar`.
 
 mod discos;
+#[allow(dead_code)]
+mod secureboot;
 
 use std::{
     io::{BufRead, BufReader},
@@ -34,6 +36,10 @@ struct Instalador {
     entendi: bool,
     /// Criptografar o disco (LUKS2). Ligado por padrão.
     cripto: bool,
+    /// Ativar o Secure Boot com chave própria (só em modo de configuração).
+    secure_boot: bool,
+    /// Avisos do ajudante (coisas que não deram certo, mas não impedem).
+    avisos: Vec<String>,
     senha: [String; 2],
     foco: usize,
     etapa: String,
@@ -50,6 +56,8 @@ impl Instalador {
             escolhido: None,
             entendi: false,
             cripto: true,
+            secure_boot: secureboot::modo_configuracao() && secureboot::disponivel(),
+            avisos: Vec::new(),
             senha: Default::default(),
             foco: 0,
             etapa: String::new(),
@@ -65,11 +73,16 @@ impl Instalador {
         // A senha do disco vai pela entrada padrão, nunca na linha de comando
         // (que qualquer um vê em /proc).
         let senha = if self.cripto { Some(std::mem::take(&mut self.senha[0])) } else { None };
+        let secure_boot = self.secure_boot;
+        self.avisos.clear();
         self.senha = Default::default();
         std::thread::spawn(move || {
             let mut args = vec![d.nome.clone(), "APAGAR-TUDO".to_string()];
             if senha.is_some() {
                 args.push("--cripto".into());
+            }
+            if secure_boot {
+                args.push("--secureboot".into());
             }
             let filho = Command::new("ararinha-instalar")
                 .args(&args)
@@ -161,6 +174,8 @@ impl App for Instalador {
                     self.etapa = e.to_string();
                 } else if let Some(p) = l.strip_prefix("PROGRESSO ") {
                     self.progresso = p.trim().parse().unwrap_or(self.progresso);
+                } else if let Some(a) = l.strip_prefix("AVISO ") {
+                    self.avisos.push(a.to_string());
                 } else if let Some(e) = l.strip_prefix("ERRO ") {
                     self.passo = Passo::Falhou(e.to_string());
                 } else if l == "FIM" {
@@ -312,6 +327,13 @@ impl App for Instalador {
                     } else {
                         y += 8.0;
                     }
+                    if secureboot::modo_configuracao() && secureboot::disponivel() {
+                        c::caixa_marcar(ui, x0, y, "Ativar o Secure Boot com a chave deste computador", &mut self.secure_boot);
+                        y += 32.0;
+                    } else if secureboot::disponivel() && !secureboot::ligado() {
+                        ui.tela.texto(x0, y + 14.0, 12.0, tema::TEXTO_SECUNDARIO(), "Secure Boot: ponha o firmware em Setup Mode para cadastrar a chave do Ararinha.");
+                        y += 32.0;
+                    }
                     c::caixa_marcar(ui, x0, y, "Entendi: pode apagar esse disco e instalar o Ararinha.", &mut self.entendi);
                 }
                 let pode = self.entendi && senha_ok;
@@ -335,6 +357,11 @@ impl App for Instalador {
             Passo::Pronto => {
                 ui.tela.texto(x0, 64.0, 22.0, tema::TEXTO(), "Instalação concluída!");
                 let y = paragrafo(ui, x0, 110.0, largura, if self.cripto { "O Ararinha já está no disco, criptografado. Desligue, tire o pendrive e ligue o computador de novo: a senha do disco será pedida logo no início." } else { "O Ararinha já está no disco. Desligue, tire o pendrive e ligue o computador de novo." });
+                let mut y = y;
+                for a in self.avisos.clone() {
+                    y += 6.0;
+                    y += c::aviso(ui, x0, y, largura, &a, false);
+                }
                 let y = paragrafo(ui, x0, y + 6.0, largura, "Se ele voltar para o pendrive, escolha o disco no menu de inicialização da placa-mãe (geralmente F12, F11 ou Esc ao ligar).");
                 let _ = y;
                 if Self::botao(ui, bx, by, "Desligar agora", true, true) {

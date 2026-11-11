@@ -5,12 +5,16 @@
 //! aceita partições nem o disco onde o sistema está rodando, e exige a
 //! palavra de confirmação.
 //!
-//!   ararinha-instalar sda APAGAR-TUDO [--cripto]
+//!   ararinha-instalar sda APAGAR-TUDO [--cripto] [--secureboot]
 //!
 //! Com `--cripto`, a senha do disco chega pela entrada padrão; a raiz vira
 //! um volume LUKS2 (AES-XTS de 512 bits, Argon2id) chamado
 //! "ararinha-cripto" e a ESP recebe o kernel com a initramfs que pede a
 //! senha no boot.
+//!
+//! Com `--secureboot` e o firmware em modo de configuração, gera as chaves
+//! deste computador, assina o kernel da ESP e cadastra as chaves (ver
+//! secureboot.rs). Se não der, avisa ("AVISO ...") e segue sem Secure Boot.
 //!
 //! Passos: tabela GPT nova (ESP de 256 MiB + raiz "ararinha-raiz"), cópia da
 //! ESP do pendrive, ext4 novo na raiz e cópia do sistema com `cp -ax`.
@@ -18,6 +22,7 @@
 
 #[allow(dead_code)]
 mod discos;
+mod secureboot;
 
 use std::{
     fs,
@@ -146,9 +151,11 @@ fn do_grupo_wheel() -> bool {
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
-    let cripto = args.len() == 4 && args[3] == "--cripto";
-    if !(args.len() == 3 || cripto) || args[2] != "APAGAR-TUDO" {
-        eprintln!("uso: ararinha-instalar <disco> APAGAR-TUDO [--cripto]");
+    let opcoes = args.get(3..).unwrap_or(&[]);
+    let cripto = opcoes.iter().any(|o| o == "--cripto");
+    let secure_boot = opcoes.iter().any(|o| o == "--secureboot");
+    if args.len() < 3 || args[2] != "APAGAR-TUDO" || opcoes.iter().any(|o| o != "--cripto" && o != "--secureboot") {
+        eprintln!("uso: ararinha-instalar <disco> APAGAR-TUDO [--cripto] [--secureboot]");
         exit(2);
     }
     let uid = unsafe { getuid() };
@@ -332,6 +339,27 @@ fn main() {
         );
         // A partição já ocupa o disco todo; o repart não tem o que crescer.
         let _ = fs::remove_file(format!("{alvo_dir}/usr/lib/repart.d/50-raiz.conf"));
+    }
+    if secure_boot {
+        etapa("Ativando o Secure Boot com a chave deste computador");
+        progresso(98);
+        if !secureboot::modo_configuracao() {
+            println!("AVISO O firmware não está em modo de configuração (Setup Mode); o Secure Boot ficou desligado.");
+        } else {
+            let dir = "/run/ararinha-instalador/esp";
+            let _ = fs::create_dir_all(dir);
+            rodar(Command::new("mount").args([&p1, dir]), "mount da ESP");
+            let nome = if cfg!(target_arch = "aarch64") { "BOOTAA64.EFI" } else { "BOOTX64.EFI" };
+            let r = secureboot::configurar(
+                std::path::Path::new(&format!("{alvo_dir}/etc/ararinha/secureboot")),
+                &[std::path::PathBuf::from(format!("{dir}/EFI/BOOT/{nome}"))],
+            );
+            unsafe { sync() };
+            let _ = Command::new("umount").arg(dir).status();
+            if let Err(e) = r {
+                println!("AVISO Secure Boot não ativado: {e}");
+            }
+        }
     }
     unsafe { sync() };
     rodar(Command::new("umount").arg(alvo_dir), "umount");
