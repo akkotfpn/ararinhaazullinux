@@ -19,10 +19,27 @@ construcao = ["glib", "libxml2", "meson"]
 [construcao]
 ambiente = "isolado"
 passos = [
+  # xmlto só gera a página de manual; no lugar dele, um substituto que cria
+  # o arquivo vazio.
   '''
+mkdir -p ../bin
+cat > ../bin/xmlto << 'FIM'
+#!/bin/sh
+sai=.
+while [ $# -gt 1 ]; do
+  case "$1" in -o) sai=$2; shift ;; esac
+  shift
+done
+mkdir -p "$sai" && : > "$sai/$(basename "$1" .xml).1"
+FIM
+chmod 755 ../bin/xmlto
+''',
+  '''
+export PATH=$PWD/../bin:$PATH
 mkdir -p build && cd build && meson setup --prefix=/usr --buildtype=release --wrap-mode=nofallback -D update-mimedb=true -D build-tests=false ..
 ''',
   '''
+export PATH=$PWD/../bin:$PATH
 cd build && ninja
 ''',
 ]

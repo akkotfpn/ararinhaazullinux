@@ -90,12 +90,14 @@ EOF
   '''
 rm -f /etc/machine-id
 ''',
-  # Fase 1 (imagem de teste): o root entra sem senha UMA vez e é obrigado a
-  # criar a senha no primeiro login. O instalador (Primeiro Voo) vai pedir a
-  # senha durante a instalação.
+  # Primeiro boot: o Primeiro Voo (no Ninho, a tela de entrada) pergunta
+  # idioma, teclado e fuso e cria a primeira conta; a senha dela passa a
+  # valer também para o root. Até lá o root fica sem senha (só no console)
+  # e o systemd-firstboot em texto não roda.
   '''
 passwd -d root
-chage -d 0 root
+ln -sfv /dev/null /etc/systemd/system/systemd-firstboot.service
+ln -sfv ../usr/share/zoneinfo/America/Sao_Paulo /etc/localtime
 ''',
 ]
 instalar = [
