@@ -16,6 +16,36 @@ sistema: seguro por padrão, sem o usuário precisar configurar nada.
 | Ajudantes setuid | `ararinha-unidade`, `ararinha-energia`, `ararinha-instalar` e `ararinha-senha`: cada um faz uma coisa só, valida tudo o que recebe e limpa o ambiente. |
 | Imagem | Sem compiladores (eles ficam no pacote `ararinha-dev`). Todas as fontes têm hash travado e, quando o projeto publica, assinatura conferida. |
 
+## Nada da construção vai na imagem
+
+O `ferramentas/gerar-imagem.sh` "sela" a imagem antes de montá-la:
+
+- Compiladores, montadores e depuradores (GCC, Clang, Rust, binutils, make,
+  autotools), cabeçalhos, bibliotecas estáticas, manuais e a configuração do
+  kernel ficam só no pacote `ararinha-dev` (lista em `imagem/pacote-dev.txt`).
+- Programas e bibliotecas vão sem símbolos de depuração (`strip`), e os
+  nossos são compilados sem os caminhos da máquina de construção.
+- Registros, históricos, caches e pastas de trabalho da construção são
+  apagados. Identificadores (machine-id, semente aleatória) não vão na
+  imagem: cada instalação gera os seus no primeiro boot.
+- Clientes de rede antigos e sem criptografia (telnet, ftp, rsh) não vão.
+
+O código-fonte do Ararinha é aberto (GPL-3.0), e isso é proposital: a
+segurança não depende de esconder como o sistema funciona, e sim de não
+deixar ferramentas e pistas à mão dentro do computador de quem usa.
+
+## Privacidade na rede
+
+- Sem telemetria: o sistema não envia nada para o projeto.
+- O computador não anuncia o próprio nome na rede (DHCP anônimo, sem LLMNR
+  nem mDNS) e usa endereços IPv6 temporários.
+- DNS cifrado (DNS sobre TLS) sempre que o servidor da rede aceitar.
+- No Wi-Fi, o endereço físico (MAC) é sorteado.
+
+O que isso não esconde: o provedor de internet continua vendo com quais
+sites o computador fala, e os sites veem o IP. Quem precisa esconder isso
+usa uma VPN ou o Tor por cima.
+
 ## A seguir
 
 - Criptografia do disco no instalador. Precisa de uma initramfs para pedir

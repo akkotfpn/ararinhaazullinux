@@ -67,6 +67,25 @@ Name=en* eth*
 
 [Network]
 DHCP=yes
+LLMNR=no
+MulticastDNS=no
+IPv6PrivacyExtensions=yes
+
+# Privacidade: não diz o nome do computador nem identifica o sistema para a
+# rede; no IPv6 usa endereços temporários, que mudam.
+[DHCPv4]
+SendHostname=no
+Anonymize=yes
+EOF
+mkdir -p /etc/systemd/resolved.conf.d
+cat > /etc/systemd/resolved.conf.d/50-ararinha.conf << "EOF"
+# DNS cifrado (DNS sobre TLS) sempre que o servidor aceitar
+# e sem LLMNR nem mDNS, que anunciam o computador na rede.
+[Resolve]
+DNSOverTLS=opportunistic
+DNSSEC=no
+LLMNR=no
+MulticastDNS=no
 EOF
 ''',
   '''

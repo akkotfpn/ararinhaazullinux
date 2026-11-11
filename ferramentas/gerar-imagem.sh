@@ -54,6 +54,49 @@ if [[ -s "$LISTA" ]]; then
   fi
   ( cd "$PODADA" && xargs -d '\n' rm -rf -- < "$LISTA" )
 fi
+# "Selar" a imagem: nada da construção fica para quem usa (ou para quem
+# invade) encontrar.
+echo "== Selando a imagem (símbolos, registros e sobras da construção)"
+# 1) Registros, históricos, caches e pastas de trabalho.
+( cd "$PODADA"
+  rm -rf ninhada-obra fontes tools root/.cache root/.cargo root/.bash_history root/.lesshst \
+         root/.python_history root/.wget-hsts
+  for d in var/log var/tmp tmp var/cache; do
+    [[ -d "$d" ]] && find "$d" -mindepth 1 -delete 2>/dev/null || true
+  done
+  # Cada instalação gera os seus no primeiro boot.
+  rm -f etc/machine-id var/lib/systemd/random-seed var/lib/dbus/machine-id etc/ssh/ssh_host_* )
+# 2) Símbolos de depuração e nomes internos fora dos programas. O strip
+#    grava num arquivo novo e o mv troca, para não mexer na raiz original
+#    (a cópia é feita de hardlinks).
+if command -v strip >/dev/null; then
+  n=0
+  while IFS= read -r -d '' f; do
+    cab="$(head -c 4 "$f" 2>/dev/null | od -An -c | tr -d ' ')"
+    [[ "$cab" == '177ELF' ]] || continue
+    case "$f" in
+      *.ko) modo=--strip-debug ;;
+      *.so|*.so.*) modo=--strip-unneeded ;;
+      *) modo=--strip-all ;;
+    esac
+    if strip $modo -o "$f.selo" "$f" 2>/dev/null; then
+      chmod --reference="$f" "$f.selo" && chown --reference="$f" "$f.selo" 2>/dev/null || true
+      mv -f "$f.selo" "$f"; n=$((n+1))
+    else
+      rm -f "$f.selo"
+    fi
+  done < <(find "$PODADA/usr/bin" "$PODADA/usr/sbin" "$PODADA/usr/lib" "$PODADA/usr/libexec" \
+             -xdev -type f \( -perm -u+x -o -name '*.so' -o -name '*.so.*' -o -name '*.ko' \) -print0 2>/dev/null)
+  echo "== Programas e bibliotecas sem símbolos: $n"
+fi
+# 3) Confere: nenhum caminho da construção pode sobrar nos nossos programas.
+for b in usr/bin/plumagem usr/bin/explorador usr/bin/configuracoes; do
+  if [[ -f "$PODADA/$b" ]] && grep -qa -e '/ninhada-obra/' -e '/home/' "$PODADA/$b"; then
+    echo "aviso: $b ainda guarda caminhos da construção"
+  fi
+done
+echo "== Pastas na raiz da imagem: $(ls "$PODADA" | tr '\n' ' ')"
+
 echo "== Fora da imagem: $(wc -l < "$LISTA") itens; pacote dev: $(du -h "$DEV" 2>/dev/null | cut -f1)"
 echo "== Tamanho da raiz: $(du -sh "$RAIZ" | cut -f1) -> $(du -sh "$PODADA" | cut -f1)"
 rm -f "$LISTA"

@@ -41,7 +41,7 @@ directory = "../vendor"
 FIM
 ''',
   '''
-cd ../apps && CARGO_HOME=$PWD/../cargo-home cargo build --release --frozen --offline -j $NUCLEOS
+cd ../apps && RUSTFLAGS="--remap-path-prefix=$(cd .. && pwd)=/ararinha -C strip=symbols" CARGO_HOME=$PWD/../cargo-home cargo build --release --frozen --offline -j $NUCLEOS
 ''',
 ]
 instalar = [
