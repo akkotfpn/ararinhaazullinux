@@ -499,7 +499,7 @@ pub struct Painel {
     central_buf: Option<(String, MemoryRenderBuffer)>,
     /// Win+V aberto.
     pub area_aberta: bool,
-    area_buf: Option<(String, MemoryRenderBuffer)>,
+    transf_buf: Option<(String, MemoryRenderBuffer)>,
     /// Indicador na tela (teclas de volume/brilho): rótulo, nível 0..1 e até quando.
     pub indicador: Option<(&'static str, f32, std::time::Instant)>,
     indicador_buf: Option<(String, MemoryRenderBuffer)>,
@@ -571,7 +571,7 @@ impl Default for Painel {
             nao_perturbe: ler_chave("nao_perturbe").as_deref() == Some("sim"),
             central_buf: None,
             area_aberta: false,
-            area_buf: None,
+            transf_buf: None,
             alternador: None,
             indicador: None,
             indicador_buf: None,
@@ -1973,11 +1973,11 @@ impl Painel {
                 desenho::tema::escuro(),
                 desenho::tema::destaque_atual()
             );
-            if self.area_buf.as_ref().map(|(c, _)| c != &chave).unwrap_or(true) {
+            if self.transf_buf.as_ref().map(|(c, _)| c != &chave).unwrap_or(true) {
                 let t = self.desenhar_area(o, hover, &crate::area::itens());
-                self.area_buf = Some((chave, t.em_buffer()));
+                self.transf_buf = Some((chave, t.em_buffer()));
             }
-            if let Some((_, buf)) = &self.area_buf {
+            if let Some((_, buf)) = &self.transf_buf {
                 if let Ok(e) = MemoryRenderBufferRenderElement::from_buffer(
                     renderer,
                     o.to_f64().to_physical(escala),
