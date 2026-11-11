@@ -105,7 +105,6 @@ use crate::{
 use smithay::{
     delegate_xwayland_keyboard_grab, delegate_xwayland_shell,
     utils::Size,
-    wayland::selection::{SelectionSource, SelectionTarget},
     wayland::xwayland_keyboard_grab::{XWaylandKeyboardGrabHandler, XWaylandKeyboardGrabState},
     wayland::xwayland_shell,
     xwayland::{X11Wm, XWayland, XWaylandEvent},
@@ -238,8 +237,29 @@ delegate_output!(@<BackendData: Backend + 'static> AnvilState<BackendData>);
 impl<BackendData: Backend> SelectionHandler for AnvilState<BackendData> {
     type SelectionUserData = ();
 
-    #[cfg(feature = "xwayland")]
-    fn new_selection(&mut self, ty: SelectionTarget, source: Option<SelectionSource>, _seat: Seat<Self>) {
+    fn new_selection(
+        &mut self,
+        ty: smithay::wayland::selection::SelectionTarget,
+        source: Option<smithay::wayland::selection::SelectionSource>,
+        _seat: Seat<Self>,
+    ) {
+        // Win+V: um app copiou; a Plumagem deixa de ser a dona e guarda uma
+        // cópia do texto (pedida logo depois, com a seleção já trocada).
+        if ty == smithay::wayland::selection::SelectionTarget::Clipboard {
+            if let Ok(mut p) = crate::area::PROPRIA.lock() {
+                *p = None;
+            }
+            if let Some(tipo) = source.as_ref().and_then(|s| crate::area::tipo_texto(&s.mime_types())) {
+                self.handle.insert_idle(move |data| {
+                    if let Some((leitura, escrita)) = crate::area::cano() {
+                        if smithay::wayland::selection::data_device::request_data_device_client_selection(&data.seat, tipo, escrita).is_ok() {
+                            crate::area::ler_em_segundo_plano(leitura);
+                        }
+                    }
+                });
+            }
+        }
+        #[cfg(feature = "xwayland")]
         if let Some(xwm) = self.xwm.as_mut() {
             if let Err(err) = xwm.new_selection(ty, source.map(|source| source.mime_types())) {
                 warn!(?err, ?ty, "Failed to set Xwayland selection");
@@ -247,20 +267,27 @@ impl<BackendData: Backend> SelectionHandler for AnvilState<BackendData> {
         }
     }
 
-    #[cfg(feature = "xwayland")]
     fn send_selection(
         &mut self,
-        ty: SelectionTarget,
+        ty: smithay::wayland::selection::SelectionTarget,
         mime_type: String,
         fd: OwnedFd,
         _seat: Seat<Self>,
         _user_data: &(),
     ) {
+        // Item escolhido no Win+V: a própria Plumagem entrega o texto.
+        if ty == smithay::wayland::selection::SelectionTarget::Clipboard && crate::area::PROPRIA.lock().map(|p| p.is_some()).unwrap_or(false) {
+            crate::area::enviar(fd);
+            return;
+        }
+        #[cfg(feature = "xwayland")]
         if let Some(xwm) = self.xwm.as_mut() {
             if let Err(err) = xwm.send_selection(ty, mime_type, fd, self.handle.clone()) {
                 warn!(?err, "Failed to send primary (X11 -> Wayland)");
             }
         }
+        #[cfg(not(feature = "xwayland"))]
+        let _ = (mime_type, fd);
     }
 }
 

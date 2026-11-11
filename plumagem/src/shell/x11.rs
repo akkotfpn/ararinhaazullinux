@@ -273,6 +273,11 @@ impl<BackendData: Backend> XwmHandler for AnvilState<BackendData> {
     fn send_selection(&mut self, _xwm: XwmId, selection: SelectionTarget, mime_type: String, fd: OwnedFd) {
         match selection {
             SelectionTarget::Clipboard => {
+                // Item do Win+V: a Plumagem é a dona e entrega o texto.
+                if crate::area::PROPRIA.lock().map(|p| p.is_some()).unwrap_or(false) {
+                    crate::area::enviar(fd);
+                    return;
+                }
                 if let Err(err) = request_data_device_client_selection(&self.seat, mime_type, fd) {
                     error!(?err, "Failed to request current wayland clipboard for Xwayland",);
                 }

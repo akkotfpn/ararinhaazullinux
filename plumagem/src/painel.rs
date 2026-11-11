@@ -171,6 +171,10 @@ const TAREFA_MAX: i32 = 220;
 const RELOGIO_L: i32 = 120;
 /// Central de notificações (clique no relógio).
 const CENTRAL_L: i32 = 380;
+/// Histórico da área de transferência (Win+V).
+const AREA_L: i32 = 380;
+const AREA_A: i32 = 460;
+const AREA_ITEM: i32 = 58;
 const CENTRAL_A: i32 = 520;
 const CENTRAL_ITEM: i32 = 64;
 /// Ações rápidas no pé da central: (rótulo, ação).
@@ -310,6 +314,10 @@ pub enum Alvo {
     CentralItem(usize),
     CentralLimpar,
     CentralAcao(usize),
+    /// Histórico da área de transferência (Win+V).
+    AreaPainel,
+    AreaItem(usize),
+    AreaLimpar,
 }
 
 /// Largura do cantinho "Mostrar área de trabalho", como no Windows.
@@ -489,6 +497,9 @@ pub struct Painel {
     pub historico: Vec<(String, String, String, Option<String>)>,
     pub nao_perturbe: bool,
     central_buf: Option<(String, MemoryRenderBuffer)>,
+    /// Win+V aberto.
+    pub area_aberta: bool,
+    area_buf: Option<(String, MemoryRenderBuffer)>,
     /// Indicador na tela (teclas de volume/brilho): rótulo, nível 0..1 e até quando.
     pub indicador: Option<(&'static str, f32, std::time::Instant)>,
     indicador_buf: Option<(String, MemoryRenderBuffer)>,
@@ -559,6 +570,8 @@ impl Default for Painel {
             historico: Vec::new(),
             nao_perturbe: ler_chave("nao_perturbe").as_deref() == Some("sim"),
             central_buf: None,
+            area_aberta: false,
+            area_buf: None,
             alternador: None,
             indicador: None,
             indicador_buf: None,
@@ -901,6 +914,22 @@ impl Painel {
                 }
             }
         }
+        if self.area_aberta {
+            let o = Self::area_origem(tela);
+            let (cx, cy) = (x - o.x, y - o.y);
+            if cx >= 0 && cy >= 0 && cx < AREA_L && cy < AREA_A {
+                if cy < 52 && cx >= AREA_L - 100 {
+                    return Some(Alvo::AreaLimpar);
+                }
+                if cy >= 52 {
+                    let i = ((cy - 52) / AREA_ITEM) as usize;
+                    if i < crate::area::itens().len() && (cy - 52) % AREA_ITEM < AREA_ITEM - 6 {
+                        return Some(Alvo::AreaItem(i));
+                    }
+                }
+                return Some(Alvo::AreaPainel);
+            }
+        }
         if self.central_aberta {
             let o = Self::central_origem(tela);
             let (cx, cy) = (x - o.x, y - o.y);
@@ -1229,6 +1258,42 @@ impl Painel {
             let nome = desenho::encurtar(12.5, titulo, cw - 16.0);
             let ln = desenho::medir(12.5, &nome);
             t.texto(x + cw / 2.0 - ln / 2.0, 104.0, 12.5, tema::TEXTO(), &nome);
+        }
+        t
+    }
+
+    fn area_origem(tela: Size<i32, Logical>) -> Point<i32, Logical> {
+        ((tela.w - AREA_L) / 2, tela.h - altura() - 12 - AREA_A).into()
+    }
+
+    fn desenhar_area(&self, origem: Point<i32, Logical>, hover: Option<Alvo>, itens: &[String]) -> Tela {
+        let mut t = Tela::nova(AREA_L, AREA_A);
+        let (l, a) = (AREA_L as f32, AREA_A as f32);
+        t.vidro(0.0, 0.0, l, a, 12.0, (origem.x, origem.y), tema::FUNDO().com_alfa(215));
+        t.contorno(0.5, 0.5, l - 1.0, a - 1.0, 1.0, tema::BORDA().com_alfa(160));
+        t.texto(18.0, 34.0, 16.0, tema::TEXTO(), "Área de transferência");
+        if !itens.is_empty() {
+            let cor = if hover == Some(Alvo::AreaLimpar) { tema::DESTAQUE_FORTE() } else { tema::DESTAQUE() };
+            let lt = desenho::medir(13.0, "Limpar tudo");
+            t.texto(l - 18.0 - lt, 33.0, 13.0, cor, "Limpar tudo");
+        } else {
+            for (i, linha) in ["Nada copiado ainda.", "Copie um texto (Ctrl+C) e ele aparece aqui;", "clique num item para colar de novo."].iter().enumerate() {
+                let lm = desenho::medir(13.0, linha);
+                let cor = if i == 0 { tema::TEXTO() } else { tema::TEXTO_SECUNDARIO() };
+                t.texto(l / 2.0 - lm / 2.0, a / 2.0 - 10.0 + i as f32 * 22.0, 13.0, cor, linha);
+            }
+        }
+        let max = ((a - 52.0 - 8.0) / AREA_ITEM as f32) as usize;
+        for (i, texto) in itens.iter().take(max).enumerate() {
+            let y = 52.0 + i as f32 * AREA_ITEM as f32;
+            let sobre = hover == Some(Alvo::AreaItem(i));
+            t.retangulo(10.0, y, l - 20.0, AREA_ITEM as f32 - 6.0, 8.0, if sobre { tema::SUPERFICIE() } else { tema::SUPERFICIE().com_alfa(150) });
+            // Até duas linhas do texto copiado.
+            let linhas: Vec<&str> = texto.lines().map(str::trim).filter(|l| !l.is_empty()).take(2).collect();
+            for (k, li) in linhas.iter().enumerate() {
+                let li: String = li.chars().take(200).collect();
+                t.texto(22.0, y + 22.0 + k as f32 * 18.0, 12.5, if k == 0 { tema::TEXTO() } else { tema::TEXTO_SECUNDARIO() }, &desenho::encurtar(12.5, &li, l - 44.0));
+            }
         }
         t
     }
@@ -1896,6 +1961,33 @@ impl Painel {
                     Kind::Unspecified,
                 ) {
                     elementos.insert(0, e);
+                }
+            }
+        }
+
+        if self.area_aberta {
+            let o = Self::area_origem(tela);
+            let chave = format!(
+                "{hover:?}|{o:?}|{}|{}|{}",
+                crate::area::VERSAO.load(std::sync::atomic::Ordering::Relaxed),
+                desenho::tema::escuro(),
+                desenho::tema::destaque_atual()
+            );
+            if self.area_buf.as_ref().map(|(c, _)| c != &chave).unwrap_or(true) {
+                let t = self.desenhar_area(o, hover, &crate::area::itens());
+                self.area_buf = Some((chave, t.em_buffer()));
+            }
+            if let Some((_, buf)) = &self.area_buf {
+                if let Ok(e) = MemoryRenderBufferRenderElement::from_buffer(
+                    renderer,
+                    o.to_f64().to_physical(escala),
+                    buf,
+                    None,
+                    None,
+                    None,
+                    Kind::Unspecified,
+                ) {
+                    elementos.push(e);
                 }
             }
         }

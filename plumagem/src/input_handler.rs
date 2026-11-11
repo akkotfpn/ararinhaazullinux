@@ -83,6 +83,11 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             KeyAction::FecharJanela => self.fechar_janela_ativa(),
             KeyAction::MostrarAreaDeTrabalho => self.mostrar_area_de_trabalho(),
             KeyAction::Captura => crate::captura::pedir(),
+            KeyAction::AreaTransferencia => {
+                self.painel.area_aberta = !self.painel.area_aberta;
+                self.painel.central_aberta = false;
+                self.painel.menu_aberto = false;
+            }
             KeyAction::Recorte => {
                 self.painel.recorte = Some(None);
                 crate::render::RECORTE.store(true, Ordering::Relaxed);
@@ -747,6 +752,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                     | KeyAction::MostrarAreaDeTrabalho
                     | KeyAction::Captura
                     | KeyAction::Recorte
+                    | KeyAction::AreaTransferencia
                     | KeyAction::JanelaAnterior
                     | KeyAction::Midia(_)
                     | KeyAction::Encaixar(_)
@@ -975,6 +981,7 @@ impl AnvilState<UdevData> {
                     | KeyAction::MostrarAreaDeTrabalho
                     | KeyAction::Captura
                     | KeyAction::Recorte
+                    | KeyAction::AreaTransferencia
                     | KeyAction::JanelaAnterior
                     | KeyAction::Midia(_)
                     | KeyAction::Encaixar(_)
@@ -1567,6 +1574,8 @@ enum KeyAction {
     Midia(u8),
     /// Win+Shift+S: captura de uma área escolhida com o mouse.
     Recorte,
+    /// Win+V: histórico da área de transferência.
+    AreaTransferencia,
     RotateOutput,
     ToggleTint,
     ToggleDecorations,
@@ -1597,6 +1606,9 @@ fn process_keyboard_shortcut(modifiers: ModifiersState, keysym: Keysym) -> Optio
     {
         // Win+Shift+S (ou Shift+Print): recortar uma área da tela
         Some(KeyAction::Recorte)
+    } else if modifiers.logo && (keysym == Keysym::v || keysym == Keysym::V) {
+        // Win+V: histórico da área de transferência
+        Some(KeyAction::AreaTransferencia)
     } else if keysym == Keysym::Print {
         // Print Screen: salva a tela em Imagens/Capturas de Tela
         Some(KeyAction::Captura)

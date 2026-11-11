@@ -282,6 +282,7 @@ impl<B: Backend> AnvilState<B> {
             self.painel.som_aberto = false;
             self.painel.rede_aberta = false;
             self.painel.central_aberta = false;
+            self.painel.area_aberta = false;
             let tinha_contexto = self.painel.menu_contexto.take().is_some();
             // Clique fora do menu de contexto só fecha o menu.
             return tinha_contexto && !direito;
@@ -350,6 +351,9 @@ impl<B: Backend> AnvilState<B> {
         if !matches!(alvo, Alvo::Relogio | Alvo::CentralPainel | Alvo::CentralItem(_) | Alvo::CentralLimpar | Alvo::CentralAcao(_)) {
             self.painel.central_aberta = false;
         }
+        if !matches!(alvo, Alvo::AreaPainel | Alvo::AreaLimpar) {
+            self.painel.area_aberta = false;
+        }
         self.painel.segurando = true;
         if alvo != Alvo::Energia {
             self.painel.energia_aberta = false;
@@ -389,7 +393,13 @@ impl<B: Backend> AnvilState<B> {
                 self.painel.central_aberta = !self.painel.central_aberta;
                 self.painel.menu_aberto = false;
             }
-            Alvo::CentralPainel => {}
+            Alvo::CentralPainel | Alvo::AreaPainel => {}
+            Alvo::AreaLimpar => crate::area::limpar(),
+            Alvo::AreaItem(i) => {
+                if let Some(t) = crate::area::itens().get(i).cloned() {
+                    self.colar_texto(t);
+                }
+            }
             Alvo::CentralLimpar => self.painel.historico.clear(),
             Alvo::CentralItem(i) => {
                 if let Some((_, _, _, acao)) = self.painel.historico.get(i).cloned() {
@@ -601,6 +611,33 @@ impl<B: Backend> AnvilState<B> {
     /// minimizada, se só houver ela).
     /// Alt+Tab: abre o alternador (ou anda para a próxima janela nele).
     /// A troca acontece quando o Alt é solto (`alt_tab_soltar`).
+    /// Win+V: a Plumagem passa a oferecer o texto e cola no app em foco
+    /// (aperta Ctrl+V por ele, como o Windows faz).
+    pub fn colar_texto(&mut self, t: String) {
+        use smithay::wayland::selection::data_device::set_data_device_selection;
+        crate::area::guardar(t.clone());
+        if let Ok(mut p) = crate::area::PROPRIA.lock() {
+            *p = Some(t);
+        }
+        let tipos: Vec<String> = crate::area::TIPOS_TEXTO.iter().map(|s| s.to_string()).collect();
+        set_data_device_selection(&self.display_handle, &self.seat, tipos.clone(), ());
+        #[cfg(feature = "xwayland")]
+        if let Some(xwm) = self.xwm.as_mut() {
+            let _ = xwm.new_selection(smithay::wayland::selection::SelectionTarget::Clipboard, Some(tipos));
+        }
+        self.painel.area_aberta = false;
+        // Ctrl+V sintético (códigos evdev + 8: Ctrl esquerdo 37, V 55).
+        if let Some(teclado) = self.seat.get_keyboard() {
+            use smithay::backend::input::KeyState;
+            use smithay::input::keyboard::{xkb::Keycode, FilterResult};
+            let time = self.clock.now().as_millis();
+            for (codigo, estado) in [(37, KeyState::Pressed), (55, KeyState::Pressed), (55, KeyState::Released), (37, KeyState::Released)] {
+                let serial = SERIAL_COUNTER.next_serial();
+                teclado.input::<(), _>(self, Keycode::new(codigo), estado, serial, time, |_, _, _| FilterResult::Forward);
+            }
+        }
+    }
+
     pub fn alt_tab(&mut self, voltar: bool) {
         if self.alternador_janelas.is_empty() || self.painel.alternador.is_none() {
             // Da mais recente para a mais antiga; minimizadas no fim.
