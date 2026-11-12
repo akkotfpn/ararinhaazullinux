@@ -27,5 +27,13 @@ instalar = [
 install -vDm644 60-steam-input.rules /usr/lib/udev/rules.d/60-steam-input.rules
 install -vDm644 60-steam-vr.rules    /usr/lib/udev/rules.d/60-steam-vr.rules
 install -vDm644 LICENSE /usr/share/licenses/steam-devices/LICENSE
+# O "uaccess" das regras da Valve só vale com sessão do logind no seat0; a
+# sessão do Ararinha vem do seatd. Então também pelo grupo "input" (toda
+# conta criada pelo Primeiro Voo e pelas Configurações está nele).
+cat > /usr/lib/udev/rules.d/61-ararinha-controles.rules << 'FIM'
+KERNEL=="uinput", SUBSYSTEM=="misc", GROUP="input", MODE="0660", OPTIONS+="static_node=uinput"
+# Valve, Sony, Nintendo, Microsoft, 8BitDo, Logitech, Nacon, PowerA
+KERNEL=="hidraw*", ATTRS{idVendor}=="28de|054c|057e|045e|2dc8|046d|146b|20d6", GROUP="input", MODE="0660"
+FIM
 ''',
 ]

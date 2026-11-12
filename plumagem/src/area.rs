@@ -66,6 +66,10 @@ pub fn ler_em_segundo_plano(leitura: OwnedFd) {
 }
 
 pub fn guardar(t: String) {
+    // Configurações › Privacidade: histórico desligado.
+    if crate::painel::ler_chave("historico_area").as_deref() == Some("nao") {
+        return;
+    }
     if let Ok(mut h) = HISTORICO.lock() {
         h.retain(|x| x != &t);
         h.insert(0, t);

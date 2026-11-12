@@ -940,7 +940,7 @@ impl Painel {
                 ids: Vec::new(),
             });
         }
-        const PAGINAS: [(&str, &str, &str); 13] = [
+        const PAGINAS: [(&str, &str, &str); 14] = [
             ("Atualizações", "atualizacoes", "atualizacao atualizacoes atualizar update versao novidades"),
             ("Idioma e teclado", "idioma", "idioma teclado layout abnt abnt2 lingua ingles portugues"),
             ("Tela", "tela", "tela monitor resolucao escala tamanho zoom dpi"),
@@ -954,6 +954,7 @@ impl Painel {
             ("Outros usuários", "contas", "usuario usuarios conta nova admin administrador familia"),
             ("Personalização", "personalizacao", "tema escuro claro papel parede fundo cor destaque barra visual"),
             ("Sobre o computador", "sobre", "sobre versao sistema computador memoria processador"),
+            ("Privacidade e relatórios de falhas", "privacidade", "privacidade falhas erro relatorio travou historico"),
         ];
         for (nome, pagina, chaves) in PAGINAS {
             if chaves.split_whitespace().any(|k| k.starts_with(&b) || b.starts_with(k)) || sem_acento(&nome.to_lowercase()).contains(&b) {
@@ -965,8 +966,9 @@ impl Painel {
                 });
             }
         }
-        // Arquivos: até 6, procurando até 4 níveis na pasta pessoal.
-        if b.chars().count() >= 3 {
+        // Arquivos: até 6, procurando até 4 níveis na pasta pessoal
+        // (Configurações › Privacidade pode desligar).
+        if b.chars().count() >= 3 && ler_chave("busca_arquivos").as_deref() != Some("nao") {
             if let Ok(casa) = std::env::var("HOME") {
                 let mut pilha = vec![(std::path::PathBuf::from(&casa), 0)];
                 let (mut vistos, mut achados) = (0, 0);
@@ -1497,6 +1499,15 @@ impl Painel {
     /// Lê as notificações deixadas na pasta (a cada meio segundo) e tira as
     /// que já passaram do tempo.
     fn ler_avisos(&mut self) {
+        // Uma vez por sessão: a área de trabalho quebrou da última vez?
+        static VISTO: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+        if !VISTO.swap(true, std::sync::atomic::Ordering::Relaxed) && crate::falhas::aviso_pendente() {
+            self.avisar_com(
+                "A área de trabalho fechou por um erro",
+                "Ela já voltou. O relatório ficou em Configurações › Privacidade.",
+                Some("configuracoes privacidade".into()),
+            );
+        }
         let agora = std::time::Instant::now();
         self.avisos.retain(|a| a.ate > agora);
         if agora.duration_since(self.avisos_visto) < std::time::Duration::from_millis(500) {

@@ -284,8 +284,40 @@ fn vigiar_config(event_loop: &EventLoop<Janela>) -> bool {
         .is_ok()
 }
 
+/// Pasta dos relatórios de falhas da conta.
+pub fn pasta_falhas() -> std::path::PathBuf {
+    std::path::PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| "/tmp".into())).join(".local/state/ararinha/falhas")
+}
+
+/// Se o app quebrar (panic), grava um relatório local (nada sai do
+/// computador) e avisa com uma notificação. "relatorios = nao" desliga.
+fn instalar_relatorio(app_id: String, titulo: String) {
+    let anterior = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        anterior(info);
+        if ler_chave_config("relatorios").as_deref() == Some("nao") {
+            return;
+        }
+        let agora = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+        let pasta = pasta_falhas();
+        let _ = std::fs::create_dir_all(&pasta);
+        let pilha = std::backtrace::Backtrace::force_capture();
+        let texto = format!(
+            "App: {titulo} ({app_id})\nVersão: {}\nQuando: {agora} (segundos desde 1970)\nErro: {info}\n\nPilha:\n{pilha}\n",
+            env!("CARGO_PKG_VERSION")
+        );
+        let arq = pasta.join(format!("{app_id}-{agora}.txt"));
+        if std::fs::write(&arq, texto).is_ok() {
+            let _ = std::process::Command::new("ararinha-notificar")
+                .args([format!("{titulo} fechou por um erro"), "O relatório ficou em Configurações › Privacidade › Relatórios de falhas.".into()])
+                .status();
+        }
+    }));
+}
+
 /// Abre a janela e roda o app até ela ser fechada.
 pub fn executar(opcoes: Opcoes, app: Box<dyn App>) {
+    instalar_relatorio(opcoes.app_id.clone(), opcoes.titulo.clone());
     let conn = match Connection::connect_to_env() {
         Ok(c) => c,
         Err(e) => {

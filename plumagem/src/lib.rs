@@ -8,6 +8,7 @@
 
 #[cfg(any(feature = "udev", feature = "xwayland"))]
 pub mod area;
+pub mod falhas;
 pub mod bloqueio;
 pub mod captura;
 #[cfg(feature = "udev")]

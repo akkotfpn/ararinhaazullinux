@@ -11,6 +11,7 @@ fn main() {
         tracing_subscriber::fmt().compact().init();
     }
     profiling::register_thread!("Main Thread");
+    plumagem::falhas::instalar();
 
     match std::env::args().nth(1).as_deref() {
         None | Some("--tty-udev") | Some("--tela") => {

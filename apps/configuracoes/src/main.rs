@@ -10,6 +10,7 @@ mod firewall;
 mod hora;
 mod som;
 mod tela;
+mod privacidade;
 mod atualizacoes;
 mod idioma;
 mod armazenamento;
@@ -47,6 +48,7 @@ enum Pagina {
     Energia,
     Armazenamento,
     Atualizacoes,
+    Privacidade,
     Hora,
     Idioma,
     Conta,
@@ -79,6 +81,7 @@ struct Configuracoes {
     contas: contas::PaginaContas,
     som: som::PaginaSom,
     tela: tela::PaginaTela,
+    privacidade: privacidade::PaginaPrivacidade,
     atualizacoes: atualizacoes::PaginaAtualizacoes,
     idioma: idioma::PaginaIdioma,
     armazenamento: armazenamento::PaginaArmazenamento,
@@ -278,6 +281,7 @@ impl Configuracoes {
             contas: Default::default(),
             som: Default::default(),
             tela: Default::default(),
+            privacidade: Default::default(),
             atualizacoes: Default::default(),
             idioma: Default::default(),
             armazenamento: Default::default(),
@@ -610,6 +614,7 @@ impl App for Configuracoes {
             Pagina::Energia => self.energia(ui, LATERAL_L, l - LATERAL_L),
             Pagina::Som => self.som.desenhar(ui, LATERAL_L, l - LATERAL_L),
             Pagina::Tela => self.tela.desenhar(ui, LATERAL_L, l - LATERAL_L),
+            Pagina::Privacidade => self.privacidade.desenhar(ui, LATERAL_L, l - LATERAL_L),
             Pagina::Atualizacoes => {
                 self.atualizacoes.desenhar(ui, LATERAL_L, l - LATERAL_L);
                 if let Some(av) = self.atualizacoes.aviso.take() {
@@ -661,22 +666,26 @@ impl App for Configuracoes {
             (Pagina::Energia, "Energia"),
             (Pagina::Armazenamento, "Armazenamento"),
             (Pagina::Atualizacoes, "Atualizações"),
+            (Pagina::Privacidade, "Privacidade"),
             (Pagina::Hora, "Data e hora"),
             (Pagina::Idioma, "Idioma e teclado"),
             (Pagina::Conta, "Sua conta"),
             (Pagina::Contas, "Outros usuários"),
             (Pagina::Sobre, "Sobre"),
         ];
+        // Itens mais juntos se a janela for baixa (todos sempre visíveis).
+        let passo = ((a - 72.0) / paginas.len() as f32).clamp(27.0, 36.0);
+        let ih = passo - 4.0;
         for (i, (p, nome)) in paginas.iter().enumerate() {
-            let y = 64.0 + i as f32 * 36.0;
+            let y = 60.0 + i as f32 * passo;
             if self.pagina == *p {
-                ui.tela.retangulo(10.0, y, LATERAL_L - 20.0, 32.0, 6.0, tema::DESTAQUE_SUAVE());
-                ui.tela.retangulo(10.0, y + 8.0, 3.0, 16.0, 1.5, tema::DESTAQUE());
-            } else if ui.sobre(10.0, y, LATERAL_L - 20.0, 32.0) {
-                ui.tela.retangulo(10.0, y, LATERAL_L - 20.0, 32.0, 6.0, tema::SUPERFICIE_ALTA());
+                ui.tela.retangulo(10.0, y, LATERAL_L - 20.0, ih, 6.0, tema::DESTAQUE_SUAVE());
+                ui.tela.retangulo(10.0, y + ih / 2.0 - 8.0, 3.0, 16.0, 1.5, tema::DESTAQUE());
+            } else if ui.sobre(10.0, y, LATERAL_L - 20.0, ih) {
+                ui.tela.retangulo(10.0, y, LATERAL_L - 20.0, ih, 6.0, tema::SUPERFICIE_ALTA());
             }
-            ui.tela.texto(26.0, y + 21.0, 13.5, tema::TEXTO(), nome);
-            if ui.clicou(10.0, y, LATERAL_L - 20.0, 32.0) {
+            ui.tela.texto(26.0, y + ih / 2.0 + 5.0, 13.5, tema::TEXTO(), nome);
+            if ui.clicou(10.0, y, LATERAL_L - 20.0, ih) {
                 self.pagina = *p;
                 self.aviso = None;
                 self.rolagem = 0.0;
@@ -703,6 +712,7 @@ fn main() {
         Some("tela") => app.pagina = Pagina::Tela,
         Some("armazenamento") => app.pagina = Pagina::Armazenamento,
         Some("atualizacoes") => app.pagina = Pagina::Atualizacoes,
+        Some("privacidade") => app.pagina = Pagina::Privacidade,
         Some("hora") => app.pagina = Pagina::Hora,
         Some("idioma") => app.pagina = Pagina::Idioma,
         Some("contas") => app.pagina = Pagina::Contas,
