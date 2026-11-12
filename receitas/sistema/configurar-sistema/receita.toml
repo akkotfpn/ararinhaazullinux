@@ -154,6 +154,39 @@ net.ipv6.conf.all.accept_redirects = 0
 net.ipv6.conf.default.accept_redirects = 0
 net.ipv4.icmp_echo_ignore_broadcasts = 1
 FIM
+# Memória comprimida (zram): metade da RAM vira área de troca comprimida.
+# Com 2 GB, o Chromium e a Central juntos não travam a máquina.
+install -vdm755 /usr/libexec
+cat > /usr/libexec/ararinha-zram << 'FIM'
+#!/bin/sh
+[ -e /sys/block/zram0 ] || modprobe zram num_devices=1 || exit 0
+grep -q zram0 /proc/swaps && exit 0
+mem=$(awk '/MemTotal/ {print $2}' /proc/meminfo)
+for alg in zstd lz4 lzo-rle lzo; do
+  echo "$alg" > /sys/block/zram0/comp_algorithm 2>/dev/null && break
+done
+echo $((mem * 1024 / 2)) > /sys/block/zram0/disksize || exit 0
+mkswap /dev/zram0 >/dev/null && swapon -p 100 /dev/zram0
+FIM
+chmod 755 /usr/libexec/ararinha-zram
+cat > /usr/lib/systemd/system/ararinha-zram.service << 'FIM'
+[Unit]
+Description=Memória comprimida (zram)
+DefaultDependencies=no
+After=systemd-modules-load.service
+Before=swap.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/libexec/ararinha-zram
+ExecStop=-/usr/bin/swapoff /dev/zram0
+
+[Install]
+WantedBy=swap.target
+FIM
+systemctl enable ararinha-zram.service
+echo 'vm.swappiness = 100' >> /usr/lib/sysctl.d/50-ararinha.conf
 if [ -f /etc/login.defs ]; then
   sed -i 's/^#\?ENCRYPT_METHOD.*/ENCRYPT_METHOD YESCRYPT/' /etc/login.defs
   grep -q '^ENCRYPT_METHOD' /etc/login.defs || echo 'ENCRYPT_METHOD YESCRYPT' >> /etc/login.defs
