@@ -503,12 +503,6 @@ impl Janela {
         };
         self.app.desenhar(&mut ui);
         let (fechar, redesenhar, titulo) = (ui.fechar, ui.redesenhar, ui.titulo.take());
-        for p in PEDIDOS_AREA.with(|p| std::mem::take(&mut *p.borrow_mut())) {
-            match p {
-                PedidoArea::Copiar(t) => self.copiar(qh, t),
-                PedidoArea::Colar => self.colar(),
-            }
-        }
         // Ainda há rolagem a entregar: outro quadro logo.
         let redesenhar = redesenhar || self.rolagem.abs() > 0.0;
         if self.rolagem.abs() > 0.0 && ui.acordar_em.is_none() {
@@ -516,6 +510,12 @@ impl Janela {
         }
         if let Some(d) = ui.acordar_em {
             self.acordar = Some(Instant::now() + d);
+        }
+        for p in PEDIDOS_AREA.with(|p| std::mem::take(&mut *p.borrow_mut())) {
+            match p {
+                PedidoArea::Copiar(t) => self.copiar(qh, t),
+                PedidoArea::Colar => self.colar(),
+            }
         }
         if fechar {
             self.sair = true;
