@@ -13,9 +13,20 @@ ARMAZENAMENTO="${ARMAZENAMENTO:-local-lvm}"
 IMAGEM_REMOTA=/home/ninhada/saida/imagens/ararinha-x86_64.qcow2
 LOCAL=/var/lib/vz/template/iso/ararinha-x86_64.qcow2
 
-echo "== Copiando a imagem da VM de build"
-ssh -n "$BUILD" "sudo -n cat $IMAGEM_REMOTA" > "$LOCAL.tmp"
-mv "$LOCAL.tmp" "$LOCAL"
+echo "== Copiando a imagem da VM de build ($BUILD)"
+mkdir -p "$(dirname "$LOCAL")"
+rm -f "$LOCAL.tmp"
+if ! ssh -n -o ConnectTimeout=10 "$BUILD" "sudo -n cat $IMAGEM_REMOTA" > "$LOCAL.tmp"; then
+  echo "!! Não deu para copiar pelo ssh (VM de build ligada? chave ssh? sudo sem senha?)" >&2
+  exit 1
+fi
+if [ ! -s "$LOCAL.tmp" ]; then
+  echo "!! A cópia veio vazia ou sumiu: $LOCAL.tmp" >&2
+  ls -la "$(dirname "$LOCAL")" >&2
+  df -h "$(dirname "$LOCAL")" >&2
+  exit 1
+fi
+mv -f "$LOCAL.tmp" "$LOCAL"
 ls -lh "$LOCAL"
 
 if qm status "$VMID" &>/dev/null; then
