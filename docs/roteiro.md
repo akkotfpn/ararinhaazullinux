@@ -20,7 +20,7 @@ Imagem: ~630 MB (qcow2). Boot até a tela de entrada: ~3,4 s.
 
 | # | Item | Estado |
 |---|------|--------|
-| 1 | Botões de energia (menu Iniciar e instalador) | [em teste] — 12/11: ainda sem ação; agora mostra o motivo numa notificação e tenta direto pelo systemd |
+| 1 | Botões de energia (menu Iniciar e instalador) | [em teste] — causa achada: o serviço checava /run/user, escondido pelo ProtectHome; agora pelo grupo seat |
 | 2 | Instalação com disco criptografado | [feito] |
 | 3 | Gerenciador de Tarefas agrupado por app | [feito] |
 | 4 | Chromium: atalho na área de trabalho e botões de minimizar/maximizar | [em teste] — e fixado na barra |
@@ -29,7 +29,7 @@ Imagem: ~630 MB (qcow2). Boot até a tela de entrada: ~3,4 s.
 | 7 | Wi-Fi: aviso claro sem adaptador | [em teste] |
 | 8 | Tema claro/escuro e cor de destaque no Primeiro Voo | [em teste] |
 | 9 | Central: progresso real e Cancelar | [em teste] |
-| 10 | Speedtest (Ookla) no Chromium | [a fazer] — fica em 0,00; falta testar com o firewall desligado e em fast.com |
+| 10 | Speedtest (Ookla) no Chromium | [feito] — 780 Mbps |
 | 11 | Steam abrir | [em teste] — abre; título/maximizar de janelas X11 corrigidos; controles também pelo grupo input |
 
 ## Parte 2 — O que um sistema completo tem
@@ -90,6 +90,12 @@ Imagem: ~630 MB (qcow2). Boot até a tela de entrada: ~3,4 s.
 - [a fazer] Senha do disco em tela gráfica; TPM2
 - [a fazer] Kernel reassinado nas atualizações
 - [em teste] Relatório de falhas local (apps das Penas, Plumagem e coredump), aviso e página em Privacidade
+
+### Pedidos de 12/11
+- [em teste] Chromium travando ao abrir download: portal AppChooser
+- [em teste] zram (troca comprimida) para máquinas com pouca RAM
+- [em teste] Janelas abrem no meio e cabem na tela (escala 125%+)
+- [em teste] Pendrive pergunta: experimentar ou instalar
 
 ### Qualidade
 - [a fazer] Medir o consumo da Plumagem parada
