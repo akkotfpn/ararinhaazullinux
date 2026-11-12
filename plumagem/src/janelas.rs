@@ -426,6 +426,19 @@ impl<B: Backend> AnvilState<B> {
                             }
                         }
                         "#papel" => self.painel.proximo_papel(),
+                        a if a.starts_with("#fechar:") => {
+                            // Fecha as janelas do grupo (índices em `ordem`).
+                            let ws: Vec<WindowElement> = a["#fechar:".len()..]
+                                .split(',')
+                                .filter_map(|j| j.parse::<usize>().ok())
+                                .filter_map(|j| self.painel.ordem.get(j).cloned())
+                                .collect();
+                            for w in ws {
+                                fechar(&w);
+                            }
+                        }
+                        a if a.starts_with("#fixar:") => self.painel.fixar(&a["#fixar:".len()..], true),
+                        a if a.starts_with("#desafixar:") => self.painel.fixar(&a["#desafixar:".len()..], false),
                         "#area" => self.mostrar_area_de_trabalho(),
                         a if a.starts_with("#apagar:") => {
                             // Só apaga atalhos e pastas vazias da Área de Trabalho
@@ -461,7 +474,10 @@ impl<B: Backend> AnvilState<B> {
         }
         // Botão direito na barra de tarefas: menu da barra.
         if direito {
-            if matches!(alvo, Alvo::Barra | Alvo::Tarefa(_) | Alvo::Iniciar | Alvo::Fixado(_)) {
+            if let Alvo::Tarefa(i) = alvo {
+                let p = (pos - geo.loc.to_f64()).to_i32_round();
+                self.painel.contexto_grupo(i, p, geo.size);
+            } else if matches!(alvo, Alvo::Barra | Alvo::Iniciar) {
                 let p = (pos - geo.loc.to_f64()).to_i32_round();
                 self.painel.contexto_barra(p, geo.size);
             }
@@ -487,27 +503,26 @@ impl<B: Backend> AnvilState<B> {
 
         match alvo {
             Alvo::Iniciar => self.alternar_menu(),
-            Alvo::Fixado(i) => {
-                self.painel.menu_aberto = false;
-                let cmd = self
-                    .painel
-                    .app_fixado(i)
-                    .map(|a| a.exec.clone())
-                    .unwrap_or_else(|| painel::FIXADOS[i].to_string());
-                self.executar_programa(&cmd);
-            }
             Alvo::Tarefa(i) => {
                 self.painel.menu_aberto = false;
-                if let Some(w) = self.painel.ordem.get(i).cloned() {
+                self.clicar_grupo(i);
+            }
+            Alvo::Previa(j) => {
+                if let Some(w) = self.painel.ordem.get(j).cloned() {
                     if self.painel.esta_minimizada(&w) {
                         self.desminimizar(&w);
-                    } else if self.space.elements().last() == Some(&w) {
-                        self.minimizar(&w);
                     } else {
                         self.focar_janela(&w);
                     }
                 }
+                self.painel.fechar_previa();
             }
+            Alvo::PreviaFechar(j) => {
+                if let Some(w) = self.painel.ordem.get(j).cloned() {
+                    fechar(&w);
+                }
+            }
+            Alvo::PreviaPainel => {}
             Alvo::App(i) => {
                 self.painel.menu_aberto = false;
                 if let Some(exec) = self.painel.apps_visiveis().get(i).map(|a| a.exec.clone()) {
@@ -805,10 +820,46 @@ impl<B: Backend> AnvilState<B> {
 
     /// Alt+F4: pede para a janela ativa fechar.
     pub fn fechar_janela_ativa(&mut self) {
-        if let Some(w) = self.space.elements().last() {
-            if let Some(t) = w.0.toplevel() {
-                t.send_close();
+        if let Some(w) = self.space.elements().last().cloned() {
+            fechar(&w);
+        }
+    }
+
+    /// Clique num botão da barra: abre o app, alterna a janela ou passa
+    /// para a próxima janela do mesmo app.
+    pub fn clicar_grupo(&mut self, i: usize) {
+        let gs = self.painel.grupos();
+        let Some(g) = gs.get(i) else { return };
+        let ws: Vec<WindowElement> = g.janelas.iter().filter_map(|j| self.painel.ordem.get(*j).cloned()).collect();
+        if ws.is_empty() {
+            let cmd = g
+                .app
+                .and_then(|a| self.painel.apps_todos().get(a).map(|a| a.exec.clone()))
+                .or_else(|| g.fixado.and_then(|f| self.painel.fixados.get(f).cloned()));
+            if let Some(cmd) = cmd {
+                self.executar_programa(&cmd);
             }
+            return;
+        }
+        let ativa = self.space.elements().last().cloned();
+        if ws.len() == 1 {
+            let w = &ws[0];
+            if self.painel.esta_minimizada(w) {
+                self.desminimizar(w);
+            } else if ativa.as_ref() == Some(w) {
+                self.minimizar(w);
+            } else {
+                self.focar_janela(w);
+            }
+            return;
+        }
+        // Várias: a próxima do grupo depois da que está em uso.
+        let k = ativa.as_ref().and_then(|a| ws.iter().position(|w| w == a)).map(|k| (k + 1) % ws.len()).unwrap_or(0);
+        let w = ws[k].clone();
+        if self.painel.esta_minimizada(&w) {
+            self.desminimizar(&w);
+        } else {
+            self.focar_janela(&w);
         }
     }
 
@@ -831,6 +882,17 @@ impl<B: Backend> AnvilState<B> {
 /// Pede ao serviço do sistema (ararinha-sistema, root) para desligar,
 /// reiniciar ou dormir: a sessão do usuário não tem permissão para chamar
 /// o systemctl. Toca o som antes, numa thread, sem travar a tela.
+/// Pede para a janela fechar (xdg ou X11).
+pub fn fechar(w: &WindowElement) {
+    if let Some(t) = w.0.toplevel() {
+        t.send_close();
+    }
+    #[cfg(feature = "xwayland")]
+    if let Some(x) = w.0.x11_surface() {
+        let _ = x.close();
+    }
+}
+
 pub fn pedir_sistema(pedido: &'static str, som: Option<&'static str>) {
     std::thread::spawn(move || {
         // O som toca junto, mas não pode segurar o pedido (se o PipeWire

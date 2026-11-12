@@ -262,8 +262,57 @@ const ICONES_AREA: [(&str, &str); 3] = [
     ),
 ];
 /// Apps fixados na barra de tarefas: id do .desktop.
-pub const FIXADOS: [&str; 1] = ["explorador"];
-const FIXADO_L: i32 = 40;
+/// Barra no meio (como no Windows 11) ou à esquerda.
+pub static CENTRO: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+/// Botões com o nome do app (barra "grande", como no Windows 10).
+pub static ROTULOS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Apps fixados: chave "fixados" (ids separados por vírgula). Sem ela, o
+/// Explorador e o navegador (se instalado).
+pub fn ler_fixados() -> Vec<String> {
+    if let Some(v) = ler_chave("fixados") {
+        return v.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect();
+    }
+    let mut v = vec!["explorador".to_string()];
+    let casa = std::env::var("HOME").unwrap_or_default();
+    for id in ["org.chromium.Chromium", "com.google.Chrome", "org.mozilla.firefox", "com.brave.Browser"] {
+        let user = format!("{casa}/.local/share/flatpak/exports/share/applications/{id}.desktop");
+        let sis = format!("/var/lib/flatpak/exports/share/applications/{id}.desktop");
+        if std::path::Path::new(&user).exists() || std::path::Path::new(&sis).exists() {
+            v.push(id.to_string());
+            break;
+        }
+    }
+    v
+}
+
+/// Alinhamento e nomes nos botões (Configurações › Personalização).
+pub fn ler_opcoes_barra() {
+    use std::sync::atomic::Ordering::Relaxed;
+    CENTRO.store(ler_chave("barra_alinhamento").as_deref() != Some("esquerda"), Relaxed);
+    ROTULOS.store(ler_chave("barra_rotulos").as_deref() == Some("sim"), Relaxed);
+}
+
+/// Um botão da barra: um app (fixado ou aberto) e as janelas dele.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Grupo {
+    /// Índice em `fixados`, se o app está fixado.
+    pub fixado: Option<usize>,
+    /// Índice em `apps`.
+    pub app: Option<usize>,
+    /// Índices em `ordem`.
+    pub janelas: Vec<usize>,
+    pub nome: String,
+}
+
+/// Prévia de janela (miniatura ao passar o mouse num botão da barra).
+const PREVIA_L: i32 = 220;
+const PREVIA_A: i32 = 160;
+
+thread_local! {
+    /// Janelas a desenhar em miniatura neste quadro, e onde (lógico).
+    pub static PREVIAS: std::cell::RefCell<Vec<(WindowElement, Rectangle<i32, Logical>)>> = const { std::cell::RefCell::new(Vec::new()) };
+}
 const ICONE_L: i32 = 92;
 const ICONE_A: i32 = 98;
 const AREA_X: i32 = 10;
@@ -273,7 +322,13 @@ const AREA_Y: i32 = 12;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Alvo {
     Iniciar,
+    /// Botão da barra (índice em `grupos()`).
     Tarefa(usize),
+    /// Miniatura na prévia da barra: abre a janela (índice em `ordem`).
+    Previa(usize),
+    /// O "x" da miniatura: fecha a janela.
+    PreviaFechar(usize),
+    PreviaPainel,
     Barra,
     App(usize),
     Sair,
@@ -293,8 +348,6 @@ pub enum Alvo {
     SomBarra(u16),
     SomMudo,
     SomPainel,
-    /// App fixado na barra (atalho ao lado do botão iniciar).
-    Fixado(usize),
     /// Ícone de rede na bandeja e o painel dele.
     Rede,
     RedePainel,
@@ -497,6 +550,11 @@ pub struct Painel {
     pub historico: Vec<(String, String, String, Option<String>)>,
     pub nao_perturbe: bool,
     central_buf: Option<(String, MemoryRenderBuffer)>,
+    /// Apps fixados na barra (ids).
+    pub fixados: Vec<String>,
+    /// Prévia: grupo sob o mouse e desde quando.
+    previa: Option<(usize, std::time::Instant)>,
+    previa_buf: Option<(String, MemoryRenderBuffer)>,
     /// Win+V aberto.
     pub area_aberta: bool,
     transf_buf: Option<(String, MemoryRenderBuffer)>,
@@ -532,6 +590,7 @@ impl Default for Painel {
     fn default() -> Self {
         desenho::tema::definir_escuro(ler_chave("tema").as_deref() == Some("escuro"));
         desenho::tema::definir_destaque(ler_chave("destaque").as_deref().unwrap_or("azul"));
+        ler_opcoes_barra();
         Painel {
             menu_aberto: false,
             segurando: false,
@@ -572,6 +631,9 @@ impl Default for Painel {
             central_buf: None,
             area_aberta: false,
             transf_buf: None,
+            fixados: ler_fixados(),
+            previa: None,
+            previa_buf: None,
             alternador: None,
             indicador: None,
             indicador_buf: None,
@@ -645,28 +707,113 @@ impl Painel {
         altura() - 8
     }
 
-    fn fixados_x() -> i32 {
-        INICIAR_X + Self::iniciar_l() + 6
-    }
-
-    fn tarefas_x() -> i32 {
-        Self::fixados_x() + FIXADOS.len() as i32 * FIXADO_L + 10
+    /// Largura do botão só com ícone.
+    fn botao_l() -> i32 {
+        (altura() + 2).max(40)
     }
 
     /// App (em `apps`) de um fixado, pelo id do .desktop.
     pub fn app_fixado(&self, i: usize) -> Option<&App> {
-        let id = FIXADOS.get(i)?;
-        self.apps.as_ref()?.iter().find(|a| a.ids.first().map(|x| x == id).unwrap_or(false))
+        let id = self.fixados.get(i)?.to_lowercase();
+        self.apps.as_ref()?.iter().find(|a| a.ids.contains(&id) || a.exec.split_whitespace().next() == Some(id.as_str()))
     }
 
-    fn largura_tarefa(&self, largura_tela: i32) -> i32 {
-        let n = self.ordem.len().max(1) as i32;
-        let livre = largura_tela - Self::tarefas_x() - RELOGIO_L - BANDEJA_L - self.bandeja_l() - 8;
-        ((livre / n) - 4).clamp(48, TAREFA_MAX)
+    fn indice_app(&self, id: &str) -> Option<usize> {
+        let id = id.to_lowercase();
+        self.apps.as_ref()?.iter().position(|a| a.ids.contains(&id) || a.exec.split_whitespace().next() == Some(id.as_str()))
+    }
+
+    /// Botões da barra: fixados primeiro (com as janelas deles), depois os
+    /// outros apps abertos, um botão por app.
+    pub fn grupos(&self) -> Vec<Grupo> {
+        let mut gs: Vec<Grupo> = self
+            .fixados
+            .iter()
+            .enumerate()
+            .map(|(i, id)| {
+                let app = self.indice_app(id);
+                let nome = app.and_then(|a| self.apps.as_ref()?.get(a)).map(|a| a.nome.clone()).unwrap_or_else(|| id.clone());
+                Grupo { fixado: Some(i), app, janelas: Vec::new(), nome }
+            })
+            .collect();
+        for (j, w) in self.ordem.iter().enumerate() {
+            let app = self.app_da_janela(w);
+            if let Some(g) = app.and_then(|a| gs.iter_mut().find(|g| g.app == Some(a))) {
+                g.janelas.push(j);
+                continue;
+            }
+            let nome = app.and_then(|a| self.apps.as_ref()?.get(a)).map(|a| a.nome.clone()).unwrap_or_else(|| titulo(w));
+            gs.push(Grupo { fixado: None, app, janelas: vec![j], nome });
+        }
+        gs
+    }
+
+    /// Largura de cada botão (com nome, na barra grande).
+    fn larguras(&self, gs: &[Grupo], tela_w: i32) -> Vec<i32> {
+        let rot = ROTULOS.load(std::sync::atomic::Ordering::Relaxed);
+        let b = Self::botao_l();
+        if !rot {
+            return vec![b; gs.len()];
+        }
+        let com = gs.iter().filter(|g| !g.janelas.is_empty()).count().max(1) as i32;
+        let livre = tela_w - Self::iniciar_l() - RELOGIO_L - BANDEJA_L - self.bandeja_l() - 40 - (gs.len() as i32 - com) * (b + 4);
+        let lt = (livre / com - 4).clamp(b, TAREFA_MAX - 40);
+        gs.iter().map(|g| if g.janelas.is_empty() { b } else { lt }).collect()
+    }
+
+    /// Posição do botão Iniciar e de cada botão da barra.
+    fn layout(&self, gs: &[Grupo], tela_w: i32) -> (i32, Vec<(i32, i32)>) {
+        let ls = self.larguras(gs, tela_w);
+        let total = Self::iniciar_l() + 6 + ls.iter().map(|l| l + 4).sum::<i32>();
+        let limite = tela_w - RELOGIO_L - BANDEJA_L - self.bandeja_l() - 8;
+        let x0 = if CENTRO.load(std::sync::atomic::Ordering::Relaxed) {
+            ((tela_w - total) / 2).clamp(INICIAR_X, (limite - total).max(INICIAR_X))
+        } else {
+            INICIAR_X
+        };
+        let mut x = x0 + Self::iniciar_l() + 6;
+        let v = ls
+            .iter()
+            .map(|l| {
+                let r = (x, *l);
+                x += l + 4;
+                r
+            })
+            .collect();
+        (x0, v)
     }
 
     fn menu_origem(tela: Size<i32, Logical>) -> Point<i32, Logical> {
-        (MENU_MARGEM, tela.h - altura() - MENU_MARGEM - MENU_A).into()
+        let x = if CENTRO.load(std::sync::atomic::Ordering::Relaxed) { ((tela.w - MENU_L) / 2).max(MENU_MARGEM) } else { MENU_MARGEM };
+        (x, tela.h - altura() - MENU_MARGEM - MENU_A).into()
+    }
+
+    /// Onde fica a prévia do botão `g` e as miniaturas (índice em `ordem`).
+    fn previa_layout(&self, g: usize, tela: Size<i32, Logical>) -> Option<(Rectangle<i32, Logical>, Vec<(usize, Rectangle<i32, Logical>)>)> {
+        let gs = self.grupos();
+        let grupo = gs.get(g)?;
+        if grupo.janelas.is_empty() {
+            return None;
+        }
+        let (_, pos) = self.layout(&gs, tela.w);
+        let (bx, bl) = *pos.get(g)?;
+        let n = grupo.janelas.len() as i32;
+        let l = n * (PREVIA_L + 8) + 8;
+        let a = PREVIA_A + 16;
+        let x = (bx + bl / 2 - l / 2).clamp(4, (tela.w - l - 4).max(4));
+        let y = tela.h - altura() - a - 6;
+        let cards = grupo
+            .janelas
+            .iter()
+            .enumerate()
+            .map(|(k, j)| (*j, Rectangle::new((x + 8 + k as i32 * (PREVIA_L + 8), y + 8).into(), (PREVIA_L, PREVIA_A).into())))
+            .collect();
+        Some((Rectangle::new((x, y).into(), (l, a).into()), cards))
+    }
+
+    /// A prévia aparece depois de 0,4 s com o mouse parado num botão.
+    fn previa_visivel(&self) -> Option<usize> {
+        self.previa.filter(|(_, t)| t.elapsed().as_millis() >= 400).map(|(g, _)| g)
     }
 
     fn max_apps() -> usize {
@@ -1029,15 +1176,32 @@ impl Painel {
                 return Some(Alvo::Menu);
             }
         }
+        // Prévia das janelas de um botão da barra.
+        if let Some((caixa, cards)) = self.previa_visivel().and_then(|g| self.previa_layout(g, tela)) {
+            if caixa.contains((x, y)) {
+                for (j, r) in cards {
+                    if r.contains((x, y)) {
+                        if x >= r.loc.x + r.size.w - 30 && y < r.loc.y + 28 {
+                            return Some(Alvo::PreviaFechar(j));
+                        }
+                        return Some(Alvo::Previa(j));
+                    }
+                }
+                return Some(Alvo::PreviaPainel);
+            }
+        }
         if y < tela.h - altura() || y >= tela.h || x < 0 || x >= tela.w {
             return None;
         }
-        if (INICIAR_X..INICIAR_X + Self::iniciar_l()).contains(&x) {
+        let gs = self.grupos();
+        let (xi, pos) = self.layout(&gs, tela.w);
+        if (xi..xi + Self::iniciar_l()).contains(&x) {
             return Some(Alvo::Iniciar);
         }
-        let fx = Self::fixados_x();
-        if x >= fx && x < fx + FIXADOS.len() as i32 * FIXADO_L {
-            return Some(Alvo::Fixado(((x - fx) / FIXADO_L) as usize));
+        for (i, (bx, bl)) in pos.iter().enumerate() {
+            if x >= *bx && x < bx + bl {
+                return Some(Alvo::Tarefa(i));
+            }
         }
         if x >= tela.w - CANTO_L {
             return Some(Alvo::CantoArea);
@@ -1058,14 +1222,6 @@ impl Painel {
         }
         if (bx + BANDEJA_L..tela.w - CANTO_L).contains(&x) {
             return Some(Alvo::Relogio);
-        }
-        let lt = self.largura_tarefa(tela.w);
-        let tx = Self::tarefas_x();
-        if x >= tx {
-            let i = ((x - tx) / (lt + 4)) as usize;
-            if i < self.ordem.len() && (x - tx) % (lt + 4) < lt {
-                return Some(Alvo::Tarefa(i));
-            }
         }
         Some(Alvo::Barra)
     }
@@ -1123,6 +1279,56 @@ impl Painel {
             self.icone_sel = Some(i);
         }
         self.abrir_contexto(p, tela, itens);
+    }
+
+    pub fn apps_todos(&self) -> &[App] {
+        self.apps.as_deref().unwrap_or(&[])
+    }
+
+    pub fn fechar_previa(&mut self) {
+        self.previa = None;
+    }
+
+    /// Fixa ou desafixa um app na barra (grava na configuração da conta).
+    pub fn fixar(&mut self, id: &str, sim: bool) {
+        self.fixados.retain(|f| f != id);
+        if sim {
+            self.fixados.push(id.to_string());
+        }
+        gravar_chave("fixados", &self.fixados.join(","));
+        self.barra = None;
+    }
+
+    /// Botão direito num botão da barra: abrir outro, fixar, fechar.
+    pub fn contexto_grupo(&mut self, i: usize, p: Point<i32, Logical>, tela: Size<i32, Logical>) {
+        let gs = self.grupos();
+        let Some(g) = gs.get(i) else { return };
+        let app = g.app.and_then(|a| self.apps.as_ref()?.get(a)).cloned();
+        let id = g
+            .fixado
+            .and_then(|f| self.fixados.get(f).cloned())
+            .or_else(|| app.as_ref().and_then(|a| a.ids.first().cloned()));
+        let mut itens: Vec<(String, String)> = Vec::new();
+        if let Some(a) = &app {
+            itens.push((a.nome.clone(), a.exec.clone()));
+        }
+        if let Some(id) = &id {
+            if g.fixado.is_some() {
+                itens.push(("Desafixar da barra de tarefas".into(), format!("#desafixar:{id}")));
+            } else if app.is_some() {
+                itens.push(("Fixar na barra de tarefas".into(), format!("#fixar:{id}")));
+            }
+        }
+        if !g.janelas.is_empty() {
+            let todas = g.janelas.iter().map(|j| j.to_string()).collect::<Vec<_>>().join(",");
+            let rot = if g.janelas.len() > 1 { "Fechar todas as janelas" } else { "Fechar janela" };
+            itens.push((rot.into(), format!("#fechar:{todas}")));
+        }
+        if itens.is_empty() {
+            return self.contexto_barra(p, tela);
+        }
+        let v: Vec<(&str, &str)> = itens.iter().map(|(a, b)| (a.as_str(), b.as_str())).collect();
+        self.abrir_contexto(p, tela, v);
     }
 
     /// Botão direito na barra de tarefas.
@@ -1454,6 +1660,8 @@ impl Painel {
             crate::fundo::VERSAO.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             desenho::tema::definir_escuro(ler_chave("tema").as_deref() == Some("escuro"));
             desenho::tema::definir_destaque(ler_chave("destaque").as_deref().unwrap_or("azul"));
+            ler_opcoes_barra();
+            self.fixados = ler_fixados();
         }
         self.config_visto = (seg, v);
     }
@@ -1909,6 +2117,70 @@ impl Painel {
         self.ler_avisos();
         let mut elementos = Vec::new();
 
+        // Prévia das janelas: aparece com o mouse parado num botão da barra
+        // e fica enquanto ele estiver no botão ou na própria prévia.
+        match hover {
+            Some(Alvo::Tarefa(g)) => {
+                if self.previa.map(|(p, _)| p) != Some(g) {
+                    self.previa = Some((g, std::time::Instant::now()));
+                }
+            }
+            Some(Alvo::Previa(_) | Alvo::PreviaFechar(_) | Alvo::PreviaPainel) => {}
+            _ => self.previa = None,
+        }
+        if self.menu_aberto || self.menu_contexto.is_some() {
+            self.previa = None;
+        }
+        let mut miniaturas = Vec::new();
+        if let Some((caixa, cards)) = self.previa_visivel().and_then(|g| self.previa_layout(g, tela)) {
+            let chave = format!("{hover:?}|{caixa:?}|{}|{}", self.ordem.iter().map(titulo).collect::<Vec<_>>().join("|"), desenho::tema::escuro());
+            if self.previa_buf.as_ref().map(|(c, _)| c != &chave).unwrap_or(true) {
+                let mut t = Tela::nova(caixa.size.w, caixa.size.h);
+                let (l, a) = (caixa.size.w as f32, caixa.size.h as f32);
+                t.vidro(0.0, 0.0, l, a, 10.0, (caixa.loc.x, caixa.loc.y), tema::FUNDO().com_alfa(225));
+                t.contorno(0.5, 0.5, l - 1.0, a - 1.0, 1.0, tema::BORDA().com_alfa(170));
+                for (j, r) in &cards {
+                    let (cx, cy) = ((r.loc.x - caixa.loc.x) as f32, (r.loc.y - caixa.loc.y) as f32);
+                    let sobre = matches!(hover, Some(Alvo::Previa(k) | Alvo::PreviaFechar(k)) if k == *j);
+                    if sobre {
+                        t.retangulo(cx - 2.0, cy - 2.0, PREVIA_L as f32 + 4.0, PREVIA_A as f32 + 4.0, 8.0, tema::SUPERFICIE());
+                    }
+                    let nome = self.ordem.get(*j).map(titulo).unwrap_or_default();
+                    t.texto(cx + 6.0, cy + 18.0, 12.0, tema::TEXTO(), &desenho::encurtar(12.0, &nome, PREVIA_L as f32 - 40.0));
+                    // "x" para fechar.
+                    let fx = cx + PREVIA_L as f32 - 26.0;
+                    if hover == Some(Alvo::PreviaFechar(*j)) {
+                        t.retangulo(fx, cy + 2.0, 24.0, 22.0, 5.0, tema::ERRO());
+                    }
+                    let c = if hover == Some(Alvo::PreviaFechar(*j)) { tema::BRANCO() } else { tema::TEXTO_SECUNDARIO() };
+                    t.linha(fx + 8.0, cy + 9.0, fx + 16.0, cy + 17.0, 1.4, c);
+                    t.linha(fx + 16.0, cy + 9.0, fx + 8.0, cy + 17.0, 1.4, c);
+                }
+                self.previa_buf = Some((chave, t.em_buffer()));
+            }
+            if let Some((_, buf)) = &self.previa_buf {
+                if let Ok(e) = MemoryRenderBufferRenderElement::from_buffer(
+                    renderer,
+                    caixa.loc.to_f64().to_physical(escala),
+                    buf,
+                    None,
+                    None,
+                    None,
+                    Kind::Unspecified,
+                ) {
+                    elementos.push(e);
+                }
+            }
+            // As miniaturas (desenhadas pelo render, por cima desta caixa).
+            for (j, r) in cards {
+                if let Some(w) = self.ordem.get(j) {
+                    let area = Rectangle::new((r.loc.x + 4, r.loc.y + 28).into(), (r.size.w - 8, r.size.h - 32).into());
+                    miniaturas.push((w.clone(), Rectangle::new(area.loc + geo.loc, area.size)));
+                }
+            }
+        }
+        PREVIAS.with(|p| *p.borrow_mut() = miniaturas);
+
         // Menu do botão direito: o primeiro da lista fica por cima de tudo.
         if let Some(m) = self.menu_contexto.clone() {
             let chave = format!("{:?}|{:?}|{hover:?}|{}", m.origem, m.itens, desenho::tema::escuro());
@@ -2140,7 +2412,17 @@ impl Painel {
             "{}|{}|{hover:?}|{}|{}|{}|{janelas:?}|{:?}|{}",
             tela.w,
             altura(), self.menu_aberto, self.relogio.1, self.relogio.2, self.som, self.som_aberto
-        ) + &format!("|{:?}|{}|{}|{}", self.rede, self.rede_aberta, self.bandeja_versao, self.central_aberta);
+        ) + &format!(
+            "|{:?}|{}|{}|{}|{:?}|{:?}|{}|{}",
+            self.rede,
+            self.rede_aberta,
+            self.bandeja_versao,
+            self.central_aberta,
+            self.previa_visivel(),
+            self.fixados,
+            CENTRO.load(std::sync::atomic::Ordering::Relaxed),
+            ROTULOS.load(std::sync::atomic::Ordering::Relaxed)
+        );
         if self.barra.as_ref().map(|(c, _)| c != &chave).unwrap_or(true) {
             let t = self.desenhar_barra(tela.w, tela.h, hover, &janelas);
             self.barra = Some((chave, t.em_buffer()));
@@ -2211,65 +2493,58 @@ impl Painel {
         let bh = hf - 8.0; // altura dos botões
         let meio = hf / 2.0;
 
+        let gs = self.grupos();
+        let (xi, pos) = self.layout(&gs, largura);
+        let fx = xi as f32;
+
         // Botão iniciar com o Mingau.
         let il = Self::iniciar_l() as f32;
         if self.menu_aberto || hover == Some(Alvo::Iniciar) {
-            t.retangulo(INICIAR_X as f32, 4.0, il, bh, 8.0, tema::BRANCO().com_alfa(150));
-            t.retangulo(INICIAR_X as f32, 4.0, il, bh, 8.0, tema::DESTAQUE().com_alfa(40));
+            t.retangulo(fx, 4.0, il, bh, 8.0, tema::BRANCO().com_alfa(150));
+            t.retangulo(fx, 4.0, il, bh, 8.0, tema::DESTAQUE().com_alfa(40));
         }
         if let Some(logo) = &self.logo {
             let lado = logo.width() as i32;
-            t.imagem(INICIAR_X + (Self::iniciar_l() - lado) / 2, (h - lado) / 2, logo);
+            t.imagem(xi + (Self::iniciar_l() - lado) / 2, (h - lado) / 2, logo);
         } else {
-            t.retangulo(INICIAR_X as f32 + 6.0, meio - 14.0, 28.0, 28.0, 14.0, tema::DESTAQUE());
+            t.retangulo(fx + 6.0, meio - 14.0, 28.0, 28.0, 14.0, tema::DESTAQUE());
         }
 
-        // Apps fixados (ícone só).
-        for i in 0..FIXADOS.len() {
-            let x = (Self::fixados_x() + i as i32 * FIXADO_L) as f32;
-            if hover == Some(Alvo::Fixado(i)) {
-                t.retangulo(x + 2.0, 4.0, FIXADO_L as f32 - 4.0, bh, 6.0, tema::BRANCO().com_alfa(130));
-            }
-            let app = self.app_fixado(i);
-            let nome = app.map(|a| a.nome.clone()).unwrap_or_else(|| FIXADOS[i].to_string());
-            let lado = (hf * 0.55).round().clamp(18.0, 30.0);
-            self.desenhar_icone(&mut t, app, &nome, x + (FIXADO_L as f32 - lado) / 2.0, meio - lado / 2.0, lado);
-        }
-        t.retangulo(
-            (Self::tarefas_x() - 6) as f32,
-            hf * 0.28,
-            1.0,
-            hf * 0.44,
-            0.0,
-            tema::TEXTO_SECUNDARIO().com_alfa(70),
-        );
-
-        // Um botão por janela.
-        let lt = self.largura_tarefa(largura);
-        let icone = (hf * 0.5).round().clamp(18.0, 28.0);
+        // Um botão por app (fixado ou aberto), como no Windows 11.
+        let icone = (hf * 0.52).round().clamp(18.0, 30.0);
         let tam_txt = if h < 42 { 12.0 } else { 13.0 };
-        for (i, (nome, ativa, minimizada, app)) in janelas.iter().enumerate() {
-            let x = (Self::tarefas_x() + i as i32 * (lt + 4)) as f32;
-            if *ativa && !*minimizada {
-                t.retangulo(x, 4.0, lt as f32, bh, 6.0, tema::BRANCO().com_alfa(170));
-                t.retangulo(x, 4.0, lt as f32, bh, 6.0, tema::DESTAQUE().com_alfa(45));
-            } else if hover == Some(Alvo::Tarefa(i)) {
-                t.retangulo(x, 4.0, lt as f32, bh, 6.0, tema::BRANCO().com_alfa(120));
+        let previa = self.previa_visivel();
+        for (i, g) in gs.iter().enumerate() {
+            let Some((bx, bl)) = pos.get(i).copied() else { break };
+            let (x, lb) = (bx as f32, bl as f32);
+            let ativa = g.janelas.iter().any(|j| janelas.get(*j).map(|w| w.1 && !w.2).unwrap_or(false));
+            let aberta = !g.janelas.is_empty();
+            if ativa {
+                t.retangulo(x, 4.0, lb, bh, 6.0, tema::BRANCO().com_alfa(170));
+                t.retangulo(x, 4.0, lb, bh, 6.0, tema::DESTAQUE().com_alfa(45));
+            } else if hover == Some(Alvo::Tarefa(i)) || previa == Some(i) {
+                t.retangulo(x, 4.0, lb, bh, 6.0, tema::BRANCO().com_alfa(120));
             }
-            // Indicador embaixo: longo na ativa, curto nas outras.
-            let (il, cor) = if *ativa && !*minimizada {
-                (20.0, tema::DESTAQUE())
-            } else {
-                (8.0, tema::TEXTO_SECUNDARIO().com_alfa(150))
-            };
-            t.retangulo(x + lt as f32 / 2.0 - il / 2.0, hf - 6.0, il, 3.0, 1.5, cor);
-
-            let app = (*app).and_then(|i| self.apps.as_ref()?.get(i));
-            self.desenhar_icone(&mut t, app, nome, x + 8.0, meio - icone / 2.0, icone);
-            if lt > 60 {
-                let txt = desenho::encurtar(tam_txt, nome, lt as f32 - icone - 24.0);
-                let cor = if *minimizada { tema::TEXTO_SECUNDARIO() } else { tema::TEXTO() };
-                t.texto_com_brilho(x + icone + 16.0, meio + tam_txt * 0.36, tam_txt, cor, &txt);
+            // Indicador embaixo: longo no app em uso, curto nos abertos.
+            if aberta {
+                let (il, cor) = if ativa { (16.0, tema::DESTAQUE()) } else { (6.0, tema::TEXTO_SECUNDARIO().com_alfa(170)) };
+                t.retangulo(x + lb / 2.0 - il / 2.0, hf - 6.0, il, 3.0, 1.5, cor);
+            }
+            let app = g.app.and_then(|a| self.apps.as_ref()?.get(a));
+            let rotulo = ROTULOS.load(std::sync::atomic::Ordering::Relaxed) && aberta && lb > Self::botao_l() as f32;
+            let ix = if rotulo { x + 10.0 } else { x + (lb - icone) / 2.0 };
+            self.desenhar_icone(&mut t, app, &g.nome, ix, meio - icone / 2.0, icone);
+            if rotulo {
+                let nome = if g.janelas.len() == 1 { janelas.get(g.janelas[0]).map(|w| w.0.clone()).unwrap_or_default() } else { g.nome.clone() };
+                let txt = desenho::encurtar(tam_txt, &nome, lb - icone - 26.0);
+                t.texto_com_brilho(x + icone + 18.0, meio + tam_txt * 0.36, tam_txt, tema::TEXTO(), &txt);
+            }
+            // Vários abertos do mesmo app: um número no canto.
+            if g.janelas.len() > 1 {
+                let n = g.janelas.len().to_string();
+                t.retangulo(ix + icone - 8.0, meio - icone / 2.0 - 3.0, 14.0, 14.0, 7.0, tema::DESTAQUE());
+                let ln = desenho::medir(9.5, &n);
+                t.texto(ix + icone - 1.0 - ln / 2.0, meio - icone / 2.0 + 7.5, 9.5, tema::BRANCO(), &n);
             }
         }
 

@@ -184,6 +184,24 @@ where
             .into_iter()
             .map(OutputRenderElements::from)
             .collect::<Vec<_>>();
+        // Miniaturas da prévia da barra: por cima da interface.
+        let previas = crate::painel::PREVIAS.with(|p| p.borrow().clone());
+        if !previas.is_empty() {
+            let escala = output.current_scale().fractional_scale();
+            let origem = space.output_geometry(output).map(|g| g.loc).unwrap_or_default();
+            let comportamento = ConstrainBehavior {
+                reference: ConstrainReference::BoundingBox,
+                behavior: ConstrainScaleBehavior::Fit,
+                align: ConstrainAlign::CENTER,
+            };
+            for (w, r) in previas {
+                let r = Rectangle::new(r.loc - origem, r.size);
+                output_render_elements.extend(
+                    constrain_space_element(renderer, &w, r.loc, 1.0, escala, r, comportamento)
+                        .map(OutputRenderElements::Preview),
+                );
+            }
+        }
         let custom_n = output_render_elements.len();
 
         // Barra de tarefas e menu: acima das janelas, abaixo do cursor.
