@@ -522,7 +522,15 @@ impl<B: Backend> AnvilState<B> {
                     fechar(&w);
                 }
             }
-            Alvo::PreviaPainel => {}
+            Alvo::PreviaPainel | Alvo::LayoutPainel => {}
+            Alvo::Layout(k, z) => {
+                if let Some((w, _, _)) = self.painel.encaixe.take() {
+                    if let Some((_, zona)) = painel::zonas_layout(k).get(z as usize) {
+                        self.focar_janela(&w);
+                        self.encaixar_em(&w, *zona);
+                    }
+                }
+            }
             Alvo::App(i) => {
                 self.painel.menu_aberto = false;
                 if let Some(exec) = self.painel.apps_visiveis().get(i).map(|a| a.exec.clone()) {

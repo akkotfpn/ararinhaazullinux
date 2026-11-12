@@ -52,7 +52,7 @@ pub struct HeaderBar {
 }
 
 pub const HEADER_BAR_HEIGHT: i32 = 32;
-const BOTAO_L: u32 = 46;
+pub const BOTAO_L: u32 = 46;
 const CLIQUE_DUPLO: Duration = Duration::from_millis(400);
 
 impl HeaderBar {

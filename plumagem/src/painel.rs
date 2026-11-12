@@ -17,7 +17,7 @@ use smithay::{
         },
         ImportMem, Renderer,
     },
-    desktop::Space,
+    desktop::{space::SpaceElement, Space},
     output::Output,
     utils::{IsAlive, Logical, Point, Rectangle, Size},
     wayland::{compositor, shell::xdg::XdgToplevelSurfaceData},
@@ -306,6 +306,26 @@ pub struct Grupo {
     pub nome: String,
 }
 
+/// Menu de layouts de encaixe (como o do Windows 11).
+const LAYOUT_TILE: (i32, i32) = (72, 48);
+const LAYOUT_L: i32 = 3 * (72 + 10) + 10;
+const LAYOUT_A: i32 = 48 + 20 + 22;
+
+/// Zonas de cada layout: (x, y, l, a) em frações do quadrinho, e a região
+/// de encaixe (coluna, linha) que ela representa.
+pub fn zonas_layout(layout: u8) -> Vec<((f32, f32, f32, f32), (i8, i8))> {
+    match layout {
+        0 => vec![((0.0, 0.0, 0.5, 1.0), (-1, 0)), ((0.5, 0.0, 0.5, 1.0), (1, 0))],
+        1 => vec![((0.0, 0.0, 0.5, 1.0), (-1, 0)), ((0.5, 0.0, 0.5, 0.5), (1, -1)), ((0.5, 0.5, 0.5, 0.5), (1, 1))],
+        _ => vec![
+            ((0.0, 0.0, 0.5, 0.5), (-1, -1)),
+            ((0.5, 0.0, 0.5, 0.5), (1, -1)),
+            ((0.0, 0.5, 0.5, 0.5), (-1, 1)),
+            ((0.5, 0.5, 0.5, 0.5), (1, 1)),
+        ],
+    }
+}
+
 /// Prévia de janela (miniatura ao passar o mouse num botão da barra).
 const PREVIA_L: i32 = 220;
 const PREVIA_A: i32 = 160;
@@ -330,6 +350,9 @@ pub enum Alvo {
     /// O "x" da miniatura: fecha a janela.
     PreviaFechar(usize),
     PreviaPainel,
+    /// Layouts de encaixe (passar o mouse no maximizar): layout e zona.
+    Layout(u8, u8),
+    LayoutPainel,
     Barra,
     App(usize),
     Sair,
@@ -553,6 +576,10 @@ pub struct Painel {
     central_buf: Option<(String, MemoryRenderBuffer)>,
     /// Apps fixados na barra (ids).
     pub fixados: Vec<String>,
+    /// Layouts de encaixe: janela, onde fica o menu e desde quando o mouse
+    /// está no botão maximizar.
+    pub encaixe: Option<(WindowElement, Point<i32, Logical>, std::time::Instant)>,
+    encaixe_buf: Option<(String, MemoryRenderBuffer)>,
     /// Prévia: grupo sob o mouse e desde quando.
     previa: Option<(usize, std::time::Instant)>,
     previa_buf: Option<(String, MemoryRenderBuffer)>,
@@ -633,6 +660,8 @@ impl Default for Painel {
             area_aberta: false,
             transf_buf: None,
             fixados: ler_fixados(),
+            encaixe: None,
+            encaixe_buf: None,
             previa: None,
             previa_buf: None,
             alternador: None,
@@ -810,6 +839,43 @@ impl Painel {
             .map(|(k, j)| (*j, Rectangle::new((x + 8 + k as i32 * (PREVIA_L + 8), y + 8).into(), (PREVIA_L, PREVIA_A).into())))
             .collect();
         Some((Rectangle::new((x, y).into(), (l, a).into()), cards))
+    }
+
+    /// O menu de layouts aparece depois de 0,5 s com o mouse no maximizar.
+    fn encaixe_visivel(&self) -> Option<Point<i32, Logical>> {
+        self.encaixe.as_ref().filter(|(_, _, t)| t.elapsed().as_millis() >= 500).map(|(_, o, _)| *o)
+    }
+
+    /// O mouse está no botão maximizar de alguma janela? Abre/mantém o
+    /// menu de layouts (`hover` é o que a interface tem sob o mouse).
+    fn ver_encaixe(&mut self, space: &Space<WindowElement>, ponteiro: Point<f64, Logical>, hover: Option<Alvo>, tela: Rectangle<i32, Logical>) {
+        if matches!(hover, Some(Alvo::Layout(..) | Alvo::LayoutPainel)) {
+            return;
+        }
+        use crate::shell::ssd::{BOTAO_L, HEADER_BAR_HEIGHT};
+        let p = ponteiro.to_i32_round::<i32>();
+        // A janela de cima sob o mouse.
+        let sob = space.elements().rev().find(|w| space.element_bbox(w).map(|b| b.contains(p)).unwrap_or(false)).cloned();
+        let no_botao = sob.and_then(|w| {
+            if !w.decoration_state().is_ssd || hover.is_some() {
+                return None;
+            }
+            let loc = space.element_location(&w)?;
+            let largura = w.geometry().size.w;
+            let b = BOTAO_L as i32;
+            let (bx, by) = (loc.x + largura - 2 * b, loc.y);
+            (p.x >= bx && p.x < bx + b && p.y >= by && p.y < by + HEADER_BAR_HEIGHT).then_some((w, bx, by))
+        });
+        match no_botao {
+            Some((w, bx, by)) => {
+                if self.encaixe.as_ref().map(|(e, _, _)| e != &w).unwrap_or(true) {
+                    let x = (bx + BOTAO_L as i32 / 2 - LAYOUT_L / 2).clamp(tela.loc.x + 4, tela.loc.x + tela.size.w - LAYOUT_L - 4) - tela.loc.x;
+                    let y = (by + HEADER_BAR_HEIGHT + 2 - tela.loc.y).min(tela.size.h - LAYOUT_A - altura() - 4);
+                    self.encaixe = Some((w, (x, y).into(), std::time::Instant::now()));
+                }
+            }
+            None => self.encaixe = None,
+        }
     }
 
     /// A prévia aparece depois de 0,4 s com o mouse parado num botão.
@@ -1175,6 +1241,26 @@ impl Painel {
                     }
                 }
                 return Some(Alvo::Menu);
+            }
+        }
+        // Menu de layouts de encaixe.
+        if let Some(o) = self.encaixe_visivel() {
+            let (lx, ly) = (x - o.x, y - o.y);
+            if lx >= 0 && ly >= 0 && lx < LAYOUT_L && ly < LAYOUT_A {
+                let (tw, th) = LAYOUT_TILE;
+                for k in 0..3u8 {
+                    let tx = 10 + k as i32 * (tw + 10);
+                    let ty = 30;
+                    if lx >= tx && lx < tx + tw && ly >= ty && ly < ty + th {
+                        let (fx, fy) = ((lx - tx) as f32 / tw as f32, (ly - ty) as f32 / th as f32);
+                        for (z, ((zx, zy, zl, za), _)) in zonas_layout(k).iter().enumerate() {
+                            if fx >= *zx && fx < zx + zl && fy >= *zy && fy < zy + za {
+                                return Some(Alvo::Layout(k, z as u8));
+                            }
+                        }
+                    }
+                }
+                return Some(Alvo::LayoutPainel);
             }
         }
         // Prévia das janelas de um botão da barra.
@@ -2181,6 +2267,43 @@ impl Painel {
             }
         }
         PREVIAS.with(|p| *p.borrow_mut() = miniaturas);
+
+        self.ver_encaixe(space, ponteiro, hover, geo);
+        if let Some(o) = self.encaixe_visivel() {
+            let chave = format!("{hover:?}|{}|{}", desenho::tema::escuro(), desenho::tema::destaque_atual());
+            if self.encaixe_buf.as_ref().map(|(c, _)| c != &chave).unwrap_or(true) {
+                let mut t = Tela::nova(LAYOUT_L, LAYOUT_A);
+                let (l, a) = (LAYOUT_L as f32, LAYOUT_A as f32);
+                t.vidro(0.0, 0.0, l, a, 10.0, (o.x, o.y), tema::FUNDO().com_alfa(230));
+                t.texto(12.0, 20.0, 11.5, tema::TEXTO_SECUNDARIO(), "Encaixar a janela");
+                let (tw, th) = (LAYOUT_TILE.0 as f32, LAYOUT_TILE.1 as f32);
+                for k in 0..3u8 {
+                    let tx = 10.0 + k as f32 * (tw + 10.0);
+                    let ty = 30.0;
+                    t.retangulo(tx, ty, tw, th, 6.0, tema::BORDA());
+                    t.retangulo(tx + 1.0, ty + 1.0, tw - 2.0, th - 2.0, 5.0, tema::JANELA());
+                    for (z, ((zx, zy, zl, za), _)) in zonas_layout(k).iter().enumerate() {
+                        let sobre = hover == Some(Alvo::Layout(k, z as u8));
+                        let cor = if sobre { tema::DESTAQUE() } else { tema::SUPERFICIE() };
+                        t.retangulo(tx + 3.0 + zx * (tw - 6.0) + 1.0, ty + 3.0 + zy * (th - 6.0) + 1.0, zl * (tw - 6.0) - 2.0, za * (th - 6.0) - 2.0, 3.0, cor);
+                    }
+                }
+                self.encaixe_buf = Some((chave, t.em_buffer()));
+            }
+            if let Some((_, buf)) = &self.encaixe_buf {
+                if let Ok(e) = MemoryRenderBufferRenderElement::from_buffer(
+                    renderer,
+                    o.to_f64().to_physical(escala),
+                    buf,
+                    None,
+                    None,
+                    None,
+                    Kind::Unspecified,
+                ) {
+                    elementos.push(e);
+                }
+            }
+        }
 
         // Menu do botão direito: o primeiro da lista fica por cima de tudo.
         if let Some(m) = self.menu_contexto.clone() {
