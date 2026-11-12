@@ -83,6 +83,11 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             KeyAction::FecharJanela => self.fechar_janela_ativa(),
             KeyAction::MostrarAreaDeTrabalho => self.mostrar_area_de_trabalho(),
             KeyAction::Captura => crate::captura::pedir(),
+            KeyAction::Central => {
+                self.painel.central_aberta = !self.painel.central_aberta;
+                self.painel.menu_aberto = false;
+                self.painel.area_aberta = false;
+            }
             KeyAction::AreaTransferencia => {
                 self.painel.area_aberta = !self.painel.area_aberta;
                 self.painel.central_aberta = false;
@@ -753,6 +758,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                     | KeyAction::Captura
                     | KeyAction::Recorte
                     | KeyAction::AreaTransferencia
+                    | KeyAction::Central
                     | KeyAction::JanelaAnterior
                     | KeyAction::Midia(_)
                     | KeyAction::Encaixar(_)
@@ -982,6 +988,7 @@ impl AnvilState<UdevData> {
                     | KeyAction::Captura
                     | KeyAction::Recorte
                     | KeyAction::AreaTransferencia
+                    | KeyAction::Central
                     | KeyAction::JanelaAnterior
                     | KeyAction::Midia(_)
                     | KeyAction::Encaixar(_)
@@ -1576,6 +1583,8 @@ enum KeyAction {
     Recorte,
     /// Win+V: histórico da área de transferência.
     AreaTransferencia,
+    /// Win+A / Win+N: central de notificações.
+    Central,
     RotateOutput,
     ToggleTint,
     ToggleDecorations,
@@ -1612,6 +1621,23 @@ fn process_keyboard_shortcut(modifiers: ModifiersState, keysym: Keysym) -> Optio
     } else if keysym == Keysym::Print {
         // Print Screen: salva a tela em Imagens/Capturas de Tela
         Some(KeyAction::Captura)
+    } else if modifiers.ctrl && modifiers.shift && keysym == Keysym::Escape
+        || modifiers.ctrl && modifiers.alt && keysym == Keysym::Delete
+    {
+        // Ctrl+Shift+Esc (ou Ctrl+Alt+Del): Gerenciador de Tarefas
+        Some(KeyAction::Run("tarefas".into()))
+    } else if modifiers.logo && (keysym == Keysym::i || keysym == Keysym::I) {
+        // Win+I: Configurações
+        Some(KeyAction::Run("configuracoes".into()))
+    } else if modifiers.logo && !modifiers.shift && (keysym == Keysym::m || keysym == Keysym::M) {
+        // Win+M: minimizar tudo
+        Some(KeyAction::MostrarAreaDeTrabalho)
+    } else if modifiers.logo && (keysym == Keysym::a || keysym == Keysym::A || keysym == Keysym::n || keysym == Keysym::N) {
+        // Win+A / Win+N: central de notificações e ações rápidas
+        Some(KeyAction::Central)
+    } else if modifiers.logo && (keysym == Keysym::r || keysym == Keysym::R) && !modifiers.shift {
+        // Win+R: "Executar" é a busca do menu Iniciar
+        Some(KeyAction::Menu)
     } else if modifiers.alt && keysym == Keysym::F4 {
         Some(KeyAction::FecharJanela)
     } else if (modifiers.logo || modifiers.ctrl && modifiers.alt) && (keysym == Keysym::d || keysym == Keysym::D) {
@@ -1647,18 +1673,6 @@ fn process_keyboard_shortcut(modifiers: ModifiersState, keysym: Keysym) -> Optio
         Some(KeyAction::Run("alacritty".into()))
     } else if modifiers.logo && (xkb::KEY_1..=xkb::KEY_9).contains(&keysym.raw()) {
         Some(KeyAction::Screen((keysym.raw() - xkb::KEY_1) as usize))
-    } else if modifiers.logo && modifiers.shift && keysym == Keysym::M {
-        Some(KeyAction::ScaleDown)
-    } else if modifiers.logo && modifiers.shift && keysym == Keysym::P {
-        Some(KeyAction::ScaleUp)
-    } else if modifiers.logo && modifiers.shift && keysym == Keysym::W {
-        Some(KeyAction::TogglePreview)
-    } else if modifiers.logo && modifiers.shift && keysym == Keysym::R {
-        Some(KeyAction::RotateOutput)
-    } else if modifiers.logo && modifiers.shift && keysym == Keysym::T {
-        Some(KeyAction::ToggleTint)
-    } else if modifiers.logo && modifiers.shift && keysym == Keysym::D {
-        Some(KeyAction::ToggleDecorations)
     } else {
         None
     }

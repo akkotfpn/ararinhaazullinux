@@ -16,6 +16,18 @@ use std::time::{Duration, Instant};
 pub use desenho::{tema, Cor, Tela};
 pub use smithay_client_toolkit::seat::keyboard::Keysym;
 use smithay_client_toolkit::reexports::protocols::wp::viewporter::client::{wp_viewport, wp_viewporter};
+use smithay_client_toolkit::{
+    data_device_manager::{
+        data_device::{DataDevice, DataDeviceHandler},
+        data_offer::{DataOfferHandler, DragOffer},
+        data_source::{CopyPasteSource, DataSourceHandler},
+        DataDeviceManagerState, WritePipe,
+    },
+    delegate_data_device,
+    reexports::client::protocol::{wl_data_device, wl_data_device_manager::DndAction, wl_data_source},
+};
+
+const TIPOS_TEXTO: [&str; 4] = ["text/plain;charset=utf-8", "UTF8_STRING", "text/plain", "STRING"];
 
 use smithay_client_toolkit::{
     compositor::{CompositorHandler, CompositorState},
@@ -68,7 +80,30 @@ pub enum Tecla {
     Avancar,
     /// Alt+Cima (pasta de cima).
     Subir,
+    /// Texto que chegou da área de transferência (depois de `pedir_colar`).
+    Colado(String),
     Outra(Keysym),
+}
+
+/// Pedidos dos apps à área de transferência, atendidos depois do quadro.
+enum PedidoArea {
+    Copiar(String),
+    Colar,
+}
+
+thread_local! {
+    static PEDIDOS_AREA: std::cell::RefCell<Vec<PedidoArea>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// Copia o texto para a área de transferência (Ctrl+C).
+pub fn copiar(texto: &str) {
+    PEDIDOS_AREA.with(|p| p.borrow_mut().push(PedidoArea::Copiar(texto.to_string())));
+}
+
+/// Pede o texto da área de transferência (Ctrl+V); ele chega num dos
+/// próximos quadros como `Tecla::Colado`.
+pub fn pedir_colar() {
+    PEDIDOS_AREA.with(|p| p.borrow_mut().push(PedidoArea::Colar));
 }
 
 /// O que o app recebe a cada quadro para desenhar e reagir.
@@ -272,6 +307,9 @@ pub fn executar(opcoes: Opcoes, app: Box<dyn App>) {
     // wp_viewporter: com escala 125%, a janela manda um buffer 1,25× maior
     // e diz ao compositor o tamanho lógico; o texto sai nítido, sem esticar.
     let viewporter: Option<wp_viewporter::WpViewporter> = globals.bind(&qh, 1..=1, ()).ok();
+    let area = DataDeviceManagerState::bind(&globals, &qh).ok();
+    // O texto colado chega por uma thread (lendo o pipe) e entra no laço.
+    let (colar_tx, colar_rx) = smithay_client_toolkit::reexports::calloop::channel::channel::<String>();
     let surface = compositor.create_surface(&qh);
     let viewport = viewporter.as_ref().map(|v| v.get_viewport(&surface, &qh, ()));
     let window = xdg_shell.create_window(surface, WindowDecorations::RequestServer, &qh);
@@ -316,7 +354,19 @@ pub fn executar(opcoes: Opcoes, app: Box<dyn App>) {
         tela: Tela::nova(l as i32, a as i32),
         z: if viewport.is_some() { ler_escala() } else { 1.0 },
         viewport,
+        area,
+        dispositivo: None,
+        fonte: None,
+        copiado: String::new(),
+        serial: 0,
+        colar_tx,
     };
+    let _ = event_loop.handle().insert_source(colar_rx, |ev, _, janela: &mut Janela| {
+        if let smithay_client_toolkit::reexports::calloop::channel::Event::Msg(t) = ev {
+            janela.teclas.push(Tecla::Colado(t));
+            janela.sujo = true;
+        }
+    });
 
     aplicar_tema();
     // O tema mudou nas Configurações? O inotify avisa; sem ele, confere a
@@ -408,6 +458,14 @@ struct Janela {
     /// Escala da tela (1.0 = 100%).
     z: f32,
     viewport: Option<wp_viewport::WpViewport>,
+    /// Área de transferência (Ctrl+C / Ctrl+V).
+    area: Option<DataDeviceManagerState>,
+    dispositivo: Option<DataDevice>,
+    fonte: Option<CopyPasteSource>,
+    copiado: String,
+    /// Serial do último clique/tecla (o compositor exige para copiar).
+    serial: u32,
+    colar_tx: smithay_client_toolkit::reexports::calloop::channel::Sender<String>,
 }
 
 impl Janela {
@@ -445,6 +503,12 @@ impl Janela {
         };
         self.app.desenhar(&mut ui);
         let (fechar, redesenhar, titulo) = (ui.fechar, ui.redesenhar, ui.titulo.take());
+        for p in PEDIDOS_AREA.with(|p| std::mem::take(&mut *p.borrow_mut())) {
+            match p {
+                PedidoArea::Copiar(t) => self.copiar(qh, t),
+                PedidoArea::Colar => self.colar(),
+            }
+        }
         // Ainda há rolagem a entregar: outro quadro logo.
         let redesenhar = redesenhar || self.rolagem.abs() > 0.0;
         if self.rolagem.abs() > 0.0 && ui.acordar_em.is_none() {
@@ -511,6 +575,73 @@ impl Janela {
     }
 }
 
+impl Janela {
+    fn copiar(&mut self, qh: &QueueHandle<Self>, texto: String) {
+        let (Some(area), Some(disp)) = (&self.area, &self.dispositivo) else { return };
+        let fonte = area.create_copy_paste_source(qh, TIPOS_TEXTO);
+        fonte.set_selection(disp, self.serial);
+        self.copiado = texto;
+        self.fonte = Some(fonte);
+    }
+
+    fn colar(&mut self) {
+        // A própria janela é a dona: não precisa do pipe.
+        if self.fonte.is_some() {
+            let _ = self.colar_tx.send(self.copiado.clone());
+            return;
+        }
+        let Some(disp) = &self.dispositivo else { return };
+        let Some(oferta) = disp.data().selection_offer() else { return };
+        let tipo = oferta.with_mime_types(|m| TIPOS_TEXTO.iter().find(|t| m.iter().any(|x| x == **t)).map(|t| t.to_string()));
+        let Some(tipo) = tipo else { return };
+        let Ok(mut pipe) = oferta.receive(tipo) else { return };
+        let tx = self.colar_tx.clone();
+        std::thread::spawn(move || {
+            use std::io::Read;
+            let mut b = Vec::new();
+            let _ = (&mut pipe).take(4 * 1024 * 1024).read_to_end(&mut b);
+            if let Ok(t) = String::from_utf8(b) {
+                if !t.is_empty() {
+                    let _ = tx.send(t.replace("\r\n", "\n"));
+                }
+            }
+        });
+    }
+}
+
+impl DataDeviceHandler for Janela {
+    fn enter(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_data_device::WlDataDevice, _: f64, _: f64, _: &wl_surface::WlSurface) {}
+    fn leave(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_data_device::WlDataDevice) {}
+    fn motion(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_data_device::WlDataDevice, _: f64, _: f64) {}
+    fn selection(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_data_device::WlDataDevice) {}
+    fn drop_performed(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_data_device::WlDataDevice) {}
+}
+
+impl DataOfferHandler for Janela {
+    fn source_actions(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &mut DragOffer, _: DndAction) {}
+    fn selected_action(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &mut DragOffer, _: DndAction) {}
+}
+
+impl DataSourceHandler for Janela {
+    fn accept_mime(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_data_source::WlDataSource, _: Option<String>) {}
+    fn send_request(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_data_source::WlDataSource, _: String, mut fd: WritePipe) {
+        let t = self.copiado.clone();
+        std::thread::spawn(move || {
+            use std::io::Write;
+            let _ = fd.write_all(t.as_bytes());
+        });
+    }
+    fn cancelled(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_data_source::WlDataSource) {
+        // Outro app copiou algo: a área não é mais nossa.
+        self.fonte = None;
+    }
+    fn dnd_dropped(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_data_source::WlDataSource) {}
+    fn dnd_finished(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_data_source::WlDataSource) {}
+    fn action(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_data_source::WlDataSource, _: DndAction) {}
+}
+
+delegate_data_device!(Janela);
+
 impl CompositorHandler for Janela {
     fn scale_factor_changed(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_surface::WlSurface, _: i32) {}
     fn transform_changed(
@@ -560,6 +691,9 @@ impl SeatHandler for Janela {
     fn new_capability(&mut self, _: &Connection, qh: &QueueHandle<Self>, seat: wl_seat::WlSeat, cap: Capability) {
         if cap == Capability::Keyboard && self.teclado.is_none() {
             self.teclado = self.seat_state.get_keyboard(qh, &seat, None).ok();
+            if self.dispositivo.is_none() {
+                self.dispositivo = self.area.as_ref().map(|a| a.get_data_device(qh, &seat));
+            }
         }
         if cap == Capability::Pointer && self.ponteiro.is_none() {
             self.ponteiro = self.seat_state.get_pointer(qh, &seat).ok();
@@ -595,10 +729,12 @@ impl KeyboardHandler for Janela {
     fn leave(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_keyboard::WlKeyboard, _: &wl_surface::WlSurface, _: u32) {
         self.repetir = None;
     }
-    fn press_key(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_keyboard::WlKeyboard, _: u32, ev: KeyEvent) {
+    fn press_key(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_keyboard::WlKeyboard, serial: u32, ev: KeyEvent) {
+        self.serial = serial;
         let alt = self.mods.alt;
         let tecla = match ev.keysym {
             Keysym::Return | Keysym::KP_Enter => Tecla::Enter,
+            Keysym::BackSpace if self.mods.ctrl => Tecla::Outra(Keysym::BackSpace),
             Keysym::BackSpace => Tecla::Apagar,
             Keysym::Escape => Tecla::Esc,
             Keysym::Up if alt => Tecla::Subir,
@@ -664,7 +800,8 @@ impl PointerHandler for Janela {
             match ev.kind {
                 PointerEventKind::Enter { .. } | PointerEventKind::Motion { .. } => self.mouse = Some(pos),
                 PointerEventKind::Leave { .. } => self.mouse = None,
-                PointerEventKind::Press { button, .. } => {
+                PointerEventKind::Press { button, serial, .. } => {
+                    self.serial = serial;
                     self.mouse = Some(pos);
                     if button == BTN_LEFT {
                         self.pressionado = true;

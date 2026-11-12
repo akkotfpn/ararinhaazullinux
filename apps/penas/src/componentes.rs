@@ -129,6 +129,10 @@ pub fn campo(ui: &mut Ui, x: f32, y: f32, l: f32, texto: &str, dica: &str, foco:
     }
     let visivel = if senha { "•".repeat(texto.chars().count().min(64)) } else { texto.to_string() };
     let visivel = desenho::encurtar(TEXTO_M, &visivel, l - 2.0 * ESP_3);
+    if foco && selecionado(texto) {
+        let w = desenho::medir(TEXTO_M, &visivel);
+        ui.tela.retangulo(x + ESP_3 - 1.0, y + 8.0, w + 2.0, 20.0, 3.0, tema::DESTAQUE_SUAVE());
+    }
     let fim = if texto.is_empty() && !dica.is_empty() {
         ui.tela.texto(x + ESP_3, y + 23.0, TEXTO, tema::TEXTO_SECUNDARIO(), dica);
         0.0
@@ -141,19 +145,76 @@ pub fn campo(ui: &mut Ui, x: f32, y: f32, l: f32, texto: &str, dica: &str, foco:
     ui.clicou(x, y, l, ALTURA)
 }
 
-/// Aplica as teclas de texto deste quadro ao campo em foco.
-/// Devolve as teclas que não são de edição (Enter, Tab, setas...).
+thread_local! {
+    /// Campo com "tudo selecionado" (Ctrl+A): o endereço do texto dele.
+    static SELECIONADO: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+fn selecionado(texto: &str) -> bool {
+    !texto.is_empty() && SELECIONADO.with(|s| s.get()) == texto.as_ptr() as usize
+}
+
+/// Aplica as teclas de texto deste quadro ao campo em foco, como no
+/// Windows: Ctrl+A seleciona tudo, Ctrl+C/X/V copiam, recortam e colam,
+/// Ctrl+Backspace apaga a palavra. Devolve as teclas que não são de edição
+/// (Enter, Tab, setas...).
 pub fn editar(texto: &mut String, teclas: Vec<Tecla>) -> Vec<Tecla> {
+    use crate::Keysym;
     let mut resto = Vec::new();
+    let mut sel = selecionado(texto);
     for t in teclas {
         match t {
-            Tecla::Texto(s) => texto.push_str(&s),
-            Tecla::Apagar => {
-                texto.pop();
+            Tecla::Texto(s) | Tecla::Colado(s) => {
+                if sel {
+                    texto.clear();
+                    sel = false;
+                }
+                // Campo de uma linha: quebras viram espaço.
+                texto.push_str(&s.replace(['\n', '\r'], " ").replace('\t', " "));
             }
-            outra => resto.push(outra),
+            Tecla::Apagar => {
+                if sel {
+                    texto.clear();
+                    sel = false;
+                } else {
+                    texto.pop();
+                }
+            }
+            Tecla::Outra(Keysym::Delete) if sel => {
+                texto.clear();
+                sel = false;
+            }
+            Tecla::Outra(k) if k == Keysym::a || k == Keysym::A => sel = !texto.is_empty(),
+            Tecla::Outra(k) if k == Keysym::c || k == Keysym::C => {
+                if sel {
+                    crate::copiar(texto);
+                }
+            }
+            Tecla::Outra(k) if k == Keysym::x || k == Keysym::X => {
+                if sel {
+                    crate::copiar(texto);
+                    texto.clear();
+                    sel = false;
+                }
+            }
+            Tecla::Outra(k) if k == Keysym::v || k == Keysym::V => crate::pedir_colar(),
+            // Ctrl+Backspace: apaga a última palavra.
+            Tecla::Outra(Keysym::BackSpace) => {
+                if sel {
+                    texto.clear();
+                    sel = false;
+                } else {
+                    let corte = texto.trim_end().rfind(|c: char| c.is_whitespace()).map(|i| i + 1).unwrap_or(0);
+                    texto.truncate(corte);
+                }
+            }
+            outra => {
+                sel = false;
+                resto.push(outra);
+            }
         }
     }
+    SELECIONADO.with(|s| s.set(if sel { texto.as_ptr() as usize } else { 0 }));
     resto
 }
 
