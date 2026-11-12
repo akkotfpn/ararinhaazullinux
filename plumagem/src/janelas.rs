@@ -47,6 +47,9 @@ fn regiao_de(w: &WindowElement) -> Option<(i8, i8)> {
 /// Posição e tamanho antes de maximizar, guardados na própria janela.
 struct GeometriaAnterior(RefCell<Option<(Point<i32, Logical>, Option<Size<i32, Logical>>)>>);
 
+/// Marca: a janela já foi posicionada no primeiro quadro.
+pub struct Posicionada;
+
 /// Janela X11 (Steam, Krita, jogos): não tem os estados do xdg-shell, então
 /// maximizar/encaixar é dizer ao X onde ela fica.
 #[cfg(feature = "xwayland")]
@@ -218,6 +221,46 @@ impl<B: Backend> AnvilState<B> {
         if t.is_initial_configure_sent() {
             t.send_configure();
         }
+    }
+
+    /// Faz a janela caber na área útil da tela (sem a barra): diminui se
+    /// for maior e traz para dentro se a barra de título ficou de fora.
+    /// `centralizar`: primeira vez (abre no meio, um pouco em cascata).
+    pub fn ajustar_a_tela(&mut self, w: &WindowElement, centralizar: bool) {
+        if self.esta_maximizada(w) || self.esta_encaixada(w) {
+            return;
+        }
+        let output = self.space.outputs_for_element(w).first().cloned().or_else(|| self.space.outputs().next().cloned());
+        let Some(area) = output.and_then(|o| area_util(&self.space, &o)) else { return };
+        let geo = w.geometry();
+        if geo.size.w <= 0 || geo.size.h <= 0 {
+            return;
+        }
+        let Some(mut loc) = self.space.element_location(w) else { return };
+        let (mut gw, mut gh) = (geo.size.w, geo.size.h);
+        if gw > area.size.w || gh > area.size.h {
+            gw = gw.min(area.size.w);
+            gh = gh.min(area.size.h);
+            let header = if w.decoration_state().is_ssd { HEADER_BAR_HEIGHT } else { 0 };
+            if let Some(t) = w.0.toplevel() {
+                t.with_pending_state(|s| s.size = Some((gw, gh - header).into()));
+                if t.is_initial_configure_sent() {
+                    t.send_pending_configure();
+                }
+            }
+            #[cfg(feature = "xwayland")]
+            if let Some(x) = x11_de(w) {
+                x11_colocar(w, &x, Rectangle::new(area.loc, (gw, gh).into()));
+            }
+        }
+        if centralizar {
+            let n = (self.space.elements().count().saturating_sub(1) % 5) as i32 * 24;
+            loc.x = area.loc.x + (area.size.w - gw) / 2 + n;
+            loc.y = area.loc.y + (area.size.h - gh) / 2 + n;
+        }
+        loc.x = loc.x.clamp(area.loc.x, (area.loc.x + area.size.w - gw).max(area.loc.x));
+        loc.y = loc.y.clamp(area.loc.y, (area.loc.y + area.size.h - gh).max(area.loc.y));
+        self.space.map_element(w.clone(), loc, false);
     }
 
     /// Encaixa a janela ativa (Win+setas): metade esquerda/direita, maximizar,

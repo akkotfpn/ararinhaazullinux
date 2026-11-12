@@ -156,6 +156,12 @@ if command -v flatpak >/dev/null; then
     done
   ) >/dev/null 2>&1 & pids="$pids $!"
 fi
+# Rodando do pendrive: pergunta logo no começo se é para experimentar ou
+# instalar (uma vez por boot).
+if [ ! -e /etc/ararinha/instalado ] && command -v instalador >/dev/null && [ ! -e "$XDG_RUNTIME_DIR/ararinha-perguntou" ]; then
+  touch "$XDG_RUNTIME_DIR/ararinha-perguntou"
+  (sleep 3; instalador --perguntar) >/dev/null 2>&1 &
+fi
 # Bandeja do sistema (ícones da Steam, Discord...), antes dos apps.
 if [ -x /usr/libexec/ararinha-bandeja ]; then
   /usr/libexec/ararinha-bandeja 2>>"$XDG_RUNTIME_DIR/bandeja.log" & pids="$pids $!"

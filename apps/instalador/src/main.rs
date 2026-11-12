@@ -21,6 +21,8 @@ static MINGAU_PNG: &[u8] = include_bytes!("../recursos/mingau.png");
 
 #[derive(PartialEq)]
 enum Passo {
+    /// No começo da sessão do pendrive: experimentar ou instalar?
+    Pergunta,
     BoasVindas,
     Disco,
     Confirmar,
@@ -205,7 +207,7 @@ impl App for Instalador {
         }
         let passos = ["Boas-vindas", "Escolher o disco", "Confirmar", "Instalar"];
         let atual = match self.passo {
-            Passo::BoasVindas => 0,
+            Passo::Pergunta | Passo::BoasVindas => 0,
             Passo::Disco => 1,
             Passo::Confirmar => 2,
             _ => 3,
@@ -225,6 +227,41 @@ impl App for Instalador {
         let by = a - 62.0;
         let bx = l - 32.0;
         match &self.passo {
+            Passo::Pergunta => {
+                ui.tela.texto(x0, 64.0, 24.0, tema::TEXTO(), "Como você quer usar o Ararinha?");
+                paragrafo(ui, x0, 100.0, largura, "Dá para experimentar agora, direto do pendrive, e instalar depois pelo atalho \"Instalar o Ararinha\" na área de trabalho.");
+                let cl = (largura - 16.0) / 2.0;
+                let ca = 170.0;
+                let y = 160.0;
+                let opcoes = [
+                    ("Experimentar no pendrive", "Nada muda no computador. O que você fizer fica no pendrive.", false),
+                    ("Instalar no computador", "Copia o Ararinha para o disco. Fica mais rápido e não precisa do pendrive.", true),
+                ];
+                for (i, (titulo, texto, principal)) in opcoes.iter().enumerate() {
+                    let x = x0 + i as f32 * (cl + 16.0);
+                    let s = ui.sobre(x, y, cl, ca);
+                    ui.tela.retangulo(x, y, cl, ca, 12.0, if s || *principal { tema::DESTAQUE() } else { tema::BORDA() });
+                    ui.tela.retangulo(x + 2.0, y + 2.0, cl - 4.0, ca - 4.0, 10.0, if *principal { tema::DESTAQUE_SUAVE() } else { tema::JANELA() });
+                    // Ícone: pendrive ou disco.
+                    if *principal {
+                        ui.tela.retangulo(x + 20.0, y + 26.0, 44.0, 30.0, 5.0, Cor::hex(0x6B7C8F));
+                        ui.tela.retangulo(x + 23.0, y + 29.0, 38.0, 20.0, 3.0, Cor::hex(0xC9D3DD));
+                        ui.tela.retangulo(x + 52.0, y + 50.0, 6.0, 3.0, 1.0, Cor::hex(0x3FBF6B));
+                    } else {
+                        ui.tela.retangulo(x + 30.0, y + 20.0, 24.0, 40.0, 4.0, Cor::hex(0x3E6FA8));
+                        ui.tela.retangulo(x + 35.0, y + 12.0, 14.0, 10.0, 2.0, Cor::hex(0x9AA6B2));
+                    }
+                    ui.tela.texto(x + 20.0, y + 92.0, 16.0, tema::TEXTO(), titulo);
+                    paragrafo(ui, x + 20.0, y + 116.0, cl - 40.0, texto);
+                    if ui.clicou(x, y, cl, ca) {
+                        if *principal {
+                            self.passo = Passo::BoasVindas;
+                        } else {
+                            ui.fechar = true;
+                        }
+                    }
+                }
+            }
             Passo::BoasVindas => {
                 ui.tela.texto(x0, 64.0, 24.0, tema::TEXTO(), "Instalar o Ararinha Azul Linux");
                 let mut y = 104.0;
@@ -390,6 +427,13 @@ fn main() {
             tamanho: (860, 560),
             minimo: (760, 500),
         },
-        Box::new(Instalador::novo()),
+        Box::new({
+            let mut i = Instalador::novo();
+            // "instalador --perguntar": a sessão do pendrive abre assim.
+            if std::env::args().any(|a| a == "--perguntar") {
+                i.passo = Passo::Pergunta;
+            }
+            i
+        }),
     );
 }

@@ -112,7 +112,7 @@ fn atender(quem: &Quem, pedido: &str) -> Result<String, String> {
         }
         // Brilho da tela (teclas do notebook): quem está logado pode.
         ["brilho", pct] => {
-            let logado = quem.uid == 0 || std::path::Path::new(&format!("/run/user/{}", quem.uid)).is_dir();
+            let logado = quem.uid == 0 || no_grupo(&quem.usuario, "seat");
             if !logado {
                 return Err("só quem está usando o computador".into());
             }
@@ -180,11 +180,13 @@ fn atender(quem: &Quem, pedido: &str) -> Result<String, String> {
             }
         }
         // Desligar, reiniciar e dormir: quem está logado no computador pode
-        // (como no Windows). "Logado" = tem sessão aberta (/run/user/<uid>).
+        // (como no Windows). "Logado" = conta de quem usa a tela (grupo
+        // "seat"). O /run/user não serve: o serviço roda com ProtectHome,
+        // que esconde essa pasta dele.
         // Pendrives e HDs externos: quem está usando o computador pode.
         ["usb", "listar"] => Ok(usb::listar_texto()),
         ["usb", verbo @ ("montar" | "ejetar"), dev] => {
-            let logado = quem.uid == 0 || std::path::Path::new(&format!("/run/user/{}", quem.uid)).is_dir();
+            let logado = quem.uid == 0 || no_grupo(&quem.usuario, "seat");
             if !logado {
                 return Err("só quem está usando o computador pode fazer isso".into());
             }
@@ -195,7 +197,7 @@ fn atender(quem: &Quem, pedido: &str) -> Result<String, String> {
             }
         }
         [acao @ ("desligar" | "reiniciar" | "dormir" | "hibernar")] => {
-            let logado = quem.uid == 0 || std::path::Path::new(&format!("/run/user/{}", quem.uid)).is_dir();
+            let logado = quem.uid == 0 || no_grupo(&quem.usuario, "seat");
             if !logado {
                 return Err("só quem está usando o computador pode fazer isso".into());
             }

@@ -181,6 +181,13 @@ impl<BackendData: Backend> CompositorHandler for AnvilState<BackendData> {
             }
             if let Some(window) = self.window_for_surface(&root) {
                 window.0.on_commit();
+                // Primeiro quadro com tamanho: abre no meio da tela e cabendo
+                // nela (com escala 125%+ muita janela ficava maior que a tela).
+                if &root == surface && window.0.user_data().get::<crate::janelas::Posicionada>().is_none() && window.geometry().size.w > 0 {
+                    window.0.user_data().insert_if_missing(|| crate::janelas::Posicionada);
+                    let w = window.clone();
+                    self.handle.insert_idle(move |data| data.ajustar_a_tela(&w, true));
+                }
 
                 if &root == surface {
                     let buffer_offset = with_states(surface, |states| {

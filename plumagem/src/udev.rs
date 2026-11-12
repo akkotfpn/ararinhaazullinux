@@ -1485,6 +1485,11 @@ impl AnvilState<UdevData> {
         }
         if mudou {
             crate::shell::fixup_positions(&mut self.space, self.pointer.current_location());
+            // Com a tela "menor" (escala maior), as janelas voltam a caber.
+            let ws: Vec<crate::shell::WindowElement> = self.space.elements().cloned().collect();
+            for w in ws {
+                self.ajustar_a_tela(&w, false);
+            }
         }
     }
 

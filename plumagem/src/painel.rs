@@ -304,6 +304,33 @@ pub struct Grupo {
     /// Índices em `ordem`.
     pub janelas: Vec<usize>,
     pub nome: String,
+    /// app_id (ou classe X11) da janela, para achar um ícone sem atalho.
+    pub id: Option<String>,
+}
+
+/// app_id da janela (xdg) ou a classe (X11).
+fn id_da_janela(w: &WindowElement) -> Option<String> {
+    #[cfg(feature = "xwayland")]
+    if let Some(x) = w.0.x11_surface() {
+        let c = x.class();
+        return (!c.is_empty()).then_some(c);
+    }
+    w.0.toplevel().and_then(|t| {
+        compositor::with_states(t.wl_surface(), |s| s.data_map.get::<XdgToplevelSurfaceData>().and_then(|d| d.lock().unwrap().app_id.clone()))
+    })
+}
+
+/// Ícone pelo nome do app_id (guardado: a busca no disco é cara).
+fn icone_por_id(id: &str) -> Option<image::RgbaImage> {
+    thread_local! {
+        static CACHE: std::cell::RefCell<std::collections::HashMap<String, Option<image::RgbaImage>>> = std::cell::RefCell::new(std::collections::HashMap::new());
+    }
+    CACHE.with(|c| {
+        c.borrow_mut()
+            .entry(id.to_string())
+            .or_insert_with(|| achar_icone(id).or_else(|| achar_icone(&id.to_lowercase())))
+            .clone()
+    })
 }
 
 /// Menu de layouts de encaixe (como o do Windows 11).
@@ -763,7 +790,7 @@ impl Painel {
             .map(|(i, id)| {
                 let app = self.indice_app(id);
                 let nome = app.and_then(|a| self.apps.as_ref()?.get(a)).map(|a| a.nome.clone()).unwrap_or_else(|| id.clone());
-                Grupo { fixado: Some(i), app, janelas: Vec::new(), nome }
+                Grupo { fixado: Some(i), app, janelas: Vec::new(), nome, id: None }
             })
             .collect();
         for (j, w) in self.ordem.iter().enumerate() {
@@ -773,7 +800,7 @@ impl Painel {
                 continue;
             }
             let nome = app.and_then(|a| self.apps.as_ref()?.get(a)).map(|a| a.nome.clone()).unwrap_or_else(|| titulo(w));
-            gs.push(Grupo { fixado: None, app, janelas: vec![j], nome });
+            gs.push(Grupo { fixado: None, app, janelas: vec![j], nome, id: id_da_janela(w) });
         }
         gs
     }
@@ -857,14 +884,16 @@ impl Painel {
         // A janela de cima sob o mouse.
         let sob = space.elements().rev().find(|w| space.element_bbox(w).map(|b| b.contains(p)).unwrap_or(false)).cloned();
         let no_botao = sob.and_then(|w| {
-            if !w.decoration_state().is_ssd || hover.is_some() {
+            if hover.is_some() {
                 return None;
             }
-            let loc = space.element_location(&w)?;
-            let largura = w.geometry().size.w;
+            // Barra nossa: botões de 46 px. Apps que desenham a própria barra
+            // (Chromium, apps GTK) usam o mesmo lugar: o 2º da direita.
+            let g = space.element_geometry(&w)?;
             let b = BOTAO_L as i32;
-            let (bx, by) = (loc.x + largura - 2 * b, loc.y);
-            (p.x >= bx && p.x < bx + b && p.y >= by && p.y < by + HEADER_BAR_HEIGHT).then_some((w, bx, by))
+            let (bx, by) = (g.loc.x + g.size.w - 2 * b, g.loc.y);
+            let alto = if w.decoration_state().is_ssd { HEADER_BAR_HEIGHT } else { 38 };
+            (p.x >= bx && p.x < bx + b && p.y >= by && p.y < by + alto).then_some((w, bx, by + alto - HEADER_BAR_HEIGHT))
         });
         match no_botao {
             Some((w, bx, by)) => {
@@ -2200,8 +2229,17 @@ impl Painel {
         desenho::preparar_vidro(tela.w, tela.h);
 
         let ativa = space.elements().last().cloned();
-        if self.apps.is_none() {
+        // App recém-instalado (janela sem app conhecido): relê os atalhos,
+        // no máximo a cada 5 s, para o botão da barra ganhar o ícone.
+        static RELIDO: std::sync::Mutex<Option<std::time::Instant>> = std::sync::Mutex::new(None);
+        let desconhecida = self.apps.is_some() && self.ordem.iter().any(|w| self.app_da_janela(w).is_none());
+        let pode = RELIDO.lock().map(|t| t.map(|t| t.elapsed().as_secs() >= 5).unwrap_or(true)).unwrap_or(false);
+        if self.apps.is_none() || (desconhecida && pode) {
+            if let Ok(mut t) = RELIDO.lock() {
+                *t = Some(std::time::Instant::now());
+            }
             self.carregar_apps();
+            self.barra = None;
         }
         let janelas: Vec<(String, bool, bool, Option<usize>)> = self
             .ordem
@@ -2681,6 +2719,15 @@ impl Painel {
                 t.retangulo(x + lb / 2.0 - il / 2.0, hf - 6.0, il, 3.0, 1.5, cor);
             }
             let app = g.app.and_then(|a| self.apps.as_ref()?.get(a));
+            // Sem atalho (AppImage, apps de fora): ícone pelo app_id.
+            let avulso;
+            let app = match (app, g.id.as_deref().and_then(icone_por_id)) {
+                (None, Some(img)) => {
+                    avulso = App { nome: g.nome.clone(), exec: String::new(), icone: Some(img), ids: Vec::new() };
+                    Some(&avulso)
+                }
+                (a, _) => a,
+            };
             let rotulo = ROTULOS.load(std::sync::atomic::Ordering::Relaxed) && aberta && lb > Self::botao_l() as f32;
             let ix = if rotulo { x + 10.0 } else { x + (lb - icone) / 2.0 };
             self.desenhar_icone(&mut t, app, &g.nome, ix, meio - icone / 2.0, icone);

@@ -335,6 +335,64 @@ impl Notificacoes {
     }
 }
 
+// ------------------------------------------------------------ AppChooser
+
+/// org.freedesktop.impl.portal.AppChooser: "abrir o arquivo/pasta" de um
+/// app Flatpak (Chromium: abrir o download, mostrar na pasta). Sem ele o
+/// portal fica esperando e o app parece travado. Escolhe sem perguntar:
+/// o padrão do mimeapps.list, o Explorador para pastas, ou o primeiro.
+struct EscolhaApp;
+
+fn padrao_mimeapps(tipo: &str) -> Option<String> {
+    let casa = std::env::var("HOME").ok()?;
+    let t = std::fs::read_to_string(format!("{casa}/.config/mimeapps.list")).ok()?;
+    let mut na = false;
+    for l in t.lines() {
+        if l.starts_with('[') {
+            na = l.trim() == "[Default Applications]";
+            continue;
+        }
+        if let (true, Some((k, v))) = (na, l.split_once('=')) {
+            if k.trim() == tipo {
+                return v.split(';').next().map(|s| s.trim().trim_end_matches(".desktop").to_string()).filter(|s| !s.is_empty());
+            }
+        }
+    }
+    None
+}
+
+#[interface(name = "org.freedesktop.impl.portal.AppChooser")]
+impl EscolhaApp {
+    async fn choose_application(
+        &self,
+        _handle: OwnedObjectPath,
+        _app_id: String,
+        _parent_window: String,
+        choices: Vec<String>,
+        options: HashMap<String, OwnedValue>,
+    ) -> (u32, HashMap<String, OwnedValue>) {
+        let tipo = options
+            .get("content_type")
+            .and_then(|v| String::try_from(v.try_clone().ok()?).ok())
+            .unwrap_or_default();
+        let escolha = padrao_mimeapps(&tipo)
+            .filter(|p| choices.contains(p))
+            .or_else(|| (tipo == "inode/directory" && choices.iter().any(|c| c == "explorador")).then(|| "explorador".to_string()))
+            .or_else(|| choices.first().cloned());
+        match escolha {
+            Some(c) => {
+                let mut r = HashMap::new();
+                r.insert("choice".to_string(), valor(c));
+                (0, r)
+            }
+            // Nenhum app abre esse tipo: 2 = erro (o app mostra a mensagem).
+            None => (2, HashMap::new()),
+        }
+    }
+
+    fn update_choices(&self, _handle: OwnedObjectPath, _choices: Vec<String>) {}
+}
+
 // ------------------------------------------------------------ FileManager1
 
 /// org.freedesktop.FileManager1: "Mostrar na pasta" dos apps (o portal
@@ -366,6 +424,7 @@ fn main() -> zbus::Result<()> {
     let conexao = zbus::blocking::connection::Builder::session()?
         .serve_at("/org/freedesktop/portal/desktop", Escolhedor)?
         .serve_at("/org/freedesktop/portal/desktop", Config)?
+        .serve_at("/org/freedesktop/portal/desktop", EscolhaApp)?
         .serve_at("/org/freedesktop/portal/desktop", AvisosPortal)?
         .serve_at("/org/freedesktop/Notifications", Notificacoes { proximo: AtomicU32::new(1) })?
         .serve_at("/org/freedesktop/FileManager1", GerenciadorArquivos)?
