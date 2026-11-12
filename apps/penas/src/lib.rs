@@ -15,6 +15,7 @@ use std::time::{Duration, Instant};
 
 pub use desenho::{tema, Cor, Tela};
 pub use smithay_client_toolkit::seat::keyboard::Keysym;
+use smithay_client_toolkit::reexports::protocols::wp::viewporter::client::{wp_viewport, wp_viewporter};
 
 use smithay_client_toolkit::{
     compositor::{CompositorHandler, CompositorState},
@@ -103,10 +104,10 @@ pub struct Ui<'a> {
 
 impl Ui<'_> {
     pub fn largura(&self) -> f32 {
-        self.tela.largura as f32
+        self.tela.largura_logica()
     }
     pub fn altura(&self) -> f32 {
-        self.tela.altura as f32
+        self.tela.altura_logica()
     }
     /// O mouse está sobre o retângulo?
     pub fn sobre(&self, x: f32, y: f32, l: f32, a: f32) -> bool {
@@ -162,6 +163,15 @@ fn ler_chave_config(chave: &str) -> Option<String> {
         }
     }
     None
+}
+
+/// Escala da tela (Configurações › Tela): "125" vira 1.25.
+fn ler_escala() -> f32 {
+    ler_chave_config("escala")
+        .and_then(|v| v.trim_end_matches('%').parse::<f32>().ok())
+        .filter(|p| (100.0..=300.0).contains(p))
+        .map(|p| p / 100.0)
+        .unwrap_or(1.0)
 }
 
 /// Aplica o tema e a cor de destaque da configuração.
@@ -259,7 +269,11 @@ pub fn executar(opcoes: Opcoes, app: Box<dyn App>) {
     let xdg_shell = XdgShell::bind(&globals, &qh).expect("xdg_shell");
     let shm = Shm::bind(&globals, &qh).expect("wl_shm");
 
+    // wp_viewporter: com escala 125%, a janela manda um buffer 1,25× maior
+    // e diz ao compositor o tamanho lógico; o texto sai nítido, sem esticar.
+    let viewporter: Option<wp_viewporter::WpViewporter> = globals.bind(&qh, 1..=1, ()).ok();
     let surface = compositor.create_surface(&qh);
+    let viewport = viewporter.as_ref().map(|v| v.get_viewport(&surface, &qh, ()));
     let window = xdg_shell.create_window(surface, WindowDecorations::RequestServer, &qh);
     window.set_title(opcoes.titulo.clone());
     window.set_app_id(opcoes.app_id.clone());
@@ -300,6 +314,8 @@ pub fn executar(opcoes: Opcoes, app: Box<dyn App>) {
         repetir: None,
         titulo: opcoes.titulo,
         tela: Tela::nova(l as i32, a as i32),
+        z: if viewport.is_some() { ler_escala() } else { 1.0 },
+        viewport,
     };
 
     aplicar_tema();
@@ -313,6 +329,9 @@ pub fn executar(opcoes: Opcoes, app: Box<dyn App>) {
             let v = versao_config();
             if v != config.1 {
                 aplicar_tema();
+                if janela.viewport.is_some() {
+                    janela.z = ler_escala();
+                }
                 janela.sujo = true;
             }
             config = (Instant::now(), v);
@@ -386,13 +405,19 @@ struct Janela {
     repetir: Option<(u32, Tecla, Instant)>,
     titulo: String,
     tela: Tela,
+    /// Escala da tela (1.0 = 100%).
+    z: f32,
+    viewport: Option<wp_viewport::WpViewport>,
 }
 
 impl Janela {
     fn desenhar(&mut self, qh: &QueueHandle<Self>) {
-        let (l, a) = (self.largura.max(1), self.altura.max(1));
-        if self.tela.largura != l as i32 || self.tela.altura != a as i32 {
-            self.tela = Tela::nova(l as i32, a as i32);
+        // Tamanho lógico (o da janela) e em pixels de verdade (com a escala).
+        let (ll, la) = (self.largura.max(1), self.altura.max(1));
+        let z = self.z;
+        let (l, a) = (((ll as f32) * z).round().max(1.0) as u32, ((la as f32) * z).round().max(1.0) as u32);
+        if self.tela.largura != l as i32 || self.tela.altura != a as i32 || (self.tela.z - z).abs() > 0.001 {
+            self.tela = Tela::nova_com_escala(l as i32, a as i32, z);
         }
         let mut ui = Ui {
             tela: &mut self.tela,
@@ -470,6 +495,13 @@ impl Janela {
             self.tela.copiar_para_argb(canvas);
         }
         let surface = self.window.wl_surface();
+        if let Some(v) = &self.viewport {
+            if (z - 1.0).abs() > 0.001 {
+                v.set_destination(ll as i32, la as i32);
+            } else {
+                v.set_destination(-1, -1);
+            }
+        }
         surface.damage_buffer(0, 0, l as i32, a as i32);
         if buffer.attach_to(surface).is_ok() {
             self.window.commit();
@@ -681,6 +713,22 @@ delegate_pointer!(Janela);
 delegate_xdg_shell!(Janela);
 delegate_xdg_window!(Janela);
 delegate_registry!(Janela);
+
+// O viewporter não manda eventos.
+impl smithay_client_toolkit::reexports::client::Dispatch<wp_viewporter::WpViewporter, ()> for Janela {
+    fn event(
+        _: &mut Self,
+        _: &wp_viewporter::WpViewporter,
+        _: wp_viewporter::Event,
+        _: &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
+}
+impl smithay_client_toolkit::reexports::client::Dispatch<wp_viewport::WpViewport, ()> for Janela {
+    fn event(_: &mut Self, _: &wp_viewport::WpViewport, _: wp_viewport::Event, _: &(), _: &Connection, _: &QueueHandle<Self>) {}
+}
 
 impl ProvidesRegistryState for Janela {
     fn registry(&mut self) -> &mut RegistryState {

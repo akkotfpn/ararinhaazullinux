@@ -102,9 +102,15 @@ pub mod tema {
     }
 }
 
+/// A área de desenho de uma janela. Quem desenha usa coordenadas lógicas
+/// (as da janela); com a escala da tela (125%, 150%...) os pixels de
+/// verdade são `z` vezes mais, e tudo sai nítido no tamanho certo.
 pub struct Tela {
+    /// Tamanho em pixels de verdade.
     pub largura: i32,
     pub altura: i32,
+    /// Escala: pixels de verdade por unidade lógica.
+    pub z: f32,
     px: Vec<u8>,
 }
 
@@ -134,8 +140,21 @@ impl Tela {
     }
 
     pub fn nova(largura: i32, altura: i32) -> Tela {
+        Self::nova_com_escala(largura, altura, 1.0)
+    }
+
+    /// Tela com `largura` × `altura` pixels de verdade e escala `z`.
+    pub fn nova_com_escala(largura: i32, altura: i32, z: f32) -> Tela {
         let (l, a) = (largura.max(1), altura.max(1));
-        Tela { largura: l, altura: a, px: vec![0; (l * a * 4) as usize] }
+        Tela { largura: l, altura: a, z: z.max(0.5), px: vec![0; (l * a * 4) as usize] }
+    }
+
+    /// Tamanho lógico (o que os apps usam para o layout).
+    pub fn largura_logica(&self) -> f32 {
+        self.largura as f32 / self.z
+    }
+    pub fn altura_logica(&self) -> f32 {
+        self.altura as f32 / self.z
     }
 
     /// Mistura um pixel com cobertura `cob` (0.0–1.0).
@@ -159,6 +178,11 @@ impl Tela {
 
     /// Retângulo com cantos arredondados e borda suavizada.
     pub fn retangulo(&mut self, x: f32, y: f32, l: f32, a: f32, raio: f32, cor: Cor) {
+        let z = self.z;
+        self.retangulo_px(x * z, y * z, l * z, a * z, raio * z, cor);
+    }
+
+    fn retangulo_px(&mut self, x: f32, y: f32, l: f32, a: f32, raio: f32, cor: Cor) {
         if l <= 0.0 || a <= 0.0 {
             return;
         }
@@ -186,6 +210,11 @@ impl Tela {
 
     /// Segmento de reta com espessura (para desenhar ícones simples).
     pub fn linha(&mut self, x0: f32, y0: f32, x1: f32, y1: f32, esp: f32, cor: Cor) {
+        let z = self.z;
+        self.linha_px(x0 * z, y0 * z, x1 * z, y1 * z, esp * z, cor);
+    }
+
+    fn linha_px(&mut self, x0: f32, y0: f32, x1: f32, y1: f32, esp: f32, cor: Cor) {
         let (minx, maxx) = (x0.min(x1) - esp, x0.max(x1) + esp);
         let (miny, maxy) = (y0.min(y1) - esp, y0.max(y1) + esp);
         let (dx, dy) = (x1 - x0, y1 - y0);
@@ -211,14 +240,58 @@ impl Tela {
 
     /// Copia uma imagem RGBA (não pré-multiplicada) para a posição dada.
     pub fn imagem(&mut self, x: i32, y: i32, img: &image::RgbaImage) {
-        for (ix, iy, p) in img.enumerate_pixels() {
-            let c = Cor(p[0], p[1], p[2], 255);
-            self.misturar(x + ix as i32, y + iy as i32, c, p[3] as f32 / 255.0);
+        let z = self.z;
+        if (z - 1.0).abs() < 0.001 {
+            for (ix, iy, p) in img.enumerate_pixels() {
+                let c = Cor(p[0], p[1], p[2], 255);
+                self.misturar(x + ix as i32, y + iy as i32, c, p[3] as f32 / 255.0);
+            }
+            return;
+        }
+        // Com escala: amostra bilinear direto na posição de verdade.
+        let (iw, ih) = (img.width() as f32, img.height() as f32);
+        let (x0, y0) = ((x as f32 * z).round() as i32, (y as f32 * z).round() as i32);
+        let (dw, dh) = ((iw * z).round() as i32, (ih * z).round() as i32);
+        for dy in 0..dh {
+            let py = y0 + dy;
+            if py < 0 || py >= self.altura {
+                continue;
+            }
+            let sy = ((dy as f32 + 0.5) / z - 0.5).clamp(0.0, ih - 1.0);
+            let (sy0, fy) = (sy.floor() as u32, sy.fract());
+            let sy1 = (sy0 + 1).min(img.height() - 1);
+            for dx in 0..dw {
+                let px = x0 + dx;
+                if px < 0 || px >= self.largura {
+                    continue;
+                }
+                let sx = ((dx as f32 + 0.5) / z - 0.5).clamp(0.0, iw - 1.0);
+                let (sx0, fx) = (sx.floor() as u32, sx.fract());
+                let sx1 = (sx0 + 1).min(img.width() - 1);
+                let mut acc = [0.0f32; 4];
+                for (ax, ay, w) in [(sx0, sy0, (1.0 - fx) * (1.0 - fy)), (sx1, sy0, fx * (1.0 - fy)), (sx0, sy1, (1.0 - fx) * fy), (sx1, sy1, fx * fy)] {
+                    let p = img.get_pixel(ax, ay);
+                    let a = p[3] as f32 * w;
+                    acc[0] += p[0] as f32 * a;
+                    acc[1] += p[1] as f32 * a;
+                    acc[2] += p[2] as f32 * a;
+                    acc[3] += a;
+                }
+                if acc[3] > 0.0 {
+                    let c = Cor((acc[0] / acc[3]) as u8, (acc[1] / acc[3]) as u8, (acc[2] / acc[3]) as u8, 255);
+                    self.misturar(px, py, c, acc[3] / 255.0);
+                }
+            }
         }
     }
 
     /// Escreve texto com a linha de base em `y`. Devolve a largura usada.
     pub fn texto(&mut self, x: f32, y: f32, tamanho: f32, cor: Cor, texto: &str) -> f32 {
+        let z = self.z;
+        self.texto_px(x * z, y * z, tamanho * z, cor, texto) / z
+    }
+
+    fn texto_px(&mut self, x: f32, y: f32, tamanho: f32, cor: Cor, texto: &str) -> f32 {
         let mut caneta = x;
         com_fonte(|fonte| {
             for ch in texto.chars() {
@@ -252,6 +325,15 @@ impl Tela {
 
     /// Preenche um polígono (com suavização por subamostras).
     pub fn poligono(&mut self, pontos: &[(f32, f32)], cor: Cor) {
+        let z = self.z;
+        if (z - 1.0).abs() < 0.001 {
+            return self.poligono_px(pontos, cor);
+        }
+        let p: Vec<(f32, f32)> = pontos.iter().map(|(x, y)| (x * z, y * z)).collect();
+        self.poligono_px(&p, cor);
+    }
+
+    fn poligono_px(&mut self, pontos: &[(f32, f32)], cor: Cor) {
         if pontos.len() < 3 {
             return;
         }
@@ -289,7 +371,17 @@ impl Tela {
 
     /// Pinta um pixel (mistura por cima).
     pub fn pintar(&mut self, x: i32, y: i32, cor: Cor) {
-        self.misturar(x, y, cor, 1.0);
+        let z = self.z;
+        if (z - 1.0).abs() < 0.001 {
+            return self.misturar(x, y, cor, 1.0);
+        }
+        let (x0, y0) = ((x as f32 * z).floor() as i32, (y as f32 * z).floor() as i32);
+        let (x1, y1) = (((x + 1) as f32 * z).floor() as i32, ((y + 1) as f32 * z).floor() as i32);
+        for py in y0..y1.max(y0 + 1) {
+            for px in x0..x1.max(x0 + 1) {
+                self.misturar(px, py, cor, 1.0);
+            }
+        }
     }
 
     /// Pixels crus (RGBA pré-multiplicado).

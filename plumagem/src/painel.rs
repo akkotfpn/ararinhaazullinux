@@ -1114,7 +1114,9 @@ impl Painel {
                 ("Abrir o terminal", "alacritty"),
                 ("Central de Apps", "central"),
                 ("Gerenciador de Tarefas", "tarefas"),
-                ("Personalizar", "configuracoes"),
+                ("Configurações de exibição", "configuracoes tela"),
+                ("Personalizar", "configuracoes personalizacao"),
+                ("Configurações", "configuracoes"),
             ],
         };
         if let Some(i) = icone {
@@ -1131,7 +1133,7 @@ impl Painel {
             vec![
                 ("Gerenciador de Tarefas", "tarefas"),
                 ("Mostrar a área de trabalho", "#area"),
-                ("Configurações da barra de tarefas", "configuracoes"),
+                ("Configurações da barra de tarefas", "configuracoes personalizacao"),
             ],
         );
     }
