@@ -178,7 +178,12 @@ impl HeaderBar {
             return;
         }
         let sobre = self.pointer_loc.and_then(|l| self.botao_em(l.x));
-        let chave = format!("{width}|{titulo}|{ativa}|{maximizada}|{sobre:?}|{origem:?}");
+        let chave = format!(
+            "{width}|{titulo}|{ativa}|{maximizada}|{sobre:?}|{origem:?}|{}|{}|{}",
+            crate::desenho::EFEITOS.load(std::sync::atomic::Ordering::Relaxed),
+            crate::desenho::tema::escuro(),
+            crate::desenho::tema::destaque_atual()
+        );
         if self.buffer.as_ref().map(|(c, _)| c == &chave).unwrap_or(false) {
             return;
         }

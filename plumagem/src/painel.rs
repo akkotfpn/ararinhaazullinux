@@ -289,6 +289,7 @@ pub fn ler_fixados() -> Vec<String> {
 /// Alinhamento e nomes nos botões (Configurações › Personalização).
 pub fn ler_opcoes_barra() {
     use std::sync::atomic::Ordering::Relaxed;
+    desenho::EFEITOS.store(ler_chave("efeitos").as_deref() != Some("nao"), Relaxed);
     CENTRO.store(ler_chave("barra_alinhamento").as_deref() != Some("esquerda"), Relaxed);
     ROTULOS.store(ler_chave("barra_rotulos").as_deref() == Some("sim"), Relaxed);
 }
@@ -2450,6 +2451,21 @@ impl Painel {
     }
 
     fn app_da_janela(&self, w: &WindowElement) -> Option<usize> {
+        // X11 (Steam, Krita): pela classe da janela.
+        #[cfg(feature = "xwayland")]
+        if let Some(x) = w.0.x11_surface() {
+            let apps = self.apps.as_ref()?;
+            for c in [x.class(), x.instance()] {
+                let c = c.to_lowercase();
+                if c.is_empty() {
+                    continue;
+                }
+                if let Some(i) = apps.iter().position(|a| a.ids.iter().any(|id| *id == c || id.rsplit('.').next() == Some(c.as_str()))) {
+                    return Some(i);
+                }
+            }
+            return None;
+        }
         let id = w.0.toplevel().and_then(|t| {
             compositor::with_states(t.wl_surface(), |s| {
                 s.data_map

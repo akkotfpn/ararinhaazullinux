@@ -300,7 +300,7 @@ impl Configuracoes {
 
     fn personalizacao(&mut self, ui: &mut Ui, x0: f32, l: f32) {
         // Conteúdo maior que a janela: rola com a roda do mouse.
-        let altura_total = 480.0 + ((self.papeis.len() + 2) / 3) as f32 * 140.0 + 40.0;
+        let altura_total = 640.0 + ((self.papeis.len() + 2) / 3) as f32 * 140.0 + 40.0;
         self.rolagem = (self.rolagem + ui.rolagem).clamp(0.0, (altura_total - ui.altura()).max(0.0));
         let oy = -self.rolagem;
 
@@ -410,7 +410,25 @@ impl Configuracoes {
             }
         }
 
-        let y_papel = oy + 420.0;
+        // Barra de tarefas e efeitos (chaves).
+        let y_op = y_cor + 76.0;
+        let wl = (l - 64.0).min(620.0);
+        let opcoes_chave = [
+            ("barra_alinhamento", "Ícones da barra no meio da tela", "Como no Windows 11. Desligado, ficam à esquerda.", ler_chave("barra_alinhamento").as_deref() != Some("esquerda"), ("centro", "esquerda")),
+            ("barra_rotulos", "Mostrar o nome dos apps abertos na barra", "Botões maiores, com o título da janela.", ler_chave("barra_rotulos").as_deref() == Some("sim"), ("sim", "nao")),
+            ("efeitos", "Efeitos visuais", "Transparência, desfoque e animações. Desligue para deixar mais leve.", ler_chave("efeitos").as_deref() != Some("nao"), ("sim", "nao")),
+        ];
+        for (i, (chave, titulo, sub, ligado, (vsim, vnao))) in opcoes_chave.iter().enumerate() {
+            let y = y_op + i as f32 * 50.0;
+            ui.tela.texto(x0 + 32.0, y, 14.5, tema::TEXTO(), titulo);
+            ui.tela.texto(x0 + 32.0, y + 19.0, 12.0, tema::TEXTO_SECUNDARIO(), sub);
+            let mut v = *ligado;
+            if penas::componentes::chave(ui, x0 + 32.0 + wl - 44.0, y - 10.0, &mut v) {
+                self.salvar(chave, if v { vsim } else { vnao });
+            }
+        }
+
+        let y_papel = oy + 570.0;
         ui.tela.texto(x0 + 32.0, y_papel, 15.0, tema::TEXTO(), "Papel de parede");
         ui.tela.texto(x0 + 32.0, y_papel + 22.0, 12.5, tema::TEXTO_SECUNDARIO(), "Vale também para o vidro da barra e das janelas.");
         let (ml, ma) = (176.0, 99.0);

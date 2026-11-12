@@ -241,6 +241,13 @@ impl Tela {
     /// `origem` é a posição deste desenho na tela, para alinhar o desfoque.
     #[allow(clippy::too_many_arguments)]
     pub fn vidro(&mut self, x: f32, y: f32, l: f32, a: f32, raio: f32, origem: (i32, i32), tinta: Cor) {
+        // Efeitos visuais desligados: cor sólida, sem desfoque nem brilho.
+        if !EFEITOS.load(std::sync::atomic::Ordering::Relaxed) {
+            self.retangulo(x, y, l, a, raio, tema::BORDA());
+            self.retangulo(x + 1.0, y + 1.0, l - 2.0, a - 2.0, (raio - 1.0).max(0.0), tema::SUPERFICIE());
+            self.retangulo(x + 1.0, y + 1.0, l - 2.0, a - 2.0, (raio - 1.0).max(0.0), tinta.com_alfa(255));
+            return;
+        }
         // Borda escura translúcida e, por dentro, o desfoque.
         self.retangulo(x, y, l, a, raio, Cor(11, 26, 46, 90));
         let (x, y, l, a, raio) = (x + 1.0, y + 1.0, l - 2.0, a - 2.0, (raio - 1.0).max(0.0));
@@ -274,12 +281,12 @@ impl Tela {
         let metade = (a / 2.0).max(1.0);
         let mut linha = 0.0;
         while linha < metade {
-            let alfa = (70.0 * (1.0 - linha / metade)) as u8;
+            let alfa = (26.0 * (1.0 - linha / metade)) as u8;
             self.retangulo_recortado(x, y, l, a, raio, y + linha, tema::BRANCO().com_alfa(alfa));
             linha += 1.0;
         }
         // Reflexo de 1 px logo abaixo da borda de cima.
-        self.retangulo_recortado(x, y, l, a, raio, y, tema::BRANCO().com_alfa(150));
+        self.retangulo_recortado(x, y, l, a, raio, y, tema::BRANCO().com_alfa(70));
     }
 
     /// Uma linha horizontal (1 px, na altura `yl`) dentro do retângulo
@@ -516,6 +523,10 @@ struct Vidro {
 thread_local! {
     static VIDRO: RefCell<Option<Vidro>> = const { RefCell::new(None) };
 }
+
+/// Efeitos visuais (vidro, desfoque, transparência). Configurações ›
+/// Personalização › Efeitos visuais ("efeitos = nao" desliga).
+pub static EFEITOS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
 
 /// Prepara (uma vez por tamanho de tela) o papel de parede desfocado.
 /// Usa o mesmo enquadramento do papel de parede ("preencher", centralizado).
