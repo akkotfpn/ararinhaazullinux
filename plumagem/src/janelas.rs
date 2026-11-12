@@ -47,6 +47,35 @@ fn regiao_de(w: &WindowElement) -> Option<(i8, i8)> {
 /// Posição e tamanho antes de maximizar, guardados na própria janela.
 struct GeometriaAnterior(RefCell<Option<(Point<i32, Logical>, Option<Size<i32, Logical>>)>>);
 
+/// Janela X11 (Steam, Krita, jogos): não tem os estados do xdg-shell, então
+/// maximizar/encaixar é dizer ao X onde ela fica.
+#[cfg(feature = "xwayland")]
+fn x11_de(w: &WindowElement) -> Option<smithay::xwayland::X11Surface> {
+    w.0.x11_surface().cloned()
+}
+#[cfg(not(feature = "xwayland"))]
+fn x11_de(_w: &WindowElement) -> Option<()> {
+    None
+}
+
+/// Coloca a janela X11 no retângulo `r` (área total, com a barra de título).
+#[cfg(feature = "xwayland")]
+fn x11_colocar(w: &WindowElement, x: &smithay::xwayland::X11Surface, r: Rectangle<i32, Logical>) {
+    let mut g = r;
+    if w.decoration_state().is_ssd {
+        g.loc.y += HEADER_BAR_HEIGHT;
+        g.size.h -= HEADER_BAR_HEIGHT;
+    }
+    let _ = x.configure(g);
+}
+
+fn guardar_anterior(w: &WindowElement, loc: Point<i32, Logical>, tam: Option<Size<i32, Logical>>) {
+    w.0.user_data().insert_if_missing(|| GeometriaAnterior(RefCell::new(None)));
+    if let Some(g) = w.0.user_data().get::<GeometriaAnterior>() {
+        *g.0.borrow_mut() = Some((loc, tam));
+    }
+}
+
 /// Área da saída que as janelas podem ocupar (tudo menos a barra de tarefas).
 pub fn area_util(space: &Space<WindowElement>, output: &Output) -> Option<Rectangle<i32, Logical>> {
     let mut g = space.output_geometry(output)?;
@@ -128,6 +157,10 @@ impl<B: Backend> AnvilState<B> {
     }
 
     pub fn esta_maximizada(&self, w: &WindowElement) -> bool {
+        #[cfg(feature = "xwayland")]
+        if let Some(x) = x11_de(w) {
+            return x.is_maximized();
+        }
         w.0.toplevel()
             .map(|t| t.with_pending_state(|s| s.states.contains(xdg_toplevel::State::Maximized)))
             .unwrap_or(false)
@@ -135,6 +168,24 @@ impl<B: Backend> AnvilState<B> {
 
     /// Maximiza ocupando a tela menos a barra de tarefas.
     pub fn maximizar(&mut self, w: &WindowElement) {
+        #[cfg(feature = "xwayland")]
+        if let Some(x) = x11_de(w) {
+            let output = self.space.outputs_for_element(w).first().cloned().or_else(|| self.space.outputs().next().cloned());
+            let Some(area) = output.and_then(|o| area_util(&self.space, &o)) else { return };
+            if !self.esta_maximizada(w) && regiao_de(w).is_none() {
+                let g = x.geometry();
+                if let Some(loc) = self.space.element_location(w) {
+                    guardar_anterior(w, loc, Some(g.size));
+                }
+            }
+            if let Some(r) = w.0.user_data().get::<RegiaoEncaixe>() {
+                r.0.set(None);
+            }
+            let _ = x.set_maximized(true);
+            x11_colocar(w, &x, area);
+            self.space.map_element(w.clone(), area.loc, true);
+            return;
+        }
         let Some(t) = w.0.toplevel().cloned() else { return };
         let output = self
             .space
@@ -204,6 +255,32 @@ impl<B: Backend> AnvilState<B> {
     /// Encaixa numa região: coluna -1/1 (esquerda/direita) e linha
     /// 0 (altura toda), -1 (quarto de cima) ou 1 (quarto de baixo).
     pub fn encaixar_em(&mut self, w: &WindowElement, (col, lin): (i8, i8)) {
+        #[cfg(feature = "xwayland")]
+        if let Some(x) = x11_de(w) {
+            let output = self.space.outputs_for_element(w).first().cloned().or_else(|| self.space.outputs().next().cloned());
+            let Some(area) = output.and_then(|o| area_util(&self.space, &o)) else { return };
+            if !x.is_maximized() && regiao_de(w).is_none() {
+                if let Some(loc) = self.space.element_location(w) {
+                    guardar_anterior(w, loc, Some(x.geometry().size));
+                }
+            }
+            w.0.user_data().insert_if_missing(|| RegiaoEncaixe(std::cell::Cell::new(None)));
+            if let Some(r) = w.0.user_data().get::<RegiaoEncaixe>() {
+                r.0.set(Some((col, lin)));
+            }
+            let meia = area.size.w / 2;
+            let xx = if col < 0 { area.loc.x } else { area.loc.x + meia };
+            let (y, alt) = match lin {
+                0 => (area.loc.y, area.size.h),
+                -1 => (area.loc.y, area.size.h / 2),
+                _ => (area.loc.y + area.size.h / 2, area.size.h - area.size.h / 2),
+            };
+            let _ = x.set_maximized(false);
+            let r = Rectangle::new((xx, y).into(), (meia, alt).into());
+            x11_colocar(w, &x, r);
+            self.space.map_element(w.clone(), r.loc, true);
+            return;
+        }
         let Some(t) = w.0.toplevel().cloned() else { return };
         let output = self.space.outputs_for_element(w).first().cloned().or_else(|| self.space.outputs().next().cloned());
         let Some(area) = output.and_then(|o| area_util(&self.space, &o)) else { return };
@@ -247,6 +324,9 @@ impl<B: Backend> AnvilState<B> {
     }
 
     fn esta_encaixada(&self, w: &WindowElement) -> bool {
+        if x11_de(w).is_some() {
+            return regiao_de(w).is_some();
+        }
         w.0.toplevel()
             .map(|t| t.with_pending_state(|s| s.states.contains(xdg_toplevel::State::TiledLeft)))
             .unwrap_or(false)
@@ -254,6 +334,23 @@ impl<B: Backend> AnvilState<B> {
 
     /// Volta ao tamanho e lugar de antes de maximizar.
     pub fn restaurar(&mut self, w: &WindowElement) {
+        #[cfg(feature = "xwayland")]
+        if let Some(x) = x11_de(w) {
+            if let Some(r) = w.0.user_data().get::<RegiaoEncaixe>() {
+                r.0.set(None);
+            }
+            let anterior = w.0.user_data().get::<GeometriaAnterior>().and_then(|g| g.0.borrow_mut().take());
+            let _ = x.set_maximized(false);
+            if let Some((loc, Some(tam))) = anterior {
+                let mut alt = tam.h;
+                if w.decoration_state().is_ssd {
+                    alt += HEADER_BAR_HEIGHT;
+                }
+                x11_colocar(w, &x, Rectangle::new(loc, (tam.w, alt).into()));
+                self.space.map_element(w.clone(), loc, true);
+            }
+            return;
+        }
         let Some(t) = w.0.toplevel().cloned() else { return };
         let anterior = w
             .0
@@ -736,21 +833,47 @@ impl<B: Backend> AnvilState<B> {
 /// o systemctl. Toca o som antes, numa thread, sem travar a tela.
 pub fn pedir_sistema(pedido: &'static str, som: Option<&'static str>) {
     std::thread::spawn(move || {
+        // O som toca junto, mas não pode segurar o pedido (se o PipeWire
+        // estiver travado, o ararinha-som nunca termina): espera até 1,5 s.
         if let Some(s) = som {
-            let _ = std::process::Command::new("ararinha-som").arg(s).status();
+            if let Ok(mut f) = std::process::Command::new("ararinha-som").arg(s).spawn() {
+                let ate = std::time::Instant::now() + std::time::Duration::from_millis(1500);
+                while std::time::Instant::now() < ate {
+                    if matches!(f.try_wait(), Ok(Some(_))) {
+                        break;
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(50));
+                }
+            }
         }
         use std::io::{Read, Write};
-        match std::os::unix::net::UnixStream::connect("/run/ararinha/sistema.sock") {
+        let erro = match std::os::unix::net::UnixStream::connect("/run/ararinha/sistema.sock") {
             Ok(mut c) => {
+                let _ = c.set_read_timeout(Some(std::time::Duration::from_secs(30)));
                 let _ = c.write_all(format!("{pedido}\n").as_bytes());
                 let _ = c.shutdown(std::net::Shutdown::Write);
                 let mut r = String::new();
                 let _ = c.read_to_string(&mut r);
-                if !r.starts_with("OK") {
-                    tracing::warn!("ararinha-sistema recusou {pedido}: {}", r.trim());
+                if r.starts_with("OK") {
+                    None
+                } else if r.trim().is_empty() {
+                    Some("o serviço do sistema não respondeu".to_string())
+                } else {
+                    Some(r.trim().trim_start_matches("ERRO").trim().to_string())
                 }
             }
-            Err(e) => tracing::warn!("ararinha-sistema indisponível: {e}"),
+            Err(e) => Some(format!("o serviço do sistema não está rodando ({e})")),
+        };
+        // Mostra o motivo na tela: sem isso, o botão parece não fazer nada.
+        if let Some(e) = erro {
+            tracing::warn!("ararinha-sistema recusou {pedido}: {e}");
+            let titulo = match pedido {
+                "desligar" => "Não deu para desligar",
+                "reiniciar" => "Não deu para reiniciar",
+                "hibernar" => "Não deu para hibernar",
+                _ => "Não deu para dormir",
+            };
+            let _ = std::process::Command::new("ararinha-notificar").args([titulo, &e]).status();
         }
     });
 }

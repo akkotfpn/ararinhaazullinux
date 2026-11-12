@@ -449,6 +449,12 @@ where
                     )
                 })
                 .unwrap_or((true, false));
+            // X11: ativa = tem o foco do X; maximizada pelo estado do X.
+            #[cfg(feature = "xwayland")]
+            let (ativa, maximizada) = match self.0.x11_surface() {
+                Some(x) => (x.is_activated(), x.is_maximized()),
+                None => (ativa, maximizada),
+            };
 
             let mut state = self.decoration_state();
             let width = window_geo.size.w;

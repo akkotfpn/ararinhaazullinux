@@ -590,6 +590,18 @@ impl Default for Painel {
 
 /// Título da janela (ou o app_id, se não tiver título).
 pub fn titulo(w: &WindowElement) -> String {
+    // Janelas X11 (Steam, Krita, jogos): título do X, ou a classe do app.
+    #[cfg(feature = "xwayland")]
+    if let Some(x) = w.0.x11_surface() {
+        let t = x.title();
+        if !t.trim().is_empty() {
+            return t;
+        }
+        let c = x.class();
+        if !c.trim().is_empty() {
+            return c;
+        }
+    }
     w.0.toplevel()
         .and_then(|t| {
             compositor::with_states(t.wl_surface(), |s| {

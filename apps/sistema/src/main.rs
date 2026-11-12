@@ -205,14 +205,27 @@ fn atender(quem: &Quem, pedido: &str) -> Result<String, String> {
                 "hibernar" => "hibernate",
                 _ => "suspend",
             };
+            // Primeiro pelo logind (avisa os apps e respeita quem pediu para
+            // esperar); se ele recusar, direto pelo systemd (PID 1), que
+            // sempre aceita root.
             let s = std::process::Command::new("/usr/bin/systemctl")
-                .arg(verbo)
+                .args(["--no-ask-password", verbo])
                 .output()
                 .map_err(|e| format!("systemctl: {e}"))?;
             if s.status.success() {
+                return Ok(String::new());
+            }
+            let erro1 = String::from_utf8_lossy(&s.stderr).trim().to_string();
+            eprintln!("systemctl {verbo} falhou ({erro1}); tentando {verbo}.target");
+            let alvo = format!("{verbo}.target");
+            let s2 = std::process::Command::new("/usr/bin/systemctl")
+                .args(["--no-ask-password", "--no-block", "--job-mode=replace-irreversibly", "start", &alvo])
+                .output()
+                .map_err(|e| format!("systemctl: {e}"))?;
+            if s2.status.success() {
                 Ok(String::new())
             } else {
-                Err(String::from_utf8_lossy(&s.stderr).trim().to_string())
+                Err(format!("{erro1} / {}", String::from_utf8_lossy(&s2.stderr).trim()))
             }
         }
         _ => Err("pedido desconhecido".into()),

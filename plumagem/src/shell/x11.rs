@@ -135,7 +135,12 @@ impl<BackendData: Backend> XwmHandler for AnvilState<BackendData> {
     }
 
     fn maximize_request(&mut self, _xwm: XwmId, window: X11Surface) {
-        self.maximize_request_x11(&window);
+        // Mesmo caminho do botão maximizar (respeita a barra de tarefas).
+        let elem = self.space.elements().find(|e| matches!(e.0.x11_surface(), Some(w) if w == &window)).cloned();
+        match elem {
+            Some(e) => self.maximizar(&e),
+            None => self.maximize_request_x11(&window),
+        }
     }
 
     fn unmaximize_request(&mut self, _xwm: XwmId, window: X11Surface) {
@@ -147,16 +152,7 @@ impl<BackendData: Backend> XwmHandler for AnvilState<BackendData> {
         else {
             return;
         };
-
-        window.set_maximized(false).unwrap();
-        if let Some(old_geo) = window
-            .user_data()
-            .get::<OldGeometry>()
-            .and_then(|data| data.restore())
-        {
-            window.configure(old_geo).unwrap();
-            self.space.map_element(elem, old_geo.loc, false);
-        }
+        self.restaurar(&elem);
     }
 
     fn fullscreen_request(&mut self, _xwm: XwmId, window: X11Surface) {
