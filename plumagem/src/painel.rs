@@ -2773,7 +2773,7 @@ impl Painel {
             }
         }
         let chave = format!(
-            "{sobre:?}|{:?}|{}|{}|{}|{:?}|{:?}|{:?}",
+            "{sobre:?}|{:?}|{}|{}|{}|{}|{:?}|{:?}|{}",
             self.icone_sel,
             self.icones_area.len(),
             linhas,
