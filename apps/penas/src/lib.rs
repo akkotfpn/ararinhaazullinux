@@ -28,6 +28,66 @@ use smithay_client_toolkit::{
 };
 
 const TIPOS_TEXTO: [&str; 4] = ["text/plain;charset=utf-8", "UTF8_STRING", "text/plain", "STRING"];
+/// Arquivos copiados: o formato do GNOME (diz se é recortar) e a lista de URIs.
+const TIPOS_ARQUIVOS: [&str; 2] = ["x-special/gnome-copied-files", "text/uri-list"];
+
+/// Caminho → URI file:// (com %XX nos bytes fora do básico).
+pub fn uri_de(p: &std::path::Path) -> String {
+    use std::os::unix::ffi::OsStrExt;
+    let mut s = String::from("file://");
+    for &b in p.as_os_str().as_bytes() {
+        if b.is_ascii_alphanumeric() || b"/-_.~".contains(&b) {
+            s.push(b as char);
+        } else {
+            s.push_str(&format!("%{b:02X}"));
+        }
+    }
+    s
+}
+
+/// URI file:// → caminho (desfaz os %XX). Outras URIs: None.
+pub fn caminho_de_uri(uri: &str) -> Option<std::path::PathBuf> {
+    use std::os::unix::ffi::OsStringExt;
+    let resto = uri.trim().strip_prefix("file://")?;
+    // file://host/caminho: ignora o host (localhost ou vazio).
+    let resto = if resto.starts_with('/') { resto } else { &resto[resto.find('/')?..] };
+    let b = resto.as_bytes();
+    let mut out = Vec::with_capacity(b.len());
+    let mut i = 0;
+    while i < b.len() {
+        if b[i] == b'%' && i + 2 < b.len() {
+            if let Ok(v) = u8::from_str_radix(&resto[i + 1..i + 3], 16) {
+                out.push(v);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(b[i]);
+        i += 1;
+    }
+    Some(std::path::PathBuf::from(std::ffi::OsString::from_vec(out)))
+}
+
+/// Lê o conteúdo de x-special/gnome-copied-files ou text/uri-list:
+/// (arquivos, recortar).
+pub fn ler_lista_arquivos(texto: &str) -> (Vec<std::path::PathBuf>, bool) {
+    let mut corte = false;
+    let mut v = Vec::new();
+    for (i, linha) in texto.lines().enumerate() {
+        let l = linha.trim();
+        if i == 0 && (l == "cut" || l == "copy") {
+            corte = l == "cut";
+            continue;
+        }
+        if l.starts_with('#') || l.is_empty() {
+            continue;
+        }
+        if let Some(c) = caminho_de_uri(l) {
+            v.push(c);
+        }
+    }
+    (v, corte)
+}
 
 use smithay_client_toolkit::{
     compositor::{CompositorHandler, CompositorState},
@@ -82,6 +142,9 @@ pub enum Tecla {
     Subir,
     /// Texto que chegou da área de transferência (depois de `pedir_colar`).
     Colado(String),
+    /// Arquivos que chegaram da área de transferência (depois de
+    /// `pedir_colar_arquivos`): os caminhos e se foram recortados.
+    ArquivosColados(Vec<std::path::PathBuf>, bool),
     Outra(Keysym),
 }
 
@@ -89,6 +152,8 @@ pub enum Tecla {
 enum PedidoArea {
     Copiar(String),
     Colar,
+    CopiarArquivos(Vec<std::path::PathBuf>, bool),
+    ColarArquivos,
 }
 
 thread_local! {
@@ -113,6 +178,18 @@ pub fn copiar(texto: &str) {
 /// próximos quadros como `Tecla::Colado`.
 pub fn pedir_colar() {
     PEDIDOS_AREA.with(|p| p.borrow_mut().push(PedidoArea::Colar));
+}
+
+/// Copia (ou recorta) arquivos para a área de transferência do sistema:
+/// colam no Explorador, na área de trabalho e nos apps que aceitam arquivos.
+pub fn copiar_arquivos(caminhos: &[std::path::PathBuf], recortar: bool) {
+    PEDIDOS_AREA.with(|p| p.borrow_mut().push(PedidoArea::CopiarArquivos(caminhos.to_vec(), recortar)));
+}
+
+/// Pede os arquivos da área de transferência; chegam como
+/// `Tecla::ArquivosColados` (nada chega se não houver arquivos).
+pub fn pedir_colar_arquivos() {
+    PEDIDOS_AREA.with(|p| p.borrow_mut().push(PedidoArea::ColarArquivos));
 }
 
 /// O que o app recebe a cada quadro para desenhar e reagir.
@@ -217,7 +294,7 @@ pub fn gravar_chave_config(chave: &str, valor: &str) -> std::io::Result<()> {
     std::fs::write(&p, linhas.join("\n") + "\n")
 }
 
-/// Usa uma imagem como papel de parede: copia em PNG (no máximo 2560 px de
+/// Usa uma imagem como papel de parede: copia em PNG (no máximo 1920 px de
 /// largura) para ~/.local/share/ararinha e grava a chave "papel".
 pub fn definir_papel_de_parede(origem: &std::path::Path) -> Result<(), String> {
     let img = image::ImageReader::open(origem)
@@ -225,7 +302,7 @@ pub fn definir_papel_de_parede(origem: &std::path::Path) -> Result<(), String> {
         .map_err(|e| format!("Não deu para abrir a imagem: {e}"))?
         .decode()
         .map_err(|_| "Não deu para ler essa imagem (use PNG, JPEG ou WebP).".to_string())?;
-    let img = if img.width() > 2560 { img.resize(2560, 2560 * img.height() / img.width().max(1), image::imageops::FilterType::Lanczos3) } else { img };
+    let img = if img.width() > 1920 || img.height() > 1920 { img.resize(1920, 1920, image::imageops::FilterType::Lanczos3) } else { img };
     let pasta = std::path::PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(".local/share/ararinha");
     std::fs::create_dir_all(&pasta).map_err(|e| e.to_string())?;
     if let Ok(rd) = std::fs::read_dir(&pasta) {
@@ -241,7 +318,7 @@ pub fn definir_papel_de_parede(origem: &std::path::Path) -> Result<(), String> {
     gravar_chave_config("papel", &destino.to_string_lossy()).map_err(|e| e.to_string())
 }
 
-fn ler_chave_config(chave: &str) -> Option<String> {
+pub fn ler_chave_config(chave: &str) -> Option<String> {
     for c in arquivos_config() {
         let Ok(t) = std::fs::read_to_string(&c) else { continue };
         for l in t.lines() {
@@ -448,12 +525,21 @@ pub fn executar(opcoes: Opcoes, app: Box<dyn App>) {
         dispositivo: None,
         fonte: None,
         copiado: String::new(),
+        copiado_arquivos: None,
         serial: 0,
         colar_tx,
     };
     let _ = event_loop.handle().insert_source(colar_rx, |ev, _, janela: &mut Janela| {
         if let smithay_client_toolkit::reexports::calloop::channel::Event::Msg(t) = ev {
-            janela.teclas.push(Tecla::Colado(t));
+            // "\0" na frente: é uma lista de arquivos, não texto.
+            if let Some(lista) = t.strip_prefix('\0') {
+                let (v, corte) = ler_lista_arquivos(lista);
+                if !v.is_empty() {
+                    janela.teclas.push(Tecla::ArquivosColados(v, corte));
+                }
+            } else {
+                janela.teclas.push(Tecla::Colado(t));
+            }
             janela.sujo = true;
         }
     });
@@ -553,6 +639,8 @@ struct Janela {
     dispositivo: Option<DataDevice>,
     fonte: Option<CopyPasteSource>,
     copiado: String,
+    /// Arquivos copiados por esta janela (e se foi recortar).
+    copiado_arquivos: Option<(Vec<std::path::PathBuf>, bool)>,
     /// Serial do último clique/tecla (o compositor exige para copiar).
     serial: u32,
     colar_tx: smithay_client_toolkit::reexports::calloop::channel::Sender<String>,
@@ -606,6 +694,8 @@ impl Janela {
             match p {
                 PedidoArea::Copiar(t) => self.copiar(qh, t),
                 PedidoArea::Colar => self.colar(),
+                PedidoArea::CopiarArquivos(v, corte) => self.copiar_arquivos(qh, v, corte),
+                PedidoArea::ColarArquivos => self.colar_arquivos(),
             }
         }
         if fechar {
@@ -672,13 +762,60 @@ impl Janela {
         let fonte = area.create_copy_paste_source(qh, TIPOS_TEXTO);
         fonte.set_selection(disp, self.serial);
         self.copiado = texto;
+        self.copiado_arquivos = None;
         self.fonte = Some(fonte);
+    }
+
+    fn copiar_arquivos(&mut self, qh: &QueueHandle<Self>, v: Vec<std::path::PathBuf>, corte: bool) {
+        let (Some(area), Some(disp)) = (&self.area, &self.dispositivo) else { return };
+        let fonte = area.create_copy_paste_source(qh, TIPOS_ARQUIVOS);
+        fonte.set_selection(disp, self.serial);
+        self.copiado = String::new();
+        self.copiado_arquivos = Some((v, corte));
+        self.fonte = Some(fonte);
+    }
+
+    /// Conteúdo de um dos tipos de arquivos para entregar a outro app.
+    fn texto_arquivos(&self, mime: &str) -> Option<String> {
+        let (v, corte) = self.copiado_arquivos.as_ref()?;
+        let uris: Vec<String> = v.iter().map(|p| uri_de(p)).collect();
+        Some(if mime == "x-special/gnome-copied-files" {
+            format!("{}\n{}", if *corte { "cut" } else { "copy" }, uris.join("\n"))
+        } else {
+            uris.join("\r\n") + "\r\n"
+        })
+    }
+
+    fn colar_arquivos(&mut self) {
+        if self.fonte.is_some() {
+            if let Some(t) = self.texto_arquivos("x-special/gnome-copied-files") {
+                let _ = self.colar_tx.send(format!("\0{t}"));
+            }
+            return;
+        }
+        let Some(disp) = &self.dispositivo else { return };
+        let Some(oferta) = disp.data().selection_offer() else { return };
+        let tipo = oferta.with_mime_types(|m| TIPOS_ARQUIVOS.iter().find(|t| m.iter().any(|x| x == **t)).map(|t| t.to_string()));
+        let Some(tipo) = tipo else { return };
+        let Ok(mut pipe) = oferta.receive(tipo) else { return };
+        let tx = self.colar_tx.clone();
+        std::thread::spawn(move || {
+            use std::io::Read;
+            let mut b = Vec::new();
+            let _ = (&mut pipe).take(4 * 1024 * 1024).read_to_end(&mut b);
+            let t = String::from_utf8_lossy(&b).to_string();
+            if !t.trim().is_empty() {
+                let _ = tx.send(format!("\0{t}"));
+            }
+        });
     }
 
     fn colar(&mut self) {
         // A própria janela é a dona: não precisa do pipe.
         if self.fonte.is_some() {
-            let _ = self.colar_tx.send(self.copiado.clone());
+            if self.copiado_arquivos.is_none() {
+                let _ = self.colar_tx.send(self.copiado.clone());
+            }
             return;
         }
         let Some(disp) = &self.dispositivo else { return };
@@ -715,8 +852,8 @@ impl DataOfferHandler for Janela {
 
 impl DataSourceHandler for Janela {
     fn accept_mime(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_data_source::WlDataSource, _: Option<String>) {}
-    fn send_request(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_data_source::WlDataSource, _: String, mut fd: WritePipe) {
-        let t = self.copiado.clone();
+    fn send_request(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_data_source::WlDataSource, mime: String, mut fd: WritePipe) {
+        let t = self.texto_arquivos(&mime).unwrap_or_else(|| self.copiado.clone());
         std::thread::spawn(move || {
             use std::io::Write;
             let _ = fd.write_all(t.as_bytes());

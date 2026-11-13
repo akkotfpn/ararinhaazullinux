@@ -41,13 +41,33 @@ pub fn imagem_escolhida() -> image::DynamicImage {
             match std::fs::read(&caminho).map_err(|e| e.to_string()).and_then(|b| {
                 image::load_from_memory_with_format(&b, image::ImageFormat::Png).map_err(|e| e.to_string())
             }) {
-                Ok(img) => return img,
+                Ok(img) => return limitar(img),
                 Err(e) => tracing::warn!("papel de parede {caminho}: {e}; fica o Spix"),
             }
         }
     }
     image::load_from_memory_with_format(FUNDO_SPIX_PNG, image::ImageFormat::Png)
         .unwrap_or_else(|_| image::DynamicImage::new_rgba8(1, 1))
+}
+
+/// Imagens grandes (fotos da internet de 4000 px ou mais) passam do limite
+/// de textura de muitas placas e de GPUs virtuais: só um pedaço aparecia e
+/// o resto ficava borrado. Reduz para caber em 1920x1920 mantendo a proporção.
+fn limitar(img: image::DynamicImage) -> image::DynamicImage {
+    const MAX: u32 = 1920;
+    let img = if img.width() <= MAX && img.height() <= MAX {
+        img
+    } else {
+        img.resize(MAX, MAX, image::imageops::FilterType::Triangle)
+    };
+    // Largura e altura múltiplas de 8: alguns drivers sobem texturas com
+    // linhas alinhadas e erram o passo quando a largura é "torta".
+    let (l, a) = ((img.width() / 8 * 8).max(8), (img.height() / 8 * 8).max(8));
+    if (l, a) == (img.width(), img.height()) || img.width() < 8 || img.height() < 8 {
+        img
+    } else {
+        img.crop_imm((img.width() - l) / 2, (img.height() - a) / 2, l, a)
+    }
 }
 
 #[derive(Debug, Clone)]

@@ -125,6 +125,36 @@ fn programa(nomes: &[&str]) -> String {
         .unwrap_or_else(|| falhar("Falta o cifs-utils (mount.cifs) no sistema."))
 }
 
+/// Traduz o erro do mount.cifs para o motivo, em português.
+fn motivo_cifs(erro: &str) -> String {
+    let codigo = erro
+        .split("error(")
+        .nth(1)
+        .and_then(|r| r.split(')').next())
+        .and_then(|n| n.parse::<i32>().ok());
+    let motivo = match codigo {
+        Some(13) | Some(1) => "o usuário ou a senha estão incorretos, ou esta conta não tem acesso à pasta",
+        Some(2) => "o servidor respondeu, mas essa pasta compartilhada não existe (confira o nome depois da segunda barra)",
+        Some(6) | Some(19) => "o servidor não reconheceu o compartilhamento pedido",
+        Some(111) => "o servidor recusou a conexão (o compartilhamento de arquivos está ligado nele?)",
+        Some(112) | Some(113) => "o servidor não está acessível na rede (desligado, fora da rede ou bloqueado por firewall)",
+        Some(110) | Some(115) => "o servidor demorou demais para responder",
+        Some(95) => "o servidor só fala uma versão do protocolo SMB que não é suportada",
+        Some(16) => "essa letra já está em uso",
+        Some(22) => "o endereço da pasta está em um formato inválido (use \\\\servidor\\pasta)",
+        Some(126) | Some(127) => "o servidor exige uma forma de login que não está disponível",
+        _ if erro.contains("could not resolve") || erro.contains("resolve address") => {
+            "não achei o servidor pelo nome (tente o endereço IP, como \\\\192.168.0.10\\pasta)"
+        }
+        _ => "",
+    };
+    if motivo.is_empty() {
+        format!("Você não conseguiu se conectar: {}", erro.trim())
+    } else {
+        format!("Você não conseguiu se conectar porque {motivo}.")
+    }
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     let (uid, gid) = unsafe { (getuid(), getgid()) };
@@ -191,13 +221,7 @@ fn main() {
                 Ok(o) => {
                     let _ = fs::remove_dir(&ponto);
                     let erro = String::from_utf8_lossy(&o.stderr);
-                    let msg = if erro.contains("Permission denied") || erro.contains("error(13)") {
-                        "Usuário ou senha incorretos (ou sem acesso a esta pasta).".to_string()
-                    } else if erro.contains("could not resolve") || erro.contains("error(2)") || erro.contains("Host is down") {
-                        "Servidor ou pasta não encontrados.".to_string()
-                    } else {
-                        format!("Não deu para conectar: {}", erro.trim())
-                    };
+                    let msg = motivo_cifs(&erro);
                     falhar(&msg);
                 }
                 Err(e) => falhar(&format!("Não deu para conectar: {e}")),

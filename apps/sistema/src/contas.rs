@@ -236,17 +236,17 @@ pub fn dns_definir(servidores: &[&str]) -> Result<String, String> {
         &["/usr/bin/tee", DNS_NETWORKD],
         Some("# Configurações › Rede › DNS: ignora o DNS do roteador\n[DHCPv4]\nUseDNS=no\n\n[DHCPv6]\nUseDNS=no\n\n[IPv6AcceptRA]\nUseDNS=no\n"),
     )?;
-    aplicar_dns()?;
+    aplicar_dns(true)?;
     Ok(dns_estado())
 }
 
 pub fn dns_automatico() -> Result<String, String> {
     rodar_fora(&["/usr/bin/rm", "-f", DNS_RESOLVED, DNS_NETWORKD], None)?;
-    aplicar_dns()?;
+    aplicar_dns(false)?;
     Ok(dns_estado())
 }
 
-fn aplicar_dns() -> Result<(), String> {
+fn aplicar_dns(proprio: bool) -> Result<(), String> {
     rodar_fora(&["/usr/bin/systemctl", "restart", "systemd-resolved"], None)?;
     rodar_fora_com(&["/usr/bin/networkctl", "reload"], None, false)?;
     // Reconfigura as placas para largar o DNS do roteador.
@@ -255,6 +255,11 @@ fn aplicar_dns() -> Result<(), String> {
         .unwrap_or_default();
     for p in placas {
         let _ = rodar_fora_com(&["/usr/bin/networkctl", "reconfigure", &p], None, false);
+        // O Wi-Fi (iwd) entrega o DNS do roteador direto ao resolved: com DNS
+        // próprio, a placa deixa de ser rota padrão das consultas (senão elas
+        // iam também para o roteador e escapavam do AdGuard, por exemplo).
+        let _ = rodar_fora_com(&["/usr/bin/resolvectl", "default-route", &p, if proprio { "no" } else { "yes" }], None, false);
     }
+    let _ = rodar_fora_com(&["/usr/bin/resolvectl", "flush-caches"], None, false);
     Ok(())
 }

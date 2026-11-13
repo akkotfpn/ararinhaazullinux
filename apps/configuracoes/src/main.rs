@@ -752,7 +752,7 @@ fn main() {
 }
 
 /// Pede uma imagem ao Explorador e grava uma cópia em PNG (a Plumagem lê
-/// PNG) em ~/.local/share/ararinha, com no máximo 2560 px de largura.
+/// PNG) em ~/.local/share/ararinha, com no máximo 1920 px de largura.
 /// Devolve o caminho, ou None se a pessoa cancelou.
 fn escolher_papel() -> Result<Option<String>, String> {
     let casa = std::env::var("HOME").unwrap_or_default();
@@ -770,7 +770,7 @@ fn escolher_papel() -> Result<Option<String>, String> {
         .map_err(|e| format!("Não deu para abrir a imagem: {e}"))?
         .decode()
         .map_err(|_| "Não deu para ler essa imagem (use PNG, JPEG ou WebP).".to_string())?;
-    let img = if img.width() > 2560 { img.resize(2560, 2560 * img.height() / img.width().max(1), image::imageops::FilterType::Lanczos3) } else { img };
+    let img = if img.width() > 1920 || img.height() > 1920 { img.resize(1920, 1920, image::imageops::FilterType::Lanczos3) } else { img };
     let pasta = std::path::PathBuf::from(&casa).join(".local/share/ararinha");
     std::fs::create_dir_all(&pasta).map_err(|e| e.to_string())?;
     // Nome novo a cada escolha (a Plumagem recarrega quando o valor muda).

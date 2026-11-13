@@ -100,3 +100,150 @@ pub fn enviar(fd: OwnedFd) -> bool {
     });
     true
 }
+
+// ------------------------------------------------------------ arquivos
+
+/// Tipos que trazem arquivos copiados (Explorador, Nautilus, Dolphin...).
+pub const TIPOS_ARQUIVOS: [&str; 2] = ["x-special/gnome-copied-files", "text/uri-list"];
+
+/// Arquivos na área de transferência agora (de qualquer app): caminhos e
+/// se foram recortados. A área de trabalho usa para "Colar".
+pub static ARQUIVOS: Mutex<Option<(Vec<std::path::PathBuf>, bool)>> = Mutex::new(None);
+/// A própria Plumagem oferece os arquivos (copiados na área de trabalho).
+pub static PROPRIA_ARQUIVOS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+pub fn tipo_arquivos(tipos: &[String]) -> Option<String> {
+    TIPOS_ARQUIVOS.iter().find(|t| tipos.iter().any(|m| m == *t)).map(|t| t.to_string())
+}
+
+pub fn uri_de(p: &std::path::Path) -> String {
+    use std::os::unix::ffi::OsStrExt;
+    let mut s = String::from("file://");
+    for &b in p.as_os_str().as_bytes() {
+        if b.is_ascii_alphanumeric() || b"/-_.~".contains(&b) {
+            s.push(b as char);
+        } else {
+            s.push_str(&format!("%{b:02X}"));
+        }
+    }
+    s
+}
+
+fn caminho_de_uri(uri: &str) -> Option<std::path::PathBuf> {
+    use std::os::unix::ffi::OsStringExt;
+    let resto = uri.trim().strip_prefix("file://")?;
+    let resto = if resto.starts_with('/') { resto } else { &resto[resto.find('/')?..] };
+    let b = resto.as_bytes();
+    let mut out = Vec::with_capacity(b.len());
+    let mut i = 0;
+    while i < b.len() {
+        if b[i] == b'%' && i + 2 < b.len() {
+            if let Ok(v) = u8::from_str_radix(&resto[i + 1..i + 3], 16) {
+                out.push(v);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(b[i]);
+        i += 1;
+    }
+    Some(std::path::PathBuf::from(std::ffi::OsString::from_vec(out)))
+}
+
+/// Lê a lista de arquivos do pipe numa thread e guarda em `ARQUIVOS`.
+pub fn ler_arquivos_em_segundo_plano(leitura: OwnedFd) {
+    std::thread::spawn(move || {
+        let mut f = std::fs::File::from(leitura);
+        let mut b = Vec::new();
+        let _ = (&mut f).take(MAX_BYTES as u64).read_to_end(&mut b);
+        let t = String::from_utf8_lossy(&b);
+        let mut corte = false;
+        let mut v = Vec::new();
+        for (i, linha) in t.lines().enumerate() {
+            let l = linha.trim();
+            if i == 0 && (l == "cut" || l == "copy") {
+                corte = l == "cut";
+                continue;
+            }
+            if l.is_empty() || l.starts_with('#') {
+                continue;
+            }
+            if let Some(c) = caminho_de_uri(l) {
+                v.push(c);
+            }
+        }
+        if let Ok(mut a) = ARQUIVOS.lock() {
+            *a = (!v.is_empty()).then_some((v, corte));
+        }
+    });
+}
+
+/// Entrega os arquivos que a Plumagem copiou, no formato pedido.
+pub fn enviar_arquivos(mime: &str, fd: OwnedFd) -> bool {
+    if !PROPRIA_ARQUIVOS.load(std::sync::atomic::Ordering::Relaxed) {
+        return false;
+    }
+    let Some((v, corte)) = ARQUIVOS.lock().ok().and_then(|a| a.clone()) else { return false };
+    let uris: Vec<String> = v.iter().map(|p| uri_de(p)).collect();
+    let t = if mime == "x-special/gnome-copied-files" {
+        format!("{}\n{}", if corte { "cut" } else { "copy" }, uris.join("\n"))
+    } else {
+        uris.join("\r\n") + "\r\n"
+    };
+    std::thread::spawn(move || {
+        let mut f = std::fs::File::from(fd);
+        let _ = f.write_all(t.as_bytes());
+    });
+    true
+}
+
+/// Nome livre na pasta ("foto - Cópia.png", "Nova pasta (2)").
+pub fn nome_livre(dir: &std::path::Path, base: &str, sufixo: &str) -> std::path::PathBuf {
+    let (raiz, ext) = match base.rsplit_once('.') {
+        Some((r, e)) if !r.is_empty() && !base.ends_with('.') => (r.to_string(), format!(".{e}")),
+        _ => (base.to_string(), String::new()),
+    };
+    let mut p = dir.join(base);
+    let mut n = 1;
+    while p.symlink_metadata().is_ok() {
+        n += 1;
+        let extra = if n == 2 && !sufixo.is_empty() { sufixo.to_string() } else { format!("{sufixo} ({n})") };
+        p = dir.join(format!("{raiz}{extra}{ext}"));
+    }
+    p
+}
+
+/// Cola os arquivos da área de transferência na pasta (numa thread; avisa
+/// por notificação se algo falhar).
+pub fn colar_em(destino: std::path::PathBuf) {
+    let Some((v, corte)) = ARQUIVOS.lock().ok().and_then(|a| a.clone()) else { return };
+    if corte {
+        if let Ok(mut a) = ARQUIVOS.lock() {
+            *a = None;
+        }
+    }
+    std::thread::spawn(move || {
+        let mut falhas = 0;
+        for o in &v {
+            let Some(nome) = o.file_name().map(|n| n.to_string_lossy().to_string()) else { continue };
+            if destino.starts_with(o) || (corte && o.parent() == Some(destino.as_path())) {
+                continue;
+            }
+            let alvo = nome_livre(&destino, &nome, if corte { "" } else { " - Cópia" });
+            let ok = if corte {
+                std::fs::rename(o, &alvo).is_ok()
+                    || std::process::Command::new("mv").arg("--").arg(o).arg(&alvo).status().map(|s| s.success()).unwrap_or(false)
+            } else {
+                std::process::Command::new("cp").arg("-a").arg("--").arg(o).arg(&alvo).status().map(|s| s.success()).unwrap_or(false)
+            };
+            if !ok {
+                falhas += 1;
+            }
+        }
+        if falhas > 0 {
+            let _ = std::process::Command::new("ararinha-notificar")
+                .args(["Não deu para colar", &format!("{falhas} item(ns) não puderam ser colados na área de trabalho.")])
+                .spawn();
+        }
+    });
+}

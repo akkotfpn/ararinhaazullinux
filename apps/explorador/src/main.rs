@@ -6,6 +6,7 @@
 //! usuário com os nomes de sempre e navegação com Voltar, Avançar e Subir.
 
 mod abrir_com;
+mod copia;
 mod tipos;
 
 use std::{
@@ -20,6 +21,12 @@ use penas::{desenho, tema, App, Cor, Keysym, Opcoes, Tecla, Tela, Ui};
 use tipos::Propriedades;
 
 const BARRA_A: f32 = 52.0;
+/// Faixa das abas (como no Explorador do Windows 11).
+const ABAS_A: f32 = 40.0;
+/// Barra de comandos: Novo, recortar/copiar/colar..., Classificar, Visualizar.
+const FERR_A: f32 = 46.0;
+/// Barra de status: "12 itens | 2 itens selecionados".
+const STATUS_A: f32 = 26.0;
 const LATERAL_L: f32 = 210.0;
 /// Largura do painel de visualização.
 const PREVIA_L: f32 = 280.0;
@@ -197,6 +204,41 @@ struct Explorador {
     laco: Option<(f32, f32)>,
     /// Quando as unidades foram lidas (pendrives entram e saem).
     unidades_em: Option<std::time::Instant>,
+    /// Abas abertas; a da vez vive nos campos acima (`local`, `voltar`...)
+    /// e é guardada aqui ao trocar.
+    abas: Vec<Aba>,
+    aba_atual: usize,
+    /// Classificar por, e se é decrescente.
+    ordem: Ordem,
+    ordem_desc: bool,
+    /// Painel de detalhes/visualização à direita.
+    mostrar_previa: bool,
+    /// Menu suspenso da barra de comandos aberto: posição e qual.
+    menu_ferr: Option<(f32, f32, MenuFerr)>,
+}
+
+#[derive(Debug, Clone)]
+struct Aba {
+    local: Local,
+    voltar: Vec<Local>,
+    avancar: Vec<Local>,
+    rolagem: f32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Ordem {
+    Nome,
+    Data,
+    Tipo,
+    Tamanho,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum MenuFerr {
+    Novo,
+    Classificar,
+    Visualizar,
+    Mais,
 }
 
 /// Janela "Como você quer abrir este arquivo?".
@@ -305,6 +347,13 @@ enum Acao {
     Compactar,
     AbrirCom,
     PapelDeParede,
+    NovoTexto,
+    NovaAba,
+    NovaJanela,
+    Ordenar(Ordem),
+    Decrescente(bool),
+    AlternarPrevia,
+    Mapear,
 }
 
 /// Arquivos que o bsdtar (libarchive) sabe abrir.
@@ -544,7 +593,21 @@ impl Explorador {
             unidades_em: None,
             abrir_com: None,
             laco: None,
+            abas: vec![Aba { local: Local::EsteComputador, voltar: Vec::new(), avancar: Vec::new(), rolagem: 0.0 }],
+            aba_atual: 0,
+            ordem: Ordem::Nome,
+            ordem_desc: false,
+            mostrar_previa: true,
+            menu_ferr: None,
         };
+        e.ordem = match penas::ler_chave_config("explorador_ordem").as_deref() {
+            Some("data") => Ordem::Data,
+            Some("tipo") => Ordem::Tipo,
+            Some("tamanho") => Ordem::Tamanho,
+            _ => Ordem::Nome,
+        };
+        e.ordem_desc = penas::ler_chave_config("explorador_desc").as_deref() == Some("sim");
+        e.mostrar_previa = penas::ler_chave_config("explorador_previa").as_deref() != Some("nao");
         // Abre numa pasta passada como argumento (ou na pasta de um arquivo,
         // já selecionado: "Mostrar na pasta" do navegador). Aceita file://.
         let arg = std::env::args().nth(1).filter(|a| !a.starts_with("--")).map(|a| {
@@ -604,11 +667,94 @@ impl Explorador {
                         Vec::new()
                     }
                 };
-                v.sort_by(|a, b| b.pasta.cmp(&a.pasta).then(a.nome.to_lowercase().cmp(&b.nome.to_lowercase())));
+                self.ordenar(&mut v);
                 self.todas = v;
                 self.filtrar();
             }
         }
+    }
+
+    /// Pastas primeiro; depois pelo critério de "Classificar".
+    fn ordenar(&self, v: &mut [Entrada]) {
+        let (ordem, desc) = (self.ordem, self.ordem_desc);
+        v.sort_by(|a, b| {
+            let c = match ordem {
+                Ordem::Nome => a.nome.to_lowercase().cmp(&b.nome.to_lowercase()),
+                Ordem::Data => a.modificado.cmp(&b.modificado),
+                Ordem::Tamanho => a.tamanho.cmp(&b.tamanho),
+                Ordem::Tipo => tipos::tipo_de(&a.nome).1.cmp(&tipos::tipo_de(&b.nome).1).then(a.nome.to_lowercase().cmp(&b.nome.to_lowercase())),
+            };
+            b.pasta.cmp(&a.pasta).then(if desc { c.reverse() } else { c })
+        });
+    }
+
+    /// Altura do topo (abas, endereço e barra de comandos).
+    fn topo(&self) -> f32 {
+        if self.escolha.is_some() {
+            BARRA_A
+        } else {
+            ABAS_A + BARRA_A + FERR_A
+        }
+    }
+
+    fn nome_local(&self, local: &Local) -> String {
+        match local {
+            Local::EsteComputador => "Este Computador".into(),
+            Local::Pasta(p) if p == Path::new("/") => "Disco Local (C:)".into(),
+            Local::Pasta(p) if *p == self.lixeira().join("files") => "Lixeira".into(),
+            Local::Pasta(p) if *p == self.casa => "Pasta pessoal".into(),
+            Local::Pasta(p) => p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default(),
+        }
+    }
+
+    /// Guarda a aba da vez (antes de trocar).
+    fn guardar_aba(&mut self) {
+        let a = Aba { local: self.local.clone(), voltar: self.voltar.clone(), avancar: self.avancar.clone(), rolagem: self.rolagem };
+        if let Some(x) = self.abas.get_mut(self.aba_atual) {
+            *x = a;
+        }
+    }
+
+    fn carregar_aba(&mut self, i: usize) {
+        let Some(a) = self.abas.get(i).cloned() else { return };
+        self.aba_atual = i;
+        self.local = a.local;
+        self.voltar = a.voltar;
+        self.avancar = a.avancar;
+        self.busca.clear();
+        self.busca_ativa = false;
+        self.renomeando = None;
+        self.laco = None;
+        self.previa = None;
+        self.recarregar();
+        self.rolagem = a.rolagem;
+    }
+
+    fn trocar_aba(&mut self, i: usize) {
+        if i == self.aba_atual || i >= self.abas.len() {
+            return;
+        }
+        self.guardar_aba();
+        self.carregar_aba(i);
+    }
+
+    fn nova_aba(&mut self, local: Local) {
+        self.guardar_aba();
+        self.abas.insert(self.aba_atual + 1, Aba { local, voltar: Vec::new(), avancar: Vec::new(), rolagem: 0.0 });
+        self.carregar_aba(self.aba_atual + 1);
+    }
+
+    /// Fecha a aba; devolve true se era a última (fecha a janela).
+    fn fechar_aba(&mut self, i: usize) -> bool {
+        if self.abas.len() <= 1 {
+            return true;
+        }
+        self.guardar_aba();
+        self.abas.remove(i);
+        let novo = if i < self.aba_atual || self.aba_atual >= self.abas.len() { self.aba_atual.saturating_sub(1) } else { self.aba_atual };
+        let novo = novo.min(self.abas.len() - 1);
+        self.carregar_aba(novo);
+        false
     }
 
     /// Aplica o texto da busca às entradas da pasta (filtro na hora).
@@ -654,6 +800,23 @@ impl Explorador {
         });
     }
 
+    /// Reaplica a ordem sem reler a pasta (mantém a seleção).
+    fn reordenar(&mut self) {
+        let sel: Vec<PathBuf> = self.marcados().into_iter().map(|e| e.caminho).collect();
+        let mut v = std::mem::take(&mut self.todas);
+        self.ordenar(&mut v);
+        self.todas = v;
+        if !self.busca_funda {
+            self.filtrar();
+        }
+        for (i, e) in self.entradas.iter().enumerate() {
+            if sel.contains(&e.caminho) {
+                self.selecionados.insert(i);
+                self.selecionado = Some(i);
+            }
+        }
+    }
+
     /// Itens marcados (ou o item em foco, se nada estiver marcado).
     fn marcados(&self) -> Vec<Entrada> {
         let mut idx: BTreeSet<usize> = self.selecionados.clone();
@@ -678,36 +841,13 @@ impl Explorador {
     /// Move (ou copia, com Ctrl) os itens marcados para outra pasta.
     fn soltar_em(&mut self, destino: PathBuf, copiar: bool) {
         let itens = self.marcados();
-        if itens.is_empty() || !destino.is_dir() {
+        if itens.is_empty() || !destino.is_dir() || self.tarefa.is_some() {
             return;
         }
-        let mut feitos = 0;
-        let mut falhas = 0;
-        for e in &itens {
-            // Não deixa mover uma pasta para dentro dela mesma.
-            if destino.starts_with(&e.caminho) || e.caminho.parent() == Some(destino.as_path()) && !copiar {
-                continue;
-            }
-            let alvo = Self::nome_livre(&destino, &e.nome, if copiar { " - Cópia" } else { "" });
-            let ok = if copiar {
-                Command::new("cp").arg("-a").arg("--").arg(&e.caminho).arg(&alvo).status().map(|s| s.success()).unwrap_or(false)
-            } else {
-                fs::rename(&e.caminho, &alvo).is_ok()
-                    || Command::new("mv").arg("--").arg(&e.caminho).arg(&alvo).status().map(|s| s.success()).unwrap_or(false)
-            };
-            if ok {
-                feitos += 1;
-            } else {
-                falhas += 1;
-            }
-        }
-        let nome_destino = destino.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "/".into());
-        self.aviso = Some(if falhas > 0 {
-            format!("{falhas} item(ns) não puderam ser {}.", if copiar { "copiados" } else { "movidos" })
-        } else {
-            format!("{feitos} item(ns) {} para \"{nome_destino}\".", if copiar { "copiados" } else { "movidos" })
-        });
-        self.recarregar();
+        let origens: Vec<PathBuf> = itens.into_iter().map(|e| e.caminho).collect();
+        let (tx, rx) = std::sync::mpsc::channel();
+        copia::transferir(origens, destino, !copiar, tx);
+        self.tarefa = Some(rx);
     }
 
     /// Escreve a escolha no stdout e fecha.
@@ -960,12 +1100,15 @@ impl Explorador {
                     lembrar_unidade(m.letra, &pasta, m.campos[1].trim(), &m.campos[2]);
                 }
                 self.mapear = None;
-                self.aviso = Some(format!("Unidade {}: conectada.", m.letra));
+                self.aviso = Some(format!("Você se conectou com sucesso ao servidor: {pasta} está na unidade {}:", m.letra));
+                let _ = Command::new("ararinha-notificar")
+                    .args(["Unidade de rede conectada", &format!("Você se conectou com sucesso a {pasta} (unidade {}:).", m.letra)])
+                    .spawn();
                 self.unidades = ler_unidades();
             }
             Err(e) => {
                 if let Some(mm) = self.mapear.as_mut() {
-                    mm.erro = Some(if e.is_empty() { "Não deu para conectar.".into() } else { e });
+                    mm.erro = Some(if e.is_empty() { "Você não conseguiu se conectar ao servidor (motivo desconhecido).".into() } else { e });
                 }
             }
         }
@@ -1126,6 +1269,11 @@ impl Explorador {
         match alvo {
             Some(i_menu) => {
                 let mut v = vec![("Abrir", Acao::Abrir, !varios)];
+                let pasta = !varios && self.entradas.get(i_menu).is_some_and(|e| e.pasta);
+                if pasta && self.escolha.is_none() {
+                    v.push(("Abrir em nova aba", Acao::NovaAba, true));
+                    v.push(("Abrir em nova janela", Acao::NovaJanela, true));
+                }
                 let arquivo = !varios && self.entradas.get(i_menu).is_some_and(|e| !e.pasta);
                 if arquivo && !lixeira {
                     v.push(("Abrir com…", Acao::AbrirCom, true));
@@ -1156,7 +1304,8 @@ impl Explorador {
             None => {
                 let mut v = vec![
                     ("Nova pasta", Acao::NovaPasta, na_pasta && !lixeira),
-                    ("Colar", Acao::Colar, na_pasta && self.transferencia.is_some()),
+                    ("Novo documento de texto", Acao::NovoTexto, na_pasta && !lixeira),
+                    ("Colar", Acao::Colar, na_pasta && !lixeira),
                     ("Selecionar tudo", Acao::SelecionarTudo, !self.entradas.is_empty()),
                     ("Atualizar", Acao::Atualizar, true),
                     (
@@ -1248,7 +1397,11 @@ impl Explorador {
                 let itens = self.marcados();
                 if !itens.is_empty() {
                     let corte = acao == Acao::Recortar;
-                    self.transferencia = Some((itens.iter().map(|e| e.caminho.clone()).collect(), corte));
+                    let caminhos: Vec<PathBuf> = itens.iter().map(|e| e.caminho.clone()).collect();
+                    // Vai também para a área de transferência do sistema: cola na
+                    // área de trabalho, em outra janela do Explorador e nos apps.
+                    penas::copiar_arquivos(&caminhos, corte);
+                    self.transferencia = Some((caminhos, corte));
                     let verbo = if corte { "recortado" } else { "copiado" };
                     self.aviso = Some(if itens.len() == 1 {
                         format!("\"{}\" {verbo}. Use Colar na pasta de destino.", itens[0].nome)
@@ -1257,7 +1410,8 @@ impl Explorador {
                     });
                 }
             }
-            Acao::Colar => self.colar(),
+            // Os arquivos chegam como Tecla::ArquivosColados (de qualquer app).
+            Acao::Colar => penas::pedir_colar_arquivos(),
             Acao::Renomear => {
                 if let (Some(i), Some(e)) = (alvo, entrada) {
                     self.selecionado = Some(i);
@@ -1343,6 +1497,55 @@ impl Explorador {
                     }
                 }
             }
+            Acao::NovoTexto => {
+                if let Some(dir) = self.pasta_atual() {
+                    let p = Self::nome_livre(&dir, "Novo documento de texto.txt", "");
+                    match fs::write(&p, "") {
+                        Ok(()) => {
+                            self.recarregar();
+                            if let Some(i) = self.entradas.iter().position(|e| e.caminho == p) {
+                                self.selecionar_so(i);
+                                let nome = self.entradas[i].nome.clone();
+                                self.renomeando = Some((i, nome));
+                            }
+                        }
+                        Err(e) => self.aviso = Some(format!("Não deu para criar o arquivo: {e}")),
+                    }
+                }
+            }
+            Acao::NovaAba => {
+                let destino = entrada.filter(|e| e.pasta).map(|e| Local::Pasta(e.caminho)).unwrap_or_else(|| self.local.clone());
+                self.nova_aba(destino);
+            }
+            Acao::NovaJanela => {
+                let mut c = Command::new("explorador");
+                if let Some(e) = entrada.filter(|e| e.pasta) {
+                    c.arg(&e.caminho);
+                } else if let Local::Pasta(p) = &self.local {
+                    c.arg(p);
+                }
+                let _ = c.spawn();
+            }
+            Acao::Ordenar(o) => {
+                self.ordem = o;
+                let _ = penas::gravar_chave_config("explorador_ordem", match o {
+                    Ordem::Nome => "nome",
+                    Ordem::Data => "data",
+                    Ordem::Tipo => "tipo",
+                    Ordem::Tamanho => "tamanho",
+                });
+                self.reordenar();
+            }
+            Acao::Decrescente(d) => {
+                self.ordem_desc = d;
+                let _ = penas::gravar_chave_config("explorador_desc", if d { "sim" } else { "nao" });
+                self.reordenar();
+            }
+            Acao::AlternarPrevia => {
+                self.mostrar_previa = !self.mostrar_previa;
+                let _ = penas::gravar_chave_config("explorador_previa", if self.mostrar_previa { "sim" } else { "nao" });
+            }
+            Acao::Mapear => self.abrir_mapear(),
             Acao::Atualizar => self.recarregar(),
             Acao::Ocultos => {
                 self.mostrar_ocultos = !self.mostrar_ocultos;
@@ -1413,31 +1616,23 @@ impl Explorador {
         self.recarregar();
     }
 
-    fn colar(&mut self) {
+    /// Cola arquivos (vindos da área de transferência) na pasta aberta,
+    /// sem travar a janela.
+    fn colar_arquivos(&mut self, origens: Vec<PathBuf>, corte: bool) {
         let Some(dir) = self.pasta_atual() else { return };
-        let Some((origens, corte)) = self.transferencia.clone() else { return };
-        let mut falhas = 0;
-        for o in &origens {
-            let nome = o.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-            if corte && o.parent() == Some(dir.as_path()) {
-                continue;
-            }
-            let destino = Self::nome_livre(&dir, &nome, if corte { "" } else { " - Cópia" });
-            let ok = if corte {
-                fs::rename(o, &destino).is_ok()
-                    || Command::new("mv").arg("--").arg(o).arg(&destino).status().map(|s| s.success()).unwrap_or(false)
-            } else {
-                Command::new("cp").arg("-a").arg("--").arg(o).arg(&destino).status().map(|s| s.success()).unwrap_or(false)
-            };
-            if !ok {
-                falhas += 1;
-            }
+        if self.na_lixeira() || origens.is_empty() {
+            return;
+        }
+        if self.tarefa.is_some() {
+            self.aviso = Some("Espere a cópia em andamento terminar.".into());
+            return;
         }
         if corte {
             self.transferencia = None;
         }
-        self.aviso = (falhas > 0).then(|| format!("{falhas} item(ns) não puderam ser colados."));
-        self.recarregar();
+        let (tx, rx) = std::sync::mpsc::channel();
+        copia::transferir(origens, dir, corte, tx);
+        self.tarefa = Some(rx);
     }
 
     fn abrir(&mut self, e: &Entrada) {
@@ -1586,7 +1781,12 @@ fn icone_computador(t: &mut Tela, x: f32, y: f32, s: f32) {
 }
 
 fn seta(t: &mut Tela, cx: f32, cy: f32, dir: f32, cor: Cor) {
-    // dir: 0 = esquerda, 1 = direita, 2 = cima
+    // dir: 0 = esquerda, 1 = direita, 2 = cima, 3 = baixo (pequena, de menu)
+    if dir as i32 == 3 {
+        t.linha(cx - 4.0, cy - 2.0, cx, cy + 2.0, 1.3, cor);
+        t.linha(cx, cy + 2.0, cx + 4.0, cy - 2.0, 1.3, cor);
+        return;
+    }
     let (a, b, c) = match dir as i32 {
         0 => ((cx + 4.0, cy - 6.0), (cx - 3.0, cy), (cx + 4.0, cy + 6.0)),
         1 => ((cx - 4.0, cy - 6.0), (cx + 3.0, cy), (cx - 4.0, cy + 6.0)),
@@ -1602,17 +1802,39 @@ impl App for Explorador {
     fn desenhar(&mut self, ui: &mut Ui) {
         // Extração/compactação terminou?
         if let Some(rx) = &self.tarefa {
-            match rx.try_recv() {
-                Ok(msg) => {
+            let mut fim = None;
+            loop {
+                match rx.try_recv() {
+                    // \u{1} na frente: só progresso.
+                    Ok(msg) if msg.starts_with('\u{1}') => self.aviso = Some(msg[1..].to_string()),
+                    Ok(msg) => {
+                        fim = Some(Some(msg));
+                        break;
+                    }
+                    Err(std::sync::mpsc::TryRecvError::Empty) => break,
+                    Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                        fim = Some(None);
+                        break;
+                    }
+                }
+            }
+            match fim {
+                Some(msg) => {
                     self.tarefa = None;
-                    self.aviso = Some(msg);
+                    if msg.is_some() {
+                        self.aviso = msg;
+                    }
                     self.recarregar();
                 }
-                Err(_) => ui.acordar_em = Some(std::time::Duration::from_millis(250)),
+                None => ui.acordar_em = Some(std::time::Duration::from_millis(250)),
             }
         }
         // Teclado.
         for tecla in std::mem::take(&mut ui.teclas) {
+            if let Tecla::ArquivosColados(v, corte) = &tecla {
+                self.colar_arquivos(v.clone(), *corte);
+                continue;
+            }
             if let Some(esc) = self.escolha.as_mut().filter(|e| e.nome_ativo) {
                 // Campos de texto: cursor, Ctrl+A/C/V/X (componentes::editar).
                 let antes = esc.nome.clone();
@@ -1693,11 +1915,29 @@ impl App for Explorador {
                     }
                 }
                 Tecla::Outra(Keysym::F5) => self.recarregar(),
+                // Abas: Ctrl+T nova, Ctrl+W fecha, Ctrl+Tab / Ctrl+Shift+Tab trocam.
+                Tecla::Outra(k) if ui.ctrl && self.escolha.is_none() && (k == Keysym::t || k == Keysym::T) => {
+                    let l = self.local.clone();
+                    self.nova_aba(l);
+                }
+                Tecla::Outra(k) if ui.ctrl && self.escolha.is_none() && (k == Keysym::w || k == Keysym::W) => {
+                    if self.fechar_aba(self.aba_atual) {
+                        ui.fechar = true;
+                    }
+                }
+                Tecla::Outra(k) if ui.ctrl && self.escolha.is_none() && (k == Keysym::Tab || k == Keysym::ISO_Left_Tab) => {
+                    let n = self.abas.len();
+                    let prox = if ui.shift || k == Keysym::ISO_Left_Tab { (self.aba_atual + n - 1) % n } else { (self.aba_atual + 1) % n };
+                    self.trocar_aba(prox);
+                }
                 Tecla::Outra(k) if ui.ctrl && (k == Keysym::c || k == Keysym::C) => self.executar(Acao::Copiar, sel),
                 Tecla::Outra(k) if ui.ctrl && (k == Keysym::x || k == Keysym::X) => self.executar(Acao::Recortar, sel),
                 Tecla::Outra(k) if ui.ctrl && (k == Keysym::v || k == Keysym::V) => self.executar(Acao::Colar, None),
                 Tecla::Outra(k) if ui.ctrl && ui.shift && (k == Keysym::n || k == Keysym::N) => {
                     self.executar(Acao::NovaPasta, None)
+                }
+                Tecla::Outra(k) if ui.ctrl && self.escolha.is_none() && (k == Keysym::n || k == Keysym::N) => {
+                    self.executar(Acao::NovaJanela, None)
                 }
                 Tecla::Outra(k) if ui.ctrl && (k == Keysym::h || k == Keysym::H) => self.executar(Acao::Ocultos, None),
                 Tecla::Outra(k) if ui.ctrl && (k == Keysym::a || k == Keysym::A) => {
@@ -1714,7 +1954,7 @@ impl App for Explorador {
                     }
                 }
                 Tecla::Outra(Keysym::Menu) => {
-                    self.menu = Some((LATERAL_L + 60.0, BARRA_A + 60.0, self.selecionado));
+                    self.menu = Some((LATERAL_L + 60.0, self.topo() + 60.0, self.selecionado));
                 }
                 Tecla::Esc => {
                     self.menu = None;
@@ -1808,6 +2048,8 @@ impl App for Explorador {
             }
         }
 
+        // Menu da barra de comandos aberto: o clique é dele.
+        self.clique_menu_ferr(ui);
         // Menu do botão direito aberto: o clique é dele.
         if let Some((mx, my, alvo)) = self.menu {
             if ui.clique || ui.clique_direito {
@@ -1832,16 +2074,25 @@ impl App for Explorador {
 
         let (l, a) = (ui.largura(), ui.altura());
         ui.tela.limpar(tema::SUPERFICIE());
+        let topo = self.topo();
+        let status = if self.escolha.is_some() { 0.0 } else { STATUS_A };
 
-        self.desenhar_lateral(ui, a);
-        self.desenhar_barra(ui, l);
+        self.desenhar_lateral(ui, a - status);
+        if self.escolha.is_none() {
+            self.desenhar_abas(ui, l);
+            self.desenhar_barra(ui, l, ABAS_A);
+            self.desenhar_ferramentas(ui, l, ABAS_A + BARRA_A);
+        } else {
+            self.desenhar_barra(ui, l, 0.0);
+            ui.tela.retangulo(0.0, BARRA_A - 1.0, l, 1.0, 0.0, tema::BORDA());
+        }
 
-        let (cx, cy) = (LATERAL_L, BARRA_A);
-        let rodape = if self.escolha.is_some() { 64.0 } else { 0.0 };
-        let (cl, ca) = (l - LATERAL_L, a - BARRA_A - rodape);
+        let (cx, cy) = (LATERAL_L, topo);
+        let rodape = if self.escolha.is_some() { 64.0 } else { status };
+        let (cl, ca) = (l - LATERAL_L, a - topo - rodape);
         match self.local.clone() {
             Local::EsteComputador => self.desenhar_este_computador(ui, cx, cy, cl),
-            Local::Pasta(_) if cl >= 820.0 => {
+            Local::Pasta(_) if cl >= 820.0 && self.mostrar_previa => {
                 // Janela larga: painel de visualização à direita.
                 let pl = PREVIA_L;
                 self.desenhar_pasta(ui, cx, cy, cl - pl, ca);
@@ -1851,6 +2102,8 @@ impl App for Explorador {
         }
         if self.escolha.is_some() {
             self.desenhar_escolha(ui, cx, a - rodape, cl);
+        } else {
+            self.desenhar_status(ui, l, a - STATUS_A);
         }
 
         // Aviso na parte de baixo.
@@ -1887,6 +2140,8 @@ impl App for Explorador {
                 ui.tela.texto(mx + 16.0, y + 20.0, 13.0, cor, nome);
             }
         }
+
+        self.desenhar_menu_ferr(ui, l);
 
         if let Some((mx, my, letra)) = self.menu_unidade {
             let h = MENU_ITEM_A + 12.0;
@@ -2125,25 +2380,108 @@ impl Explorador {
         ui.tela.texto(bx + 50.0 - lt / 2.0, by + 23.0, 13.5, tema::BRANCO(), "OK");
     }
 
-    fn desenhar_barra(&mut self, ui: &mut Ui, l: f32) {
+    /// Abas no alto da janela, como no Explorador do Windows 11.
+    fn desenhar_abas(&mut self, ui: &mut Ui, l: f32) {
+        ui.tela.retangulo(0.0, 0.0, l, ABAS_A, 0.0, tema::SUPERFICIE_ALTA());
+        let n = self.abas.len();
+        let al = ((l - 64.0) / n as f32).clamp(90.0, 230.0);
+        let mut trocar = None;
+        let mut fechar = None;
+        for i in 0..n {
+            let x = 8.0 + i as f32 * al;
+            let ativa = i == self.aba_atual;
+            let local = if ativa { self.local.clone() } else { self.abas[i].local.clone() };
+            let sobre = ui.sobre(x, 6.0, al - 2.0, ABAS_A - 6.0);
+            if ativa {
+                ui.tela.retangulo(x, 6.0, al - 2.0, ABAS_A, 8.0, tema::FUNDO());
+            } else if sobre {
+                ui.tela.retangulo(x, 8.0, al - 2.0, ABAS_A - 12.0, 6.0, tema::FUNDO().com_alfa(140));
+            } else if i + 1 != self.aba_atual && i + 1 < n {
+                // Separador fino entre abas inativas.
+                ui.tela.retangulo(x + al - 2.0, 14.0, 1.0, 16.0, 0.0, tema::BORDA());
+            }
+            match &local {
+                Local::EsteComputador => icone_computador(ui.tela, x + 10.0, 13.0, 18.0),
+                _ => icone_pasta(ui.tela, x + 10.0, 13.0, 18.0),
+            }
+            let nome = self.nome_local(&local);
+            let fecha_x = x + al - 28.0;
+            ui.tela.texto(x + 34.0, 28.0, 12.5, tema::TEXTO(), &desenho::encurtar(12.5, &nome, al - 68.0));
+            if n > 1 || sobre {
+                let sf = ui.sobre(fecha_x, 12.0, 20.0, 20.0);
+                if sf {
+                    ui.tela.retangulo(fecha_x, 12.0, 20.0, 20.0, 4.0, tema::SUPERFICIE_ALTA());
+                }
+                let c = if sf { tema::TEXTO() } else { tema::TEXTO_SECUNDARIO() };
+                ui.tela.linha(fecha_x + 6.0, 18.0, fecha_x + 14.0, 26.0, 1.3, c);
+                ui.tela.linha(fecha_x + 6.0, 26.0, fecha_x + 14.0, 18.0, 1.3, c);
+                if ui.clicou(fecha_x, 12.0, 20.0, 20.0) {
+                    fechar = Some(i);
+                    continue;
+                }
+            }
+            if ui.clicou(x, 6.0, al - 2.0, ABAS_A - 6.0) {
+                trocar = Some(i);
+            }
+        }
+        // "+" para nova aba.
+        let px = 8.0 + n as f32 * al + 4.0;
+        if px + 32.0 < l {
+            let s = ui.sobre(px, 8.0, 30.0, 28.0);
+            if s {
+                ui.tela.retangulo(px, 8.0, 30.0, 28.0, 6.0, tema::FUNDO().com_alfa(160));
+            }
+            ui.tela.linha(px + 15.0, 15.0, px + 15.0, 29.0, 1.5, tema::TEXTO());
+            ui.tela.linha(px + 8.0, 22.0, px + 22.0, 22.0, 1.5, tema::TEXTO());
+            if ui.clicou(px, 8.0, 30.0, 28.0) {
+                self.nova_aba(Local::EsteComputador);
+            }
+        }
+        if let Some(i) = fechar {
+            if self.fechar_aba(i) {
+                ui.fechar = true;
+            }
+        } else if let Some(i) = trocar {
+            self.trocar_aba(i);
+        }
+    }
+
+    fn desenhar_barra(&mut self, ui: &mut Ui, l: f32, y0: f32) {
         let t = &mut *ui.tela;
-        t.retangulo(0.0, 0.0, l, BARRA_A, 0.0, tema::FUNDO());
-        t.retangulo(0.0, BARRA_A - 1.0, l, 1.0, 0.0, tema::BORDA());
+        t.retangulo(0.0, y0, l, BARRA_A, 0.0, tema::FUNDO());
         let botoes = [
             (0.0, !self.voltar.is_empty()),
             (1.0, !self.avancar.is_empty()),
             (2.0, matches!(self.local, Local::Pasta(_))),
+            (3.0, true),
         ];
         let mut acao = None;
         for (i, (dir, ativo)) in botoes.iter().enumerate() {
             let x = 10.0 + i as f32 * 36.0;
-            let sobre = *ativo && ui.sobre(x, 10.0, 32.0, 32.0);
+            let sobre = *ativo && ui.sobre(x, y0 + 10.0, 32.0, 32.0);
             if sobre {
-                ui.tela.retangulo(x, 10.0, 32.0, 32.0, 6.0, tema::SUPERFICIE_ALTA());
+                ui.tela.retangulo(x, y0 + 10.0, 32.0, 32.0, 6.0, tema::SUPERFICIE_ALTA());
             }
             let cor = if *ativo { tema::TEXTO() } else { tema::BORDA() };
-            seta(ui.tela, x + 16.0, 26.0, *dir, cor);
-            if *ativo && ui.clicou(x, 10.0, 32.0, 32.0) {
+            if *dir == 3.0 {
+                // Atualizar: uma seta circular.
+                let (cx, cy) = (x + 16.0, y0 + 26.0);
+                let mut ant = None;
+                for k in 0..=16 {
+                    let ang = 0.6 + k as f32 * (5.0 / 16.0);
+                    let p = (cx + 7.0 * ang.cos(), cy + 7.0 * ang.sin());
+                    if let Some((ax, ay)) = ant {
+                        ui.tela.linha(ax, ay, p.0, p.1, 1.5, cor);
+                    }
+                    ant = Some(p);
+                }
+                let ponta = (cx + 7.0 * 0.6f32.cos(), cy + 7.0 * 0.6f32.sin());
+                ui.tela.linha(ponta.0, ponta.1, ponta.0 + 4.0, ponta.1 - 4.0, 1.5, cor);
+                ui.tela.linha(ponta.0, ponta.1, ponta.0 - 5.0, ponta.1 - 1.0, 1.5, cor);
+            } else {
+                seta(ui.tela, x + 16.0, y0 + 26.0, *dir, cor);
+            }
+            if *ativo && ui.clicou(x, y0 + 10.0, 32.0, 32.0) {
                 acao = Some(i);
             }
         }
@@ -2151,60 +2489,64 @@ impl Explorador {
             Some(0) => self.ir_voltar(),
             Some(1) => self.ir_avancar(),
             Some(2) => self.subir(),
+            Some(3) => {
+                self.unidades_em = None;
+                self.recarregar();
+            }
             _ => {}
         }
 
         // Barra de endereço com as "migalhas" clicáveis.
-        let ex = 122.0;
+        let ex = 158.0;
         // Caixa de busca à direita (só dentro de pastas).
         let busca_l = if matches!(self.local, Local::Pasta(_)) && l > 640.0 { 240.0 } else { 0.0 };
         let el = l - ex - 12.0 - if busca_l > 0.0 { busca_l + 10.0 } else { 0.0 };
         if busca_l > 0.0 {
             let bx = l - 12.0 - busca_l;
             let foco = self.busca_ativa;
-            ui.tela.retangulo(bx, 10.0, busca_l, 32.0, 6.0, if foco { tema::DESTAQUE() } else { tema::BORDA() });
-            ui.tela.retangulo(bx + 1.0, 11.0, busca_l - 2.0, 30.0, 5.0, tema::JANELA());
+            ui.tela.retangulo(bx, y0 + 10.0, busca_l, 32.0, 6.0, if foco { tema::DESTAQUE() } else { tema::BORDA() });
+            ui.tela.retangulo(bx + 1.0, y0 + 11.0, busca_l - 2.0, 30.0, 5.0, tema::JANELA());
             // Lupa
-            let (lx, ly) = (bx + 18.0, 24.0);
+            let (lx, ly) = (bx + 18.0, y0 + 24.0);
             ui.tela.retangulo(lx - 6.0, ly - 6.0, 12.0, 12.0, 6.0, tema::TEXTO_SECUNDARIO());
             ui.tela.retangulo(lx - 4.5, ly - 4.5, 9.0, 9.0, 4.5, tema::JANELA());
             ui.tela.linha(lx + 4.0, ly + 4.0, lx + 8.0, ly + 8.0, 1.8, tema::TEXTO_SECUNDARIO());
             if self.busca.is_empty() && !foco {
                 let nome = format!("Pesquisar em {}", self.titulo());
-                ui.tela.texto(bx + 34.0, 31.0, 13.0, tema::TEXTO_SECUNDARIO(), &desenho::encurtar(13.0, &nome, busca_l - 44.0));
+                ui.tela.texto(bx + 34.0, y0 + 31.0, 13.0, tema::TEXTO_SECUNDARIO(), &desenho::encurtar(13.0, &nome, busca_l - 44.0));
             } else {
                 let vis = desenho::encurtar(13.0, &self.busca, busca_l - 50.0);
-                let fim = ui.tela.texto(bx + 34.0, 31.0, 13.0, tema::TEXTO(), &vis);
+                let fim = ui.tela.texto(bx + 34.0, y0 + 31.0, 13.0, tema::TEXTO(), &vis);
                 let fim = penas::componentes::x_do_cursor(&self.busca, 13.0, false).min(fim);
                 if foco {
-                    ui.tela.retangulo(bx + 35.0 + fim, 16.0, 1.5, 20.0, 0.0, tema::DESTAQUE());
+                    ui.tela.retangulo(bx + 35.0 + fim, y0 + 16.0, 1.5, 20.0, 0.0, tema::DESTAQUE());
                 }
             }
             if ui.clique {
-                self.busca_ativa = ui.sobre(bx, 10.0, busca_l, 32.0);
+                self.busca_ativa = ui.sobre(bx, y0 + 10.0, busca_l, 32.0);
             }
         }
-        ui.tela.retangulo(ex, 10.0, el, 32.0, 6.0, tema::BORDA());
-        ui.tela.retangulo(ex + 1.0, 11.0, el - 2.0, 30.0, 5.0, tema::JANELA());
-        icone_computador(ui.tela, ex + 8.0, 14.0, 22.0);
+        ui.tela.retangulo(ex, y0 + 10.0, el, 32.0, 6.0, tema::BORDA());
+        ui.tela.retangulo(ex + 1.0, y0 + 11.0, el - 2.0, 30.0, 5.0, tema::JANELA());
+        icone_computador(ui.tela, ex + 8.0, y0 + 14.0, 22.0);
         let mut x = ex + 36.0;
         let migalhas = self.migalhas();
         let mut ir = None;
         for (i, (nome, destino)) in migalhas.iter().enumerate() {
             if i > 0 {
-                seta(ui.tela, x + 4.0, 26.0, 1.0, tema::TEXTO_SECUNDARIO());
+                seta(ui.tela, x + 4.0, y0 + 26.0, 1.0, tema::TEXTO_SECUNDARIO());
                 x += 14.0;
             }
             let lt = desenho::medir(13.0, nome);
             if x + lt > ex + el - 10.0 {
-                ui.tela.texto(x, 31.0, 13.0, tema::TEXTO_SECUNDARIO(), "…");
+                ui.tela.texto(x, y0 + 31.0, 13.0, tema::TEXTO_SECUNDARIO(), "…");
                 break;
             }
-            if ui.sobre(x - 4.0, 13.0, lt + 8.0, 26.0) {
-                ui.tela.retangulo(x - 4.0, 14.0, lt + 8.0, 24.0, 4.0, tema::DESTAQUE_SUAVE());
+            if ui.sobre(x - 4.0, y0 + 13.0, lt + 8.0, 26.0) {
+                ui.tela.retangulo(x - 4.0, y0 + 14.0, lt + 8.0, 24.0, 4.0, tema::DESTAQUE_SUAVE());
             }
-            ui.tela.texto(x, 31.0, 13.0, tema::TEXTO(), nome);
-            if ui.clicou(x - 4.0, 13.0, lt + 8.0, 26.0) {
+            ui.tela.texto(x, y0 + 31.0, 13.0, tema::TEXTO(), nome);
+            if ui.clicou(x - 4.0, y0 + 13.0, lt + 8.0, 26.0) {
                 ir = Some(destino.clone());
             }
             x += lt + 8.0;
@@ -2214,50 +2556,392 @@ impl Explorador {
         }
     }
 
-    fn desenhar_lateral(&mut self, ui: &mut Ui, a: f32) {
-        ui.tela.retangulo(0.0, BARRA_A, LATERAL_L, a - BARRA_A, 0.0, tema::FUNDO());
-        ui.tela.retangulo(LATERAL_L - 1.0, BARRA_A, 1.0, a - BARRA_A, 0.0, tema::BORDA());
-        let mut itens: Vec<(String, Local, u8)> = vec![("Este Computador".into(), Local::EsteComputador, 0)];
-        for (nome, pasta) in PASTAS_USUARIO {
-            itens.push((nome.into(), Local::Pasta(self.casa.join(pasta)), 1));
+    /// Barra de comandos (Windows 11): Novo, recortar, copiar, colar,
+    /// renomear, excluir | Classificar, Visualizar, ⋯ | Detalhes.
+    fn desenhar_ferramentas(&mut self, ui: &mut Ui, l: f32, y0: f32) {
+        ui.tela.retangulo(0.0, y0, l, FERR_A, 0.0, tema::FUNDO());
+        ui.tela.retangulo(0.0, y0 + FERR_A - 1.0, l, 1.0, 0.0, tema::BORDA());
+        let na_pasta = self.pasta_atual().is_some() && !self.na_lixeira();
+        let tem_sel = !self.marcados().is_empty();
+        let um = self.marcados().len() == 1;
+        let y = y0 + 6.0;
+        let mut x = 12.0;
+        let mut dica: Option<(f32, &str)> = None;
+        let mut clicado: Option<Acao> = None;
+        let mut abrir_menu: Option<(f32, MenuFerr)> = None;
+
+        // "Novo" com a seta do menu.
+        {
+            let bl = 78.0;
+            let s = na_pasta && ui.sobre(x, y, bl, 34.0);
+            if s {
+                ui.tela.retangulo(x, y, bl, 34.0, 6.0, tema::SUPERFICIE_ALTA());
+            }
+            let cor = if na_pasta { tema::TEXTO() } else { tema::BORDA() };
+            let destaque = if na_pasta { tema::DESTAQUE() } else { tema::BORDA() };
+            // "+" em círculo.
+            ui.tela.retangulo(x + 8.0, y + 8.0, 18.0, 18.0, 9.0, destaque);
+            ui.tela.linha(x + 17.0, y + 12.0, x + 17.0, y + 22.0, 1.6, tema::BRANCO());
+            ui.tela.linha(x + 12.0, y + 17.0, x + 22.0, y + 17.0, 1.6, tema::BRANCO());
+            ui.tela.texto(x + 32.0, y + 22.0, 13.0, cor, "Novo");
+            seta(ui.tela, x + 68.0, y + 17.0, 3.0, cor);
+            if na_pasta && ui.clicou(x, y, bl, 34.0) {
+                abrir_menu = Some((x, MenuFerr::Novo));
+            }
+            x += bl + 6.0;
         }
-        itens.push(("Pasta pessoal".into(), Local::Pasta(self.casa.clone()), 1));
+        ui.tela.retangulo(x, y + 6.0, 1.0, 22.0, 0.0, tema::BORDA());
+        x += 8.0;
+
+        // Ícones: recortar, copiar, colar, renomear, excluir.
+        let botoes: [(&str, Acao, bool); 5] = [
+            ("Recortar (Ctrl+X)", Acao::Recortar, tem_sel),
+            ("Copiar (Ctrl+C)", Acao::Copiar, tem_sel),
+            ("Colar (Ctrl+V)", Acao::Colar, na_pasta),
+            ("Renomear (F2)", Acao::Renomear, um && !self.na_lixeira()),
+            ("Excluir (Delete)", Acao::Excluir, tem_sel),
+        ];
+        for (k, (nome, acao, ativo)) in botoes.iter().enumerate() {
+            let s = ui.sobre(x, y, 36.0, 34.0);
+            if s && *ativo {
+                ui.tela.retangulo(x, y, 36.0, 34.0, 6.0, tema::SUPERFICIE_ALTA());
+            }
+            if s {
+                dica = Some((x, *nome));
+            }
+            let c = if *ativo { tema::TEXTO() } else { tema::BORDA() };
+            let (cx, cy) = (x + 18.0, y + 17.0);
+            match k {
+                0 => {
+                    // Tesoura.
+                    ui.tela.linha(cx - 5.0, cy - 8.0, cx + 3.0, cy + 3.0, 1.4, c);
+                    ui.tela.linha(cx + 5.0, cy - 8.0, cx - 3.0, cy + 3.0, 1.4, c);
+                    for dx in [-4.0, 4.0] {
+                        ui.tela.retangulo(cx + dx - 3.5, cy + 2.0, 7.0, 7.0, 3.5, c);
+                        ui.tela.retangulo(cx + dx - 2.0, cy + 3.5, 4.0, 4.0, 2.0, tema::FUNDO());
+                    }
+                }
+                1 => {
+                    // Duas folhas.
+                    ui.tela.retangulo(cx - 7.0, cy - 8.0, 11.0, 13.0, 2.0, c);
+                    ui.tela.retangulo(cx - 5.5, cy - 6.5, 8.0, 10.0, 1.0, tema::FUNDO());
+                    ui.tela.retangulo(cx - 3.0, cy - 4.0, 11.0, 13.0, 2.0, c);
+                    ui.tela.retangulo(cx - 1.5, cy - 2.5, 8.0, 10.0, 1.0, tema::FUNDO());
+                }
+                2 => {
+                    // Prancheta.
+                    ui.tela.retangulo(cx - 7.0, cy - 7.0, 14.0, 16.0, 2.0, c);
+                    ui.tela.retangulo(cx - 5.5, cy - 5.5, 11.0, 13.0, 1.0, tema::FUNDO());
+                    ui.tela.retangulo(cx - 3.5, cy - 9.0, 7.0, 4.0, 1.5, c);
+                    ui.tela.retangulo(cx - 3.0, cy - 1.0, 6.0, 1.3, 0.0, c);
+                    ui.tela.retangulo(cx - 3.0, cy + 2.5, 6.0, 1.3, 0.0, c);
+                }
+                3 => {
+                    // Caixa de texto com o cursor.
+                    ui.tela.retangulo(cx - 9.0, cy - 5.0, 18.0, 10.0, 2.0, c);
+                    ui.tela.retangulo(cx - 7.5, cy - 3.5, 15.0, 7.0, 1.0, tema::FUNDO());
+                    ui.tela.retangulo(cx + 2.0, cy - 8.0, 1.4, 16.0, 0.0, c);
+                    ui.tela.retangulo(cx - 0.5, cy - 8.0, 6.4, 1.3, 0.0, c);
+                    ui.tela.retangulo(cx - 0.5, cy + 6.7, 6.4, 1.3, 0.0, c);
+                }
+                _ => {
+                    // Lixeira.
+                    ui.tela.retangulo(cx - 7.0, cy - 6.0, 14.0, 1.5, 0.0, c);
+                    ui.tela.retangulo(cx - 2.5, cy - 8.5, 5.0, 2.5, 1.0, c);
+                    ui.tela.retangulo(cx - 5.5, cy - 4.0, 11.0, 13.0, 2.0, c);
+                    ui.tela.retangulo(cx - 4.0, cy - 2.5, 8.0, 10.0, 1.0, tema::FUNDO());
+                    ui.tela.retangulo(cx - 1.8, cy - 1.0, 1.2, 7.0, 0.0, c);
+                    ui.tela.retangulo(cx + 0.8, cy - 1.0, 1.2, 7.0, 0.0, c);
+                }
+            }
+            if *ativo && ui.clicou(x, y, 36.0, 34.0) {
+                clicado = Some(*acao);
+            }
+            x += 38.0;
+        }
+        x += 4.0;
+        ui.tela.retangulo(x, y + 6.0, 1.0, 22.0, 0.0, tema::BORDA());
+        x += 8.0;
+
+        // Menus de texto: Classificar, Visualizar, ⋯
+        let menus: [(&str, MenuFerr, bool); 3] = [
+            ("Classificar", MenuFerr::Classificar, matches!(self.local, Local::Pasta(_))),
+            ("Visualizar", MenuFerr::Visualizar, true),
+            ("", MenuFerr::Mais, true),
+        ];
+        for (nome, m, ativo) in menus {
+            let bl = if nome.is_empty() { 36.0 } else { desenho::medir(13.0, nome) + 52.0 };
+            if x + bl > l - 110.0 && !nome.is_empty() {
+                continue;
+            }
+            let s = ativo && ui.sobre(x, y, bl, 34.0);
+            if s || self.menu_ferr.map(|(_, _, mm)| mm == m).unwrap_or(false) {
+                ui.tela.retangulo(x, y, bl, 34.0, 6.0, tema::SUPERFICIE_ALTA());
+            }
+            let c = if ativo { tema::TEXTO() } else { tema::BORDA() };
+            match m {
+                MenuFerr::Classificar => {
+                    // Setas para cima e para baixo.
+                    ui.tela.linha(x + 13.0, y + 10.0, x + 13.0, y + 24.0, 1.3, c);
+                    ui.tela.linha(x + 10.0, y + 13.0, x + 13.0, y + 10.0, 1.3, c);
+                    ui.tela.linha(x + 16.0, y + 13.0, x + 13.0, y + 10.0, 1.3, c);
+                    ui.tela.linha(x + 20.0, y + 10.0, x + 20.0, y + 24.0, 1.3, c);
+                    ui.tela.linha(x + 17.0, y + 21.0, x + 20.0, y + 24.0, 1.3, c);
+                    ui.tela.linha(x + 23.0, y + 21.0, x + 20.0, y + 24.0, 1.3, c);
+                }
+                MenuFerr::Visualizar => {
+                    for k in 0..3 {
+                        ui.tela.retangulo(x + 9.0, y + 11.0 + k as f32 * 5.0, 3.0, 3.0, 0.5, c);
+                        ui.tela.retangulo(x + 14.0, y + 12.0 + k as f32 * 5.0, 10.0, 1.4, 0.0, c);
+                    }
+                }
+                _ => {
+                    for k in 0..3 {
+                        ui.tela.retangulo(x + 11.5 + k as f32 * 5.0, y + 15.5, 3.0, 3.0, 1.5, c);
+                    }
+                }
+            }
+            if !nome.is_empty() {
+                ui.tela.texto(x + 30.0, y + 22.0, 13.0, c, nome);
+                seta(ui.tela, x + bl - 11.0, y + 17.0, 3.0, c);
+            } else if s {
+                dica = Some((x, "Ver mais"));
+            }
+            if ativo && ui.clicou(x, y, bl, 34.0) {
+                abrir_menu = Some((x, m));
+            }
+            x += bl + 4.0;
+        }
+
+        // "Detalhes": liga e desliga o painel da direita.
+        if matches!(self.local, Local::Pasta(_)) {
+            let bl = 96.0;
+            let bx = l - bl - 12.0;
+            if bx > x {
+                let s = ui.sobre(bx, y, bl, 34.0);
+                if self.mostrar_previa {
+                    ui.tela.retangulo(bx, y, bl, 34.0, 6.0, tema::DESTAQUE_SUAVE());
+                } else if s {
+                    ui.tela.retangulo(bx, y, bl, 34.0, 6.0, tema::SUPERFICIE_ALTA());
+                }
+                ui.tela.retangulo(bx + 10.0, y + 9.0, 16.0, 16.0, 2.0, tema::TEXTO());
+                ui.tela.retangulo(bx + 11.3, y + 10.3, 13.4, 13.4, 1.0, tema::FUNDO());
+                ui.tela.retangulo(bx + 18.0, y + 10.0, 1.3, 14.0, 0.0, tema::TEXTO());
+                ui.tela.texto(bx + 34.0, y + 22.0, 13.0, tema::TEXTO(), "Detalhes");
+                if ui.clicou(bx, y, bl, 34.0) {
+                    clicado = Some(Acao::AlternarPrevia);
+                }
+            }
+        }
+
+        if let Some((dx, nome)) = dica {
+            let lt = desenho::medir(12.0, nome);
+            let tx = dx.min(l - lt - 24.0);
+            ui.tela.retangulo(tx, y0 + FERR_A + 2.0, lt + 16.0, 24.0, 5.0, tema::BORDA());
+            ui.tela.retangulo(tx + 1.0, y0 + FERR_A + 3.0, lt + 14.0, 22.0, 4.0, tema::JANELA());
+            ui.tela.texto(tx + 8.0, y0 + FERR_A + 19.0, 12.0, tema::TEXTO(), nome);
+        }
+        if let Some(a) = clicado {
+            self.executar(a, self.selecionado);
+        }
+        if let Some((mx, m)) = abrir_menu {
+            self.menu_ferr = if self.menu_ferr.map(|(_, _, mm)| mm == m).unwrap_or(false) { None } else { Some((mx, y0 + FERR_A - 4.0, m)) };
+        }
+    }
+
+    /// Itens de um menu da barra de comandos: (rótulo, ação, ativo, marcado).
+    fn itens_ferr(&self, m: MenuFerr) -> Vec<(&'static str, Acao, bool, bool)> {
+        let na_pasta = self.pasta_atual().is_some() && !self.na_lixeira();
+        match m {
+            MenuFerr::Novo => vec![
+                ("Pasta", Acao::NovaPasta, na_pasta, false),
+                ("Documento de texto", Acao::NovoTexto, na_pasta, false),
+            ],
+            MenuFerr::Classificar => vec![
+                ("Nome", Acao::Ordenar(Ordem::Nome), true, self.ordem == Ordem::Nome),
+                ("Data de modificação", Acao::Ordenar(Ordem::Data), true, self.ordem == Ordem::Data),
+                ("Tipo", Acao::Ordenar(Ordem::Tipo), true, self.ordem == Ordem::Tipo),
+                ("Tamanho", Acao::Ordenar(Ordem::Tamanho), true, self.ordem == Ordem::Tamanho),
+                ("Crescente", Acao::Decrescente(false), true, !self.ordem_desc),
+                ("Decrescente", Acao::Decrescente(true), true, self.ordem_desc),
+            ],
+            MenuFerr::Visualizar => vec![
+                ("Painel de detalhes", Acao::AlternarPrevia, true, self.mostrar_previa),
+                ("Itens ocultos", Acao::Ocultos, matches!(self.local, Local::Pasta(_)), self.mostrar_ocultos),
+            ],
+            MenuFerr::Mais => vec![
+                ("Selecionar tudo", Acao::SelecionarTudo, !self.entradas.is_empty(), false),
+                ("Abrir em nova aba", Acao::NovaAba, true, false),
+                ("Abrir em nova janela", Acao::NovaJanela, true, false),
+                ("Mapear unidade de rede…", Acao::Mapear, true, false),
+                ("Propriedades", Acao::Propriedades, self.pasta_atual().is_some(), false),
+            ],
+        }
+    }
+
+    /// Clique com um menu da barra de comandos aberto: escolhe ou fecha.
+    fn clique_menu_ferr(&mut self, ui: &mut Ui) {
+        let Some((mx, my, m)) = self.menu_ferr else { return };
+        if !(ui.clique || ui.clique_direito) {
+            return;
+        }
+        let itens = self.itens_ferr(m);
+        let mut escolhida = None;
+        for (k, (_, acao, ativo, _)) in itens.iter().enumerate() {
+            if *ativo && ui.sobre(mx, my + 6.0 + k as f32 * MENU_ITEM_A, MENU_L, MENU_ITEM_A) {
+                escolhida = Some(*acao);
+            }
+        }
+        // Clicar de novo no próprio botão fecha (o botão trata).
+        let no_botao = ui.mouse.map(|(x, y)| y < my && y > my - FERR_A && x >= mx && x < mx + 140.0).unwrap_or(false);
+        self.menu_ferr = None;
+        if no_botao {
+            ui.clique = false;
+            return;
+        }
+        ui.clique = false;
+        ui.duplo = false;
+        ui.clique_direito = false;
+        if let Some(acao) = escolhida {
+            // Propriedades/Nova aba da barra valem para a pasta aberta.
+            let alvo = if matches!(acao, Acao::Propriedades | Acao::NovaAba | Acao::NovaJanela) { None } else { self.selecionado };
+            self.executar(acao, alvo);
+        }
+    }
+
+    fn desenhar_menu_ferr(&mut self, ui: &mut Ui, l: f32) {
+        let Some((mx, my, m)) = self.menu_ferr else { return };
+        let itens = self.itens_ferr(m);
+        let h = itens.len() as f32 * MENU_ITEM_A + 12.0;
+        let mx = mx.min(l - MENU_L - 4.0).max(0.0);
+        ui.tela.retangulo(mx + 2.0, my + 4.0, MENU_L, h, 8.0, Cor(0, 0, 0, 40));
+        ui.tela.retangulo(mx, my, MENU_L, h, 8.0, tema::BORDA());
+        ui.tela.retangulo(mx + 1.0, my + 1.0, MENU_L - 2.0, h - 2.0, 7.0, tema::JANELA());
+        for (k, (nome, _, ativo, marcado)) in itens.iter().enumerate() {
+            let y = my + 6.0 + k as f32 * MENU_ITEM_A;
+            // Separador antes de Crescente.
+            if m == MenuFerr::Classificar && k == 4 {
+                ui.tela.retangulo(mx + 10.0, y - 1.0, MENU_L - 20.0, 1.0, 0.0, tema::BORDA());
+            }
+            if *ativo && ui.sobre(mx, y, MENU_L, MENU_ITEM_A) {
+                ui.tela.retangulo(mx + 4.0, y, MENU_L - 8.0, MENU_ITEM_A, 5.0, tema::DESTAQUE_SUAVE());
+            }
+            if *marcado {
+                let (cx, cy) = (mx + 18.0, y + 15.0);
+                ui.tela.linha(cx - 4.0, cy, cx - 1.0, cy + 3.5, 1.6, tema::DESTAQUE());
+                ui.tela.linha(cx - 1.0, cy + 3.5, cx + 5.0, cy - 4.0, 1.6, tema::DESTAQUE());
+            }
+            let cor = if *ativo { tema::TEXTO() } else { tema::BORDA() };
+            ui.tela.texto(mx + 34.0, y + 20.0, 13.0, cor, nome);
+        }
+    }
+
+    /// Barra de status: quantos itens, quantos selecionados e o tamanho.
+    fn desenhar_status(&mut self, ui: &mut Ui, l: f32, y: f32) {
+        ui.tela.retangulo(0.0, y, l, STATUS_A, 0.0, tema::FUNDO());
+        ui.tela.retangulo(0.0, y, l, 1.0, 0.0, tema::BORDA());
+        let txt = match &self.local {
+            Local::EsteComputador => format!("{} itens", PASTAS_USUARIO.len() + self.unidades.len()),
+            Local::Pasta(_) => {
+                let n = self.entradas.len();
+                let mut t = if n == 1 { "1 item".to_string() } else { format!("{n} itens") };
+                let marc = self.marcados();
+                if !marc.is_empty() {
+                    let k = marc.len();
+                    t.push_str(&format!("     {} {}", k, if k == 1 { "item selecionado" } else { "itens selecionados" }));
+                    let arquivos: Vec<&Entrada> = marc.iter().filter(|e| !e.pasta).collect();
+                    if !arquivos.is_empty() {
+                        let total: u64 = arquivos.iter().map(|e| e.tamanho).sum();
+                        t.push_str(&format!("  {}", tamanho_legivel(total)));
+                    }
+                }
+                t
+            }
+        };
+        ui.tela.texto(14.0, y + 18.0, 12.0, tema::TEXTO_SECUNDARIO(), &txt);
+    }
+
+    fn desenhar_lateral(&mut self, ui: &mut Ui, a: f32) {
+        let topo = self.topo();
+        if self.unidades_em.map(|t| t.elapsed().as_secs() >= 5).unwrap_or(true) {
+            self.unidades = ler_unidades();
+            self.unidades_em = Some(std::time::Instant::now());
+        }
+        ui.tela.retangulo(0.0, topo, LATERAL_L, a - topo, 0.0, tema::FUNDO());
+        ui.tela.retangulo(LATERAL_L - 1.0, topo, 1.0, a - topo, 0.0, tema::BORDA());
+        // tipo: 0 computador, 1 pasta, 2 lixeira, 3 unidade, 4 unidade de rede, 5 "Rede"
+        let mut itens: Vec<(String, Option<Local>, u8)> = vec![("Este Computador".into(), Some(Local::EsteComputador), 0)];
+        for (nome, pasta) in PASTAS_USUARIO {
+            itens.push((nome.into(), Some(Local::Pasta(self.casa.join(pasta))), 1));
+        }
+        itens.push(("Pasta pessoal".into(), Some(Local::Pasta(self.casa.clone())), 1));
+        for u in self.unidades.iter().filter(|u| !u.rede && !u.ponto.as_os_str().is_empty()) {
+            itens.push((format!("{} ({}:)", u.nome, u.letra), Some(Local::Pasta(u.ponto.clone())), 3));
+        }
+        itens.push(("Rede".into(), None, 5));
+        for u in self.unidades.iter().filter(|u| u.rede) {
+            itens.push((format!("{} ({}:)", u.nome, u.letra), Some(Local::Pasta(u.ponto.clone())), 4));
+        }
         let arquivos_lixeira = self.lixeira().join("files");
         let _ = fs::create_dir_all(&arquivos_lixeira);
-        itens.push(("Lixeira".into(), Local::Pasta(arquivos_lixeira), 2));
-        let mut y = BARRA_A + 10.0;
+        itens.push(("Lixeira".into(), Some(Local::Pasta(arquivos_lixeira)), 2));
+        // Muitos itens (vários pendrives e unidades): linhas mais baixas.
+        let cabe = (a - topo - 70.0) / itens.len() as f32;
+        let (passo, alt) = if cabe >= 32.0 { (32.0, 30.0) } else { (26.0, 25.0) };
+        let mut y = topo + 10.0;
         let mut ir = None;
+        let mut mapear = false;
         let arrastando = matches!(self.arraste, Some((_, _, true)));
+        let mut anterior = 0u8;
         for (i, (nome, destino, tipo)) in itens.iter().enumerate() {
             if i == 1 {
                 ui.tela.texto(16.0, y + 18.0, 11.5, tema::TEXTO_SECUNDARIO(), "Acesso rápido");
                 y += 26.0;
-            }
-            if *tipo == 2 {
+            } else if (*tipo == 3 && anterior != 3) || (*tipo == 5) || *tipo == 2 {
+                // Espaço entre os grupos (unidades, rede, lixeira).
+                ui.tela.retangulo(16.0, y + 4.0, LATERAL_L - 32.0, 1.0, 0.0, tema::BORDA());
                 y += 10.0;
             }
-            let ativo = &self.local == destino;
-            let sobre = ui.sobre(8.0, y, LATERAL_L - 16.0, 30.0);
-            if arrastando && sobre && *tipo == 1 {
-                if let Local::Pasta(p) = destino {
+            anterior = *tipo;
+            let ativo = destino.as_ref() == Some(&self.local);
+            let sobre = ui.sobre(8.0, y, LATERAL_L - 16.0, alt);
+            let solta = arrastando && sobre && matches!(tipo, 1 | 3 | 4);
+            if solta {
+                if let Some(Local::Pasta(p)) = destino {
                     self.alvo_soltar = Some(p.clone());
                 }
-                ui.tela.retangulo(8.0, y, LATERAL_L - 16.0, 30.0, 6.0, tema::DESTAQUE());
+                ui.tela.retangulo(8.0, y, LATERAL_L - 16.0, alt, 6.0, tema::DESTAQUE());
             } else if ativo {
-                ui.tela.retangulo(8.0, y, LATERAL_L - 16.0, 30.0, 6.0, tema::DESTAQUE_SUAVE());
+                ui.tela.retangulo(8.0, y, LATERAL_L - 16.0, alt, 6.0, tema::DESTAQUE_SUAVE());
+                ui.tela.retangulo(8.0, y + alt / 2.0 - 8.0, 3.0, 16.0, 1.5, tema::DESTAQUE());
             } else if sobre {
-                ui.tela.retangulo(8.0, y, LATERAL_L - 16.0, 30.0, 6.0, tema::SUPERFICIE_ALTA());
+                ui.tela.retangulo(8.0, y, LATERAL_L - 16.0, alt, 6.0, tema::SUPERFICIE_ALTA());
             }
+            let iy = y + (alt - 22.0) / 2.0;
+            let recuo = if matches!(tipo, 3 | 4) { 12.0 } else { 0.0 };
             match tipo {
-                0 => icone_computador(ui.tela, 16.0, y + 4.0, 22.0),
-                2 => icone_lixeira(ui.tela, 16.0, y + 4.0, 22.0),
-                _ => icone_pasta(ui.tela, 16.0, y + 4.0, 22.0),
+                0 => icone_computador(ui.tela, 16.0, iy, 22.0),
+                2 => icone_lixeira(ui.tela, 16.0, iy, 22.0),
+                3 => icone_unidade(ui.tela, 16.0 + recuo, iy, 22.0, nome.ends_with("(C:)")),
+                4 | 5 => {
+                    if !desenhar_icone(ui.tela, "unidade-rede", 16.0 + recuo, iy, 22.0) {
+                        icone_unidade(ui.tela, 16.0 + recuo, iy, 22.0, false);
+                    }
+                }
+                _ => icone_pasta(ui.tela, 16.0, iy, 22.0),
             }
-            ui.tela.texto(46.0, y + 20.0, 13.0, tema::TEXTO(), nome);
-            if ui.clicou(8.0, y, LATERAL_L - 16.0, 30.0) {
-                ir = Some(destino.clone());
+            let max = LATERAL_L - 62.0 - recuo;
+            ui.tela.texto(46.0 + recuo, y + alt / 2.0 + 5.0, 13.0, tema::TEXTO(), &desenho::encurtar(13.0, nome, max));
+            if ui.clicou(8.0, y, LATERAL_L - 16.0, alt) {
+                match destino {
+                    Some(d) => ir = Some(d.clone()),
+                    None => mapear = true,
+                }
             }
-            y += 32.0;
+            y += passo;
+        }
+        if mapear {
+            self.abrir_mapear();
         }
         if let Some(d) = ir {
             self.ir(d);
@@ -2771,6 +3455,41 @@ fn main() {
     // Chamado pela sessão ao entrar: reconecta as unidades de rede salvas.
     if std::env::args().nth(1).as_deref() == Some("--reconectar") {
         reconectar_tudo();
+        return;
+    }
+    // Abrir um arquivo com o app certo (clique duplo na área de trabalho).
+    // Só mostra a janela se precisar perguntar ("Abrir com…", AppImage).
+    let args0: Vec<String> = std::env::args().collect();
+    let modo_arg = args0.get(1).map(String::as_str).unwrap_or("");
+    if matches!(modo_arg, "--abrir" | "--abrir-com" | "--propriedades") {
+        let Some(c) = args0.get(2).map(PathBuf::from) else { return };
+        let mut app = Explorador::novo();
+        if let Some(pai) = c.parent().filter(|p| p.is_dir()) {
+            app.ir(Local::Pasta(pai.to_path_buf()));
+            app.voltar.clear();
+        }
+        let meta = fs::metadata(&c).ok();
+        let e = Entrada {
+            nome: c.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default(),
+            pasta: c.is_dir(),
+            tamanho: meta.as_ref().map(|m| m.len()).unwrap_or(0),
+            modificado: meta.and_then(|m| m.modified().ok()),
+            caminho: c,
+        };
+        match modo_arg {
+            "--abrir-com" => app.abrir_com = Some(AbrirCom::novo(&e.caminho)),
+            "--propriedades" => {
+                app.propriedades = Some(tipos::propriedades(&[e.caminho.clone()], tamanho_legivel, data_legivel));
+            }
+            _ => app.abrir(&e),
+        }
+        if modo_arg == "--abrir" && !e.pasta && app.abrir_com.is_none() && app.executar_app.is_none() && app.aviso.is_none() {
+            return;
+        }
+        penas::executar(
+            Opcoes { titulo: "Explorador".into(), app_id: "explorador".into(), tamanho: (980, 640), minimo: (560, 380) },
+            Box::new(app),
+        );
         return;
     }
     // Modo escolher (portal dos apps Flatpak):

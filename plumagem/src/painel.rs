@@ -183,6 +183,69 @@ const ACOES_RAPIDAS: [&str; 4] = ["Não perturbe", "Modo escuro", "Recortar tela
 static LOGO_PNG: &[u8] = include_bytes!("../resources/logo-64.png");
 static ESTE_PC_PNG: &[u8] = include_bytes!("../resources/este-computador-48.png");
 static LIXEIRA_PNG: &[u8] = include_bytes!("../resources/lixeira-48.png");
+static PASTA_PNG: &[u8] = include_bytes!("../resources/pasta-48.png");
+
+/// Ícone de um arquivo na área de trabalho: miniatura (PNG pequeno) ou uma
+/// folha com a faixa da cor do tipo (imagem, música, vídeo, documento...).
+fn icone_de_arquivo(caminho: &std::path::Path) -> image::RgbaImage {
+    let ext = caminho.extension().and_then(|e| e.to_str()).map(|e| e.to_lowercase()).unwrap_or_default();
+    if ext == "png" && std::fs::metadata(caminho).map(|m| m.len() < 15_000_000).unwrap_or(false) {
+        if let Some(img) = std::fs::read(caminho)
+            .ok()
+            .and_then(|b| image::load_from_memory_with_format(&b, image::ImageFormat::Png).ok())
+        {
+            let mini = img.thumbnail(46, 46).to_rgba8();
+            let mut c = image::RgbaImage::new(48, 48);
+            let (ox, oy) = ((48 - mini.width()) / 2, (48 - mini.height()) / 2);
+            // Moldura branca fina, como uma foto.
+            for y in oy.saturating_sub(1)..(oy + mini.height() + 1).min(48) {
+                for x in ox.saturating_sub(1)..(ox + mini.width() + 1).min(48) {
+                    c.put_pixel(x, y, image::Rgba([250, 250, 250, 255]));
+                }
+            }
+            image::imageops::overlay(&mut c, &mini, ox as i64, oy as i64);
+            return c;
+        }
+    }
+    let cor: [u8; 3] = match ext.as_str() {
+        "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp" | "svg" | "ico" => [46, 160, 90],
+        "mp3" | "flac" | "ogg" | "oga" | "opus" | "wav" | "m4a" | "aac" => [230, 120, 40],
+        "mp4" | "mkv" | "webm" | "avi" | "mov" => [200, 60, 80],
+        "pdf" => [210, 50, 50],
+        "zip" | "tar" | "gz" | "xz" | "7z" | "rar" | "zst" | "bz2" => [150, 110, 60],
+        "doc" | "docx" | "odt" | "rtf" => [40, 100, 200],
+        "xls" | "xlsx" | "ods" | "csv" => [30, 140, 80],
+        "ppt" | "pptx" | "odp" => [220, 90, 40],
+        "appimage" | "sh" | "flatpakref" => [110, 80, 190],
+        _ => [120, 130, 145],
+    };
+    let mut img = image::RgbaImage::new(48, 48);
+    let (x0, x1, y0, y1, dobra) = (9i32, 39i32, 3i32, 45i32, 10i32);
+    for y in y0..y1 {
+        for x in x0..x1 {
+            // Canto de cima à direita dobrado.
+            if x - (x1 - dobra) > y - y0 {
+                continue;
+            }
+            let borda = x == x0 || x == x1 - 1 || y == y0 || y == y1 - 1 || x - (x1 - dobra) == y - y0;
+            let dobrado = x >= x1 - dobra && y < y0 + dobra;
+            let faixa = y >= y1 - 14 && y < y1 - 4 && x > x0 + 3 && x < x1 - 4;
+            let px = if borda {
+                [150, 158, 170, 255]
+            } else if dobrado {
+                [214, 220, 228, 255]
+            } else if faixa {
+                [cor[0], cor[1], cor[2], 255]
+            } else if (y - y0) % 6 == 0 && y > y0 + 12 && y < y1 - 18 && x > x0 + 5 && x < x1 - 6 {
+                [205, 210, 218, 255]
+            } else {
+                [252, 252, 252, 255]
+            };
+            img.put_pixel(x as u32, y as u32, image::Rgba(px));
+        }
+    }
+    img
+}
 
 /// Ícone da área de trabalho: nome, comando ao abrir, imagem e o arquivo
 /// de atalho (para os da pasta Área de Trabalho).
@@ -252,6 +315,33 @@ fn lixeira_com_papeis(mut img: image::RgbaImage, n: usize) -> image::RgbaImage {
     img
 }
 
+/// Manda um arquivo para a Lixeira (padrão freedesktop: files/ + info/).
+pub fn mandar_para_lixeira(p: &std::path::Path) -> std::io::Result<()> {
+    let base = pasta_lixeira().ok_or_else(|| std::io::Error::other("sem HOME"))?;
+    let info = base.with_file_name("info");
+    std::fs::create_dir_all(&base)?;
+    std::fs::create_dir_all(&info)?;
+    let nome = p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    let alvo = crate::area::nome_livre(&base, &nome, "");
+    let nome_alvo = alvo.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    let agora = std::process::Command::new("date")
+        .arg("+%Y-%m-%dT%H:%M:%S")
+        .output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .unwrap_or_default();
+    let uri = crate::area::uri_de(p);
+    let caminho = uri.strip_prefix("file://").unwrap_or(&uri);
+    std::fs::write(info.join(format!("{nome_alvo}.trashinfo")), format!("[Trash Info]\nPath={caminho}\nDeletionDate={agora}\n"))?;
+    if std::fs::rename(p, &alvo).is_err() {
+        let ok = std::process::Command::new("mv").arg("--").arg(p).arg(&alvo).status().map(|s| s.success()).unwrap_or(false);
+        if !ok {
+            let _ = std::fs::remove_file(info.join(format!("{nome_alvo}.trashinfo")));
+            return Err(std::io::Error::other("não deu para mover"));
+        }
+    }
+    Ok(())
+}
+
 /// Pasta "Área de Trabalho" do usuário.
 pub fn pasta_area() -> Option<std::path::PathBuf> {
     std::env::var("HOME").ok().map(|h| std::path::PathBuf::from(h).join("Área de Trabalho"))
@@ -276,13 +366,18 @@ fn icones_da_pasta(pasta: &std::path::Path) -> Vec<IconeArea> {
             let id = caminho.file_stem().and_then(|n| n.to_str()).unwrap_or("").to_string();
             if let Some(app) = std::fs::read_to_string(&caminho).ok().and_then(|t| ler_desktop(&t, &id)) {
                 let img = app.icone.map(|i| image::imageops::resize(&i, 48, 48, image::imageops::FilterType::Triangle));
-                v.push((app.nome.to_lowercase(), IconeArea { nome: app.nome, cmd: app.exec, img, arquivo: Some(caminho) }));
+                v.push((format!("0{}", app.nome.to_lowercase()), IconeArea { nome: app.nome, cmd: app.exec, img, arquivo: Some(caminho) }));
             }
         } else if caminho.is_dir() {
-            let img = achar_icone("explorador")
-                .map(|i| image::imageops::resize(&i, 48, 48, image::imageops::FilterType::Triangle));
+            let img = desenho::icone(PASTA_PNG, 48, 48);
             let cmd = format!("explorador {}", aspas(&caminho.to_string_lossy()));
-            v.push((nome_arq.to_lowercase(), IconeArea { nome: nome_arq, cmd, img, arquivo: Some(caminho) }));
+            // Pastas antes dos arquivos (como no Windows ao organizar por nome).
+            v.push((format!("0{}", nome_arq.to_lowercase()), IconeArea { nome: nome_arq, cmd, img, arquivo: Some(caminho) }));
+        } else {
+            // Qualquer outro arquivo: abre com o app certo pelo Explorador.
+            let img = Some(icone_de_arquivo(&caminho));
+            let cmd = format!("explorador --abrir {}", aspas(&caminho.to_string_lossy()));
+            v.push((format!("1{}", nome_arq.to_lowercase()), IconeArea { nome: nome_arq, cmd, img, arquivo: Some(caminho) }));
         }
     }
     v.sort_by(|a, b| a.0.cmp(&b.0));
@@ -1425,19 +1520,39 @@ impl Painel {
                 // Atalho ou pasta da Área de Trabalho.
                 if let Some(ic) = self.icones_area.get(i) {
                     let cmd = ic.cmd.clone();
-                    let apagar = ic.arquivo.as_ref().map(|a| format!("#apagar:{}", a.display()));
                     self.icone_sel = Some(i);
                     let mut v: Vec<(String, String)> = vec![("Abrir".into(), cmd)];
-                    if let Some(a) = apagar {
-                        v.push(("Remover da área de trabalho".into(), a));
+                    if let Some(a) = ic.arquivo.clone() {
+                        let q = aspas(&a.to_string_lossy());
+                        let atalho = a.extension().and_then(|x| x.to_str()) == Some("desktop");
+                        if !atalho && !a.is_dir() {
+                            v.push(("Abrir com…".into(), format!("explorador --abrir-com {q}")));
+                        }
+                        v.push(("Mostrar no Explorador".into(), format!("explorador {q}")));
+                        v.push(("Recortar".into(), format!("#recortar:{}", a.display())));
+                        v.push(("Copiar".into(), format!("#copiar:{}", a.display())));
+                        if atalho {
+                            v.push(("Remover da área de trabalho".into(), format!("#apagar:{}", a.display())));
+                        } else {
+                            v.push(("Excluir".into(), format!("#lixeira:{}", a.display())));
+                        }
+                        v.push(("Propriedades".into(), format!("explorador --propriedades {q}")));
                     }
                     let v2: Vec<(&str, &str)> = v.iter().map(|(a, b)| (a.as_str(), b.as_str())).collect();
                     self.abrir_contexto(p, tela, v2);
                 }
                 return;
             }
-            None => vec![
-                ("Atualizar", "#atualizar"),
+            None => {
+                let mut v = vec![("Atualizar", "#atualizar")];
+                if crate::area::ARQUIVOS.lock().map(|a| a.is_some()).unwrap_or(false) {
+                    v.push(("Colar", "#colar-area"));
+                }
+                v.extend([
+                    ("Nova pasta", "#nova-pasta"),
+                    ("Novo documento de texto", "#novo-texto"),
+                ]);
+                v.extend([
                 ("Próximo papel de parede", "#papel"),
                 ("Abrir o terminal", "alacritty"),
                 ("Central de Apps", "central"),
@@ -1445,7 +1560,9 @@ impl Painel {
                 ("Configurações de exibição", "configuracoes tela"),
                 ("Personalizar", "configuracoes personalizacao"),
                 ("Configurações", "configuracoes"),
-            ],
+                ]);
+                v
+            }
         };
         if let Some(i) = icone {
             self.icone_sel = Some(i);

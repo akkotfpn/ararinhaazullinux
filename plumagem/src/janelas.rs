@@ -511,6 +511,37 @@ impl<B: Backend> AnvilState<B> {
                             }
                         }
                         "#area" => self.mostrar_area_de_trabalho(),
+                        a if a.starts_with("#copiar:") || a.starts_with("#recortar:") => {
+                            let corte = a.starts_with("#recortar:");
+                            let (_, c) = a.split_once(':').unwrap_or_default();
+                            self.copiar_arquivos(vec![std::path::PathBuf::from(c)], corte);
+                        }
+                        a if a.starts_with("#lixeira:") => {
+                            let caminho = std::path::PathBuf::from(&a["#lixeira:".len()..]);
+                            if caminho.starts_with(painel::pasta_area().unwrap_or_default()) {
+                                if let Err(e) = painel::mandar_para_lixeira(&caminho) {
+                                    let _ = std::process::Command::new("ararinha-notificar")
+                                        .args(["Não deu para excluir", &e.to_string()])
+                                        .spawn();
+                                }
+                            }
+                        }
+                        "#colar-area" => {
+                            if let Some(p) = painel::pasta_area() {
+                                let _ = std::fs::create_dir_all(&p);
+                                crate::area::colar_em(p);
+                            }
+                        }
+                        a @ ("#nova-pasta" | "#novo-texto") => {
+                            if let Some(p) = painel::pasta_area() {
+                                let _ = std::fs::create_dir_all(&p);
+                                if a == "#nova-pasta" {
+                                    let _ = std::fs::create_dir(crate::area::nome_livre(&p, "Nova pasta", ""));
+                                } else {
+                                    let _ = std::fs::write(crate::area::nome_livre(&p, "Novo documento de texto.txt", ""), "");
+                                }
+                            }
+                        }
                         a if a.starts_with("#apagar:") => {
                             // Só apaga atalhos e pastas vazias da Área de Trabalho
                             // (pasta com coisas vai para a Lixeira pelo Explorador).
@@ -849,12 +880,32 @@ impl<B: Backend> AnvilState<B> {
     /// A troca acontece quando o Alt é solto (`alt_tab_soltar`).
     /// Win+V: a Plumagem passa a oferecer o texto e cola no app em foco
     /// (aperta Ctrl+V por ele, como o Windows faz).
+    /// Copiar/Recortar na área de trabalho: a Plumagem passa a oferecer os
+    /// arquivos (colam no Explorador e em outros apps).
+    pub fn copiar_arquivos(&mut self, v: Vec<std::path::PathBuf>, corte: bool) {
+        use smithay::wayland::selection::data_device::set_data_device_selection;
+        if let Ok(mut p) = crate::area::PROPRIA.lock() {
+            *p = None;
+        }
+        if let Ok(mut a) = crate::area::ARQUIVOS.lock() {
+            *a = Some((v, corte));
+        }
+        crate::area::PROPRIA_ARQUIVOS.store(true, std::sync::atomic::Ordering::Relaxed);
+        let tipos: Vec<String> = crate::area::TIPOS_ARQUIVOS.iter().map(|s| s.to_string()).collect();
+        set_data_device_selection(&self.display_handle, &self.seat, tipos.clone(), ());
+        #[cfg(feature = "xwayland")]
+        if let Some(xwm) = self.xwm.as_mut() {
+            let _ = xwm.new_selection(smithay::wayland::selection::SelectionTarget::Clipboard, Some(tipos));
+        }
+    }
+
     pub fn colar_texto(&mut self, t: String) {
         use smithay::wayland::selection::data_device::set_data_device_selection;
         crate::area::guardar(t.clone());
         if let Ok(mut p) = crate::area::PROPRIA.lock() {
             *p = Some(t);
         }
+        crate::area::PROPRIA_ARQUIVOS.store(false, std::sync::atomic::Ordering::Relaxed);
         let tipos: Vec<String> = crate::area::TIPOS_TEXTO.iter().map(|s| s.to_string()).collect();
         set_data_device_selection(&self.display_handle, &self.seat, tipos.clone(), ());
         #[cfg(feature = "xwayland")]

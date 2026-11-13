@@ -95,18 +95,36 @@ if command -v flatpak >/dev/null; then
     mkdir -p "$HOME/.config/ararinha" "$HOME/Área de Trabalho"
     cp /usr/share/applications/central.desktop "$HOME/Área de Trabalho/" 2>/dev/null
     touch "$marca"
+  fi
+  # O Chromium tem marca própria: só some depois de instalado de verdade.
+  # Sem internet na hora (comum logo depois de instalar), espera a rede
+  # voltar e tenta de novo; se falhar, tenta no próximo login.
+  okchr="$HOME/.config/ararinha/chromium-instalado"
+  if [ ! -f "$okchr" ]; then
     (
-      sleep 8
+      exec 9>"$XDG_RUNTIME_DIR/ararinha-chromium.trava"
+      flock -n 9 || exit 0
+      if flatpak info org.chromium.Chromium >/dev/null 2>&1; then touch "$okchr"; exit 0; fi
+      flatpak remote-add --user --if-not-exists flathub /usr/share/flatpak/flathub.flatpakrepo >/dev/null 2>&1
+      i=0
+      until getent hosts dl.flathub.org >/dev/null 2>&1; do
+        i=$((i+1)); [ $i -gt 120 ] && exit 0
+        sleep 5
+      done
       ararinha-notificar "Instalando o Chromium" "O navegador chega em alguns minutos; ele aparece no menu Iniciar."
-      if nice -n 15 flatpak install --user -y --noninteractive flathub org.chromium.Chromium >/dev/null 2>&1; then
-        mkdir -p "$HOME/Área de Trabalho"
-        for d in "$HOME/.local/share/flatpak/exports/share/applications/org.chromium.Chromium.desktop" /var/lib/flatpak/exports/share/applications/org.chromium.Chromium.desktop; do
-          if [ -e "$d" ]; then cp "$d" "$HOME/Área de Trabalho/"; break; fi
-        done
-        ararinha-notificar "Chromium pronto" "O navegador já está no menu Iniciar e na área de trabalho."
-      else
-        ararinha-notificar "Chromium não foi instalado" "Sem internet? Instale depois pela Central de Apps."
-      fi
+      for t in 1 2 3; do
+        if nice -n 15 flatpak install --user -y --noninteractive flathub org.chromium.Chromium >/dev/null 2>&1; then
+          touch "$okchr"
+          mkdir -p "$HOME/Área de Trabalho"
+          for d in "$HOME/.local/share/flatpak/exports/share/applications/org.chromium.Chromium.desktop" /var/lib/flatpak/exports/share/applications/org.chromium.Chromium.desktop; do
+            if [ -e "$d" ]; then cp "$d" "$HOME/Área de Trabalho/"; break; fi
+          done
+          ararinha-notificar "Chromium pronto" "O navegador já está no menu Iniciar e na área de trabalho."
+          exit 0
+        fi
+        sleep $((t*30))
+      done
+      ararinha-notificar "Chromium não foi instalado" "Tento de novo no próximo login, ou instale pela Central de Apps."
     ) &
   fi
   for app in org.chromium.Chromium com.google.Chrome com.brave.Browser; do

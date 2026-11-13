@@ -249,6 +249,21 @@ impl<BackendData: Backend> SelectionHandler for AnvilState<BackendData> {
             if let Ok(mut p) = crate::area::PROPRIA.lock() {
                 *p = None;
             }
+            crate::area::PROPRIA_ARQUIVOS.store(false, std::sync::atomic::Ordering::Relaxed);
+            if let Ok(mut a) = crate::area::ARQUIVOS.lock() {
+                *a = None;
+            }
+            // Arquivos copiados (Explorador): guarda a lista para "Colar" na
+            // área de trabalho.
+            if let Some(tipo) = source.as_ref().and_then(|s| crate::area::tipo_arquivos(&s.mime_types())) {
+                self.handle.insert_idle(move |data| {
+                    if let Some((leitura, escrita)) = crate::area::cano() {
+                        if smithay::wayland::selection::data_device::request_data_device_client_selection(&data.seat, tipo, escrita).is_ok() {
+                            crate::area::ler_arquivos_em_segundo_plano(leitura);
+                        }
+                    }
+                });
+            }
             if let Some(tipo) = source.as_ref().and_then(|s| crate::area::tipo_texto(&s.mime_types())) {
                 self.handle.insert_idle(move |data| {
                     if let Some((leitura, escrita)) = crate::area::cano() {
@@ -276,6 +291,12 @@ impl<BackendData: Backend> SelectionHandler for AnvilState<BackendData> {
         _user_data: &(),
     ) {
         // Item escolhido no Win+V: a própria Plumagem entrega o texto.
+        if ty == smithay::wayland::selection::SelectionTarget::Clipboard
+            && crate::area::PROPRIA_ARQUIVOS.load(std::sync::atomic::Ordering::Relaxed)
+        {
+            crate::area::enviar_arquivos(&mime_type, fd);
+            return;
+        }
         if ty == smithay::wayland::selection::SelectionTarget::Clipboard && crate::area::PROPRIA.lock().map(|p| p.is_some()).unwrap_or(false) {
             crate::area::enviar(fd);
             return;
