@@ -36,7 +36,11 @@ pelo smithay-client-toolkit e o mesmo desenho da Plumagem):
   **v2** (11/11): ícones e coluna Tipo por extensão, seleção múltipla
   (Ctrl/Shift+clique, Ctrl+A), busca (filtra na hora; Enter procura nas
   subpastas), arrastar para pastas (Ctrl copia), Propriedades (Alt+Enter)
-  e Lixeira com Restaurar e Esvaziar.
+  e Lixeira com Restaurar e Esvaziar. **v3** (13/11): abas, barra de
+  comandos do Windows 11 (Novo, recortar/copiar/colar/renomear/excluir,
+  Classificar, Visualizar, Detalhes), barra de status, unidades e Rede na
+  lateral, cópia em segundo plano com progresso e área de transferência de
+  arquivos compartilhada com a área de trabalho.
 - **Configurações**: tamanho da barra de tarefas, modo claro/escuro, papel
   de parede (Spix, Noite no Sertão, Velho Chico, Aero Azul, Caatinga em
   Flor), plano de energia (Padrão, Econômico, Desempenho máximo, pelo

@@ -108,13 +108,26 @@ Imagem: ~630 MB (qcow2). Boot até a tela de entrada: ~3,4 s.
 - [em teste] Papel de parede com imagem própria
 - [em teste] Win+Z: layouts de encaixe em qualquer app
 - [em teste] DNS personalizado na Rede (AdGuard)
-- [a fazer] Alt+Tab: o console do Proxmox no navegador manda o Alt+Tab para o Windows; testar pelo menu de teclas do noVNC
+- [feito] Alt+Tab e Win+Z (confirmados no teste)
 - [a fazer] Arrastar os ícones da barra para reordenar
 - [em teste] Instalador grava a entrada de boot UEFI do disco e põe em primeiro
 - [em teste] Explorador: colar/cursor em todos os campos, seleção por retângulo
 - [em teste] DNS: até 4 servidores (o 1º é o preferencial)
 - [em teste] "Definir como papel de parede" no botão direito da imagem
 - [a fazer] Papel de parede animado (vídeo/GIF), colar na busca do Iniciar
+
+### Pedidos de 13/11 (segunda rodada)
+- [em teste] Chromium instalado depois de instalar no disco (espera a rede, tenta de novo)
+- [em teste] Mapear unidade: "conectado com sucesso" e o motivo da falha em português
+- [em teste] Área de trabalho livre: mostra qualquer arquivo, Colar, Nova pasta, Novo documento, Copiar/Recortar/Excluir
+- [em teste] Área de transferência de arquivos entre Explorador, área de trabalho e apps
+- [em teste] Explorador com abas (Ctrl+T, Ctrl+W, Ctrl+Tab, Abrir em nova aba)
+- [em teste] Copiar do servidor sem travar o Explorador (progresso na barra de baixo)
+- [em teste] Explorador no estilo Windows 11: barra de comandos, Classificar, Visualizar, Detalhes, barra de status, unidades e Rede na lateral
+- [em teste] Papel de parede grande não sai mais borrado (reduzido para 1920 px)
+- [em teste] DNS próprio vale também no Wi-Fi (a placa deixa de ser rota padrão)
+- [feito] README na Fase 2
+- [a fazer] Arrastar arquivos do Explorador para a área de trabalho e posicionar ícones livremente
 
 ### Qualidade
 - [a fazer] Medir o consumo da Plumagem parada
