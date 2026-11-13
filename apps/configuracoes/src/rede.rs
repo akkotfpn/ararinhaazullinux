@@ -52,7 +52,7 @@ pub struct PaginaRede {
     pub pedida: Option<String>,
     rolagem: f32,
     /// Janela do DNS: (personalizado, servidores) e o estado atual.
-    dns: Option<(bool, String)>,
+    dns: Option<(bool, [String; 4], usize)>,
     dns_atual: Option<String>,
     dns_rx: Option<std::sync::mpsc::Receiver<Result<String, String>>>,
 }
@@ -540,14 +540,18 @@ impl PaginaRede {
         ui.tela.texto(bx - lr - 12.0, by + 20.0, 12.0, tema::TEXTO_SECUNDARIO(), &resumo);
         let aberto = self.dns.is_some();
         if penas::componentes::botao(ui, bx, by, "Alterar DNS", penas::componentes::Estilo::Comum, !aberto) {
-            let servidores = atual.strip_prefix("personalizado ").unwrap_or("").to_string();
-            self.dns = Some((!servidores.is_empty(), servidores));
+            let lista: Vec<String> = atual.strip_prefix("personalizado ").unwrap_or("").split_whitespace().map(str::to_string).collect();
+            let mut campos: [String; 4] = Default::default();
+            for (i, s) in lista.iter().take(4).enumerate() {
+                campos[i] = s.clone();
+            }
+            self.dns = Some((!lista.is_empty(), campos, 0));
         }
         // Tirado e devolvido no fim (sem clonar: o cursor do campo segue o texto).
-        let Some((pers, mut texto)) = self.dns.take() else { return };
+        let Some((pers, mut campos, mut foco)) = self.dns.take() else { return };
         // Janela.
-        let (cl, ca) = (460.0_f32.min(l - 40.0), 290.0);
-        let (cx, cy) = (x0 + (l - cl) / 2.0, 110.0);
+        let (cl, ca) = (480.0_f32.min(l - 40.0), if pers { 470.0 } else { 250.0 });
+        let (cx, cy) = (x0 + (l - cl) / 2.0, 100.0);
         ui.tela.retangulo(cx - 1.0, cy - 1.0, cl + 2.0, ca + 2.0, 13.0, tema::BORDA());
         ui.tela.retangulo(cx, cy, cl, ca, 12.0, tema::JANELA());
         ui.tela.texto(cx + 24.0, cy + 36.0, 17.0, tema::TEXTO(), "Servidor DNS");
@@ -566,19 +570,32 @@ impl PaginaRede {
                 novo_pers = i == 1;
             }
         }
-        let fy = cy + 156.0;
-        if novo_pers {
-            ui.tela.texto(cx + 24.0, fy, 12.5, tema::TEXTO_SECUNDARIO(), "Endereços IP, separados por espaço:");
+        if pers {
+            // Até 4 servidores: o primeiro é o preferencial.
             let teclas = std::mem::take(&mut ui.teclas);
-            let _ = penas::componentes::editar(&mut texto, teclas);
-            penas::componentes::campo(ui, cx + 24.0, fy + 8.0, cl - 48.0, &texto, "192.168.1.10", true, false);
+            for t in penas::componentes::editar(&mut campos[foco], teclas) {
+                match t {
+                    Tecla::Outra(penas::Keysym::Tab) | Tecla::Baixo | Tecla::Enter => foco = (foco + 1) % 4,
+                    Tecla::Cima => foco = (foco + 3) % 4,
+                    _ => {}
+                }
+            }
+            let rotulos = ["DNS preferencial", "DNS alternativo", "3º servidor (opcional)", "4º servidor (opcional)"];
+            for (i, r) in rotulos.iter().enumerate() {
+                let fy = cy + 156.0 + i as f32 * 60.0;
+                ui.tela.texto(cx + 24.0, fy, 12.5, tema::TEXTO_SECUNDARIO(), r);
+                let dica = if i == 0 { "192.168.1.10" } else { "" };
+                if penas::componentes::campo(ui, cx + 24.0, fy + 8.0, cl - 48.0, &campos[i], dica, foco == i, false) {
+                    foco = i;
+                }
+            }
         }
-        let ok = !novo_pers || !texto.trim().is_empty();
+        let preenchidos: Vec<String> = campos.iter().map(|c| c.trim().to_string()).filter(|c| !c.is_empty()).collect();
+        let ok = !novo_pers || !preenchidos.is_empty();
         let by2 = cy + ca - 54.0;
         if penas::componentes::botao_direita(ui, cx + cl - 24.0, by2, "Salvar", penas::componentes::Estilo::Principal, ok && self.dns_rx.is_none()) {
             if novo_pers {
-                let lista = texto.replace(',', " ").split_whitespace().collect::<Vec<_>>().join(" ");
-                self.pedir_dns(format!("dns definir {lista}"));
+                self.pedir_dns(format!("dns definir {}", preenchidos.join(" ")));
             } else {
                 self.pedir_dns("dns automatico".into());
             }
@@ -588,6 +605,6 @@ impl PaginaRede {
             self.dns = None;
             return;
         }
-        self.dns = Some((novo_pers, texto));
+        self.dns = Some((novo_pers, campos, foco));
     }
 }

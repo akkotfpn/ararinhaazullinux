@@ -393,7 +393,7 @@ impl App for Instalador {
             }
             Passo::Pronto => {
                 ui.tela.texto(x0, 64.0, 22.0, tema::TEXTO(), "Instalação concluída!");
-                let y = paragrafo(ui, x0, 110.0, largura, if self.cripto { "O Ararinha já está no disco, criptografado. Reinicie e tire o pendrive quando a tela apagar: a senha do disco será pedida logo no início." } else { "O Ararinha já está no disco. Reinicie e tire o pendrive quando a tela apagar." });
+                let y = paragrafo(ui, x0, 110.0, largura, if self.cripto { "O Ararinha já está no disco, criptografado, e o computador já está configurado para ligar por ele. Reinicie e tire o pendrive: a senha do disco será pedida logo no início." } else { "O Ararinha já está no disco, e o computador já está configurado para ligar por ele. Reinicie e tire o pendrive." });
                 let mut y = y;
                 for a in self.avisos.clone() {
                     y += 6.0;

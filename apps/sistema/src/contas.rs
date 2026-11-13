@@ -14,8 +14,18 @@ use std::{
 /// Roda um comando como root, fora do confinamento, esperando o fim.
 /// `entrada` vai pela entrada padrão (senhas nunca na linha de comando).
 pub(crate) fn rodar_fora(args: &[&str], entrada: Option<&str>) -> Result<(), String> {
+    rodar_fora_com(args, entrada, true)
+}
+
+/// `sem_rede`: a unidade roda sem rede (padrão). O networkctl precisa da
+/// rede de verdade (mesmo namespace do systemd-networkd).
+fn rodar_fora_com(args: &[&str], entrada: Option<&str>, sem_rede: bool) -> Result<(), String> {
     let mut c = Command::new("/usr/bin/systemd-run");
-    c.args(["--quiet", "--wait", "--collect", "--pipe", "--property=PrivateNetwork=yes", "--"]);
+    c.args(["--quiet", "--wait", "--collect", "--pipe"]);
+    if sem_rede {
+        c.arg("--property=PrivateNetwork=yes");
+    }
+    c.arg("--");
     c.args(args);
     c.stdin(if entrada.is_some() { Stdio::piped() } else { Stdio::null() });
     c.stdout(Stdio::null()).stderr(Stdio::piped());
@@ -237,7 +247,14 @@ pub fn dns_automatico() -> Result<String, String> {
 }
 
 fn aplicar_dns() -> Result<(), String> {
-    rodar_fora(&["/usr/bin/networkctl", "reload"], None)?;
-    let _ = rodar_fora(&["/usr/bin/networkctl", "reconfigure", "--all"], None);
-    rodar_fora(&["/usr/bin/systemctl", "restart", "systemd-resolved"], None)
+    rodar_fora(&["/usr/bin/systemctl", "restart", "systemd-resolved"], None)?;
+    rodar_fora_com(&["/usr/bin/networkctl", "reload"], None, false)?;
+    // Reconfigura as placas para largar o DNS do roteador.
+    let placas: Vec<String> = std::fs::read_dir("/sys/class/net")
+        .map(|r| r.flatten().map(|e| e.file_name().to_string_lossy().to_string()).filter(|n| n != "lo").collect())
+        .unwrap_or_default();
+    for p in placas {
+        let _ = rodar_fora_com(&["/usr/bin/networkctl", "reconfigure", &p], None, false);
+    }
+    Ok(())
 }

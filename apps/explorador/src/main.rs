@@ -192,6 +192,9 @@ struct Explorador {
     previa_rx: Option<std::sync::mpsc::Receiver<(PathBuf, Previa)>>,
     /// Janela "Abrir com…".
     abrir_com: Option<AbrirCom>,
+    /// Seleção com o mouse (arrastar no vazio): ponto inicial, com a
+    /// rolagem somada (coordenadas da lista).
+    laco: Option<(f32, f32)>,
     /// Quando as unidades foram lidas (pendrives entram e saem).
     unidades_em: Option<std::time::Instant>,
 }
@@ -301,6 +304,7 @@ enum Acao {
     Extrair,
     Compactar,
     AbrirCom,
+    PapelDeParede,
 }
 
 /// Arquivos que o bsdtar (libarchive) sabe abrir.
@@ -539,6 +543,7 @@ impl Explorador {
             previa_rx: None,
             unidades_em: None,
             abrir_com: None,
+            laco: None,
         };
         // Abre numa pasta passada como argumento (ou na pasta de um arquivo,
         // já selecionado: "Mostrar na pasta" do navegador). Aceita file://.
@@ -919,16 +924,12 @@ impl Explorador {
 
     fn tecla_mapear(&mut self, tecla: Tecla) {
         let Some(m) = self.mapear.as_mut() else { return };
+        let resto = penas::componentes::editar(&mut m.campos[m.foco], vec![tecla]);
+        let Some(tecla) = resto.into_iter().next() else {
+            m.erro = None;
+            return;
+        };
         match tecla {
-            Tecla::Texto(t) => {
-                if m.campos[m.foco].chars().count() < 200 {
-                    m.campos[m.foco].push_str(&t);
-                }
-                m.erro = None;
-            }
-            Tecla::Apagar => {
-                m.campos[m.foco].pop();
-            }
             Tecla::Outra(Keysym::Tab) | Tecla::Baixo => m.foco = (m.foco + 1) % 3,
             Tecla::Cima => m.foco = (m.foco + 2) % 3,
             Tecla::Esc => self.mapear = None,
@@ -1062,6 +1063,7 @@ impl Explorador {
             let texto = desenho::encurtar(14.0, &texto, cl - 80.0);
             let fim = ui.tela.texto(x + 34.0, cy + 23.0, 14.0, tema::TEXTO(), &texto);
             if focado {
+                let fim = penas::componentes::x_do_cursor(&m.campos[i], 14.0, i == 2).min(fim);
                 ui.tela.retangulo(x + 35.0 + fim, cy + 8.0, 1.5, 18.0, 0.0, tema::DESTAQUE());
             }
         }
@@ -1127,6 +1129,10 @@ impl Explorador {
                 let arquivo = !varios && self.entradas.get(i_menu).is_some_and(|e| !e.pasta);
                 if arquivo && !lixeira {
                     v.push(("Abrir com…", Acao::AbrirCom, true));
+                    let imagem = self.entradas.get(i_menu).map(|e| tipos::tipo_de(&e.nome).0 == tipos::Categoria::Imagem).unwrap_or(false);
+                    if imagem {
+                        v.push(("Definir como papel de parede", Acao::PapelDeParede, true));
+                    }
                 }
                 if lixeira {
                     v.push(("Restaurar", Acao::Restaurar, true));
@@ -1223,6 +1229,14 @@ impl Explorador {
             Acao::Abrir => {
                 if let Some(e) = entrada {
                     self.abrir(&e);
+                }
+            }
+            Acao::PapelDeParede => {
+                if let Some(e) = entrada {
+                    match penas::definir_papel_de_parede(&e.caminho) {
+                        Ok(()) => self.aviso = Some("Papel de parede trocado.".into()),
+                        Err(err) => self.aviso = Some(err),
+                    }
                 }
             }
             Acao::AbrirCom => {
@@ -1600,15 +1614,14 @@ impl App for Explorador {
         // Teclado.
         for tecla in std::mem::take(&mut ui.teclas) {
             if let Some(esc) = self.escolha.as_mut().filter(|e| e.nome_ativo) {
+                // Campos de texto: cursor, Ctrl+A/C/V/X (componentes::editar).
+                let antes = esc.nome.clone();
+                let resto = penas::componentes::editar(&mut esc.nome, vec![tecla]);
+                if esc.nome != antes {
+                    esc.confirmar = false;
+                }
+                let Some(tecla) = resto.into_iter().next() else { continue };
                 match tecla {
-                    Tecla::Texto(s) => {
-                        esc.nome.push_str(&s);
-                        esc.confirmar = false;
-                    }
-                    Tecla::Apagar => {
-                        esc.nome.pop();
-                        esc.confirmar = false;
-                    }
                     Tecla::Enter => self.salvar_escolha(),
                     Tecla::Esc => esc.nome_ativo = false,
                     _ => {}
@@ -1626,21 +1639,18 @@ impl App for Explorador {
                 continue;
             }
             if self.busca_ativa {
+                let antes = self.busca.chars().count();
+                let resto = penas::componentes::editar(&mut self.busca, vec![tecla]);
+                let depois = self.busca.chars().count();
+                if depois != antes {
+                    if depois < antes && self.busca_funda {
+                        self.recarregar();
+                    } else if !self.busca_funda {
+                        self.filtrar();
+                    }
+                }
+                let Some(tecla) = resto.into_iter().next() else { continue };
                 match tecla {
-                    Tecla::Texto(t) => {
-                        self.busca.push_str(&t);
-                        if !self.busca_funda {
-                            self.filtrar();
-                        }
-                    }
-                    Tecla::Apagar => {
-                        self.busca.pop();
-                        if self.busca_funda {
-                            self.recarregar();
-                        } else {
-                            self.filtrar();
-                        }
-                    }
                     Tecla::Enter => self.buscar_fundo(),
                     Tecla::Esc => {
                         self.busca.clear();
@@ -1658,17 +1668,12 @@ impl App for Explorador {
                 continue;
             }
             if self.renomeando.is_some() {
+                let resto = match self.renomeando.as_mut() {
+                    Some((_, nome)) => penas::componentes::editar(nome, vec![tecla]),
+                    None => Vec::new(),
+                };
+                let Some(tecla) = resto.into_iter().next() else { continue };
                 match tecla {
-                    Tecla::Texto(t) => {
-                        if let Some((_, nome)) = self.renomeando.as_mut() {
-                            nome.push_str(&t);
-                        }
-                    }
-                    Tecla::Apagar => {
-                        if let Some((_, nome)) = self.renomeando.as_mut() {
-                            nome.pop();
-                        }
-                    }
                     Tecla::Enter => self.confirmar_renomear(),
                     Tecla::Esc => self.renomeando = None,
                     _ => {}
@@ -2170,6 +2175,7 @@ impl Explorador {
             } else {
                 let vis = desenho::encurtar(13.0, &self.busca, busca_l - 50.0);
                 let fim = ui.tela.texto(bx + 34.0, 31.0, 13.0, tema::TEXTO(), &vis);
+                let fim = penas::componentes::x_do_cursor(&self.busca, 13.0, false).min(fim);
                 if foco {
                     ui.tela.retangulo(bx + 35.0 + fim, 16.0, 1.5, 20.0, 0.0, tema::DESTAQUE());
                 }
@@ -2564,6 +2570,51 @@ impl Explorador {
             };
             ui.tela.texto(x0 + 52.0, topo + 30.0, 13.0, tema::TEXTO_SECUNDARIO(), msg);
         }
+        // Arrastar no vazio (abaixo dos itens ou depois do nome): retângulo
+        // de seleção, como no Windows.
+        let fim_itens = topo + self.entradas.len() as f32 * LINHA_A - self.rolagem;
+        let limite_baixo = if self.escolha.is_some() { ui.altura() - 64.0 } else { y0 + a };
+        if ui.clique && !arrastando && self.renomeando.is_none() {
+            if let Some((mx, my)) = ui.mouse {
+                if mx > x0 + 8.0 && mx < x0 + l - 8.0 && my > topo && my < limite_baixo {
+                    let vazio = if my >= fim_itens {
+                        true
+                    } else {
+                        let i = ((my - topo + self.rolagem) / LINHA_A) as usize;
+                        let nome_fim = self.entradas.get(i).map(|e| x0 + 52.0 + desenho::medir(13.0, &e.nome).min(col_data - x0 - 70.0)).unwrap_or(x0);
+                        mx > nome_fim + 24.0 && mx < col_data - 8.0
+                    };
+                    if vazio {
+                        self.laco = Some((mx, my + self.rolagem));
+                        if !ui.ctrl {
+                            self.selecionados.clear();
+                            self.selecionado = None;
+                        }
+                        ui.clique = false;
+                    }
+                }
+            }
+        }
+        if let Some((lx, ly)) = self.laco {
+            if !ui.pressionado {
+                self.laco = None;
+            } else if let Some((mx, my)) = ui.mouse {
+                // Rola sozinho perto das bordas.
+                if my > limite_baixo - 12.0 {
+                    self.rolagem = (self.rolagem + 8.0).min((total - visivel + 40.0).max(0.0));
+                } else if my < topo + 12.0 {
+                    self.rolagem = (self.rolagem - 8.0).max(0.0);
+                }
+                let (cy0, cy1) = (ly.min(my + self.rolagem), ly.max(my + self.rolagem));
+                let ini = ((cy0 - topo) / LINHA_A).floor().max(0.0) as usize;
+                let fim = (((cy1 - topo) / LINHA_A).floor().max(-1.0) as isize + 1).max(0) as usize;
+                let fim = fim.min(self.entradas.len());
+                let novos: std::collections::BTreeSet<usize> = if (mx - lx).abs() > 3.0 || (cy1 - cy0) > 3.0 { (ini..fim.max(ini)).collect() } else { Default::default() };
+                self.selecionados = novos;
+                self.selecionado = self.selecionados.iter().next_back().copied();
+                ui.acordar_em = Some(std::time::Duration::from_millis(30));
+            }
+        }
         let mut abrir = None;
         let primeiro = (self.rolagem / LINHA_A).floor() as usize;
         for i in primeiro..self.entradas.len() {
@@ -2601,6 +2652,7 @@ impl Explorador {
                     ui.tela.retangulo(x0 + 48.0, y + 2.0, max_nome + 8.0, LINHA_A - 6.0, 4.0, tema::DESTAQUE());
                     ui.tela.retangulo(x0 + 49.5, y + 3.5, max_nome + 5.0, LINHA_A - 9.0, 3.0, tema::JANELA());
                     let fim = ui.tela.texto(x0 + 54.0, y + 19.0, 13.0, tema::TEXTO(), texto);
+                    let fim = penas::componentes::x_do_cursor(texto, 13.0, false).min(fim);
                     ui.tela.retangulo(x0 + 55.0 + fim, y + 7.0, 1.5, LINHA_A - 16.0, 0.0, tema::DESTAQUE());
                 }
                 _ => {
@@ -2695,6 +2747,17 @@ impl Explorador {
         }
         if ui.clicou(x0, topo, l, a - 34.0) && self.renomeando.is_some() {
             self.confirmar_renomear();
+        }
+        // O retângulo da seleção.
+        if let (Some((lx, ly)), Some((mx, my))) = (self.laco, ui.mouse) {
+            let ly = ly - self.rolagem;
+            let (rx, ry) = (lx.min(mx), ly.min(my).max(topo));
+            let (rl, ra) = ((lx - mx).abs(), (ly.max(my) - ry).max(0.0));
+            ui.tela.retangulo(rx, ry, rl, ra, 0.0, tema::DESTAQUE().com_alfa(50));
+            ui.tela.retangulo(rx, ry, rl, 1.0, 0.0, tema::DESTAQUE());
+            ui.tela.retangulo(rx, ry + ra - 1.0, rl, 1.0, 0.0, tema::DESTAQUE());
+            ui.tela.retangulo(rx, ry, 1.0, ra, 0.0, tema::DESTAQUE());
+            ui.tela.retangulo(rx + rl - 1.0, ry, 1.0, ra, 0.0, tema::DESTAQUE());
         }
         // Cobre o que rolou para baixo do cabeçalho.
         Self::cabecalho(ui.tela, colunas, largo, rotulo_data);

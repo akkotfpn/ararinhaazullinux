@@ -22,6 +22,7 @@
 
 #[allow(dead_code)]
 mod discos;
+mod efi;
 #[allow(dead_code)]
 mod secureboot;
 
@@ -364,6 +365,12 @@ fn main() {
                 println!("AVISO Secure Boot não ativado: {e}");
             }
         }
+    }
+    // O computador passa a ligar pelo disco instalado, não pelo pendrive.
+    etapa("Fazendo o computador ligar pelo disco");
+    let nome = if cfg!(target_arch = "aarch64") { "\\EFI\\BOOT\\BOOTAA64.EFI" } else { "\\EFI\\BOOT\\BOOTX64.EFI" };
+    if let Err(e) = efi::registrar(p1.trim_start_matches("/dev/"), 1, nome) {
+        println!("AVISO Não deu para pôr o disco em primeiro na ordem de boot ({e}). Escolha o disco no menu de inicialização (F12, F11 ou Esc).");
     }
     unsafe { sync() };
     rodar(Command::new("umount").arg(alvo_dir), "umount");

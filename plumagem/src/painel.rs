@@ -2440,7 +2440,7 @@ impl Painel {
                     t.retangulo(tx + 1.0, ty + 1.0, tw - 2.0, th - 2.0, 5.0, tema::JANELA());
                     for (z, ((zx, zy, zl, za), _)) in zonas_layout(k).iter().enumerate() {
                         let sobre = hover == Some(Alvo::Layout(k, z as u8));
-                        let cor = if sobre { tema::DESTAQUE() } else { tema::SUPERFICIE() };
+                        let cor = if sobre { tema::DESTAQUE() } else { tema::TEXTO_SECUNDARIO().com_alfa(70) };
                         t.retangulo(tx + 3.0 + zx * (tw - 6.0) + 1.0, ty + 3.0 + zy * (th - 6.0) + 1.0, zl * (tw - 6.0) - 2.0, za * (th - 6.0) - 2.0, 3.0, cor);
                     }
                 }

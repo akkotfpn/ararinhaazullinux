@@ -192,6 +192,55 @@ fn arquivos_config() -> [std::path::PathBuf; 2] {
 
 /// `tema = escuro` na configuração da Plumagem (a do usuário vale mais).
 /// Valor de uma chave do plumagem.conf (o do usuário vale mais).
+/// Grava `chave = valor` na configuração da conta (~/.config/plumagem/
+/// plumagem.conf), mantendo o resto. A Plumagem vê a mudança sozinha.
+pub fn gravar_chave_config(chave: &str, valor: &str) -> std::io::Result<()> {
+    let p = std::path::PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| "/root".into())).join(".config/plumagem/plumagem.conf");
+    if let Some(d) = p.parent() {
+        std::fs::create_dir_all(d)?;
+    }
+    let atual = std::fs::read_to_string(&p).unwrap_or_default();
+    let mut achou = false;
+    let mut linhas: Vec<String> = atual
+        .lines()
+        .map(|l| match l.split_once('=') {
+            Some((k, _)) if k.trim() == chave && !l.trim_start().starts_with('#') => {
+                achou = true;
+                format!("{chave} = {valor}")
+            }
+            _ => l.to_string(),
+        })
+        .collect();
+    if !achou {
+        linhas.push(format!("{chave} = {valor}"));
+    }
+    std::fs::write(&p, linhas.join("\n") + "\n")
+}
+
+/// Usa uma imagem como papel de parede: copia em PNG (no máximo 2560 px de
+/// largura) para ~/.local/share/ararinha e grava a chave "papel".
+pub fn definir_papel_de_parede(origem: &std::path::Path) -> Result<(), String> {
+    let img = image::ImageReader::open(origem)
+        .and_then(|r| r.with_guessed_format())
+        .map_err(|e| format!("Não deu para abrir a imagem: {e}"))?
+        .decode()
+        .map_err(|_| "Não deu para ler essa imagem (use PNG, JPEG ou WebP).".to_string())?;
+    let img = if img.width() > 2560 { img.resize(2560, 2560 * img.height() / img.width().max(1), image::imageops::FilterType::Lanczos3) } else { img };
+    let pasta = std::path::PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(".local/share/ararinha");
+    std::fs::create_dir_all(&pasta).map_err(|e| e.to_string())?;
+    if let Ok(rd) = std::fs::read_dir(&pasta) {
+        for e in rd.flatten() {
+            if e.file_name().to_string_lossy().starts_with("papel-de-parede-") {
+                let _ = std::fs::remove_file(e.path());
+            }
+        }
+    }
+    let agora = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+    let destino = pasta.join(format!("papel-de-parede-{agora}.png"));
+    img.to_rgba8().save_with_format(&destino, image::ImageFormat::Png).map_err(|e| format!("Não deu para salvar: {e}"))?;
+    gravar_chave_config("papel", &destino.to_string_lossy()).map_err(|e| e.to_string())
+}
+
 fn ler_chave_config(chave: &str) -> Option<String> {
     for c in arquivos_config() {
         let Ok(t) = std::fs::read_to_string(&c) else { continue };
