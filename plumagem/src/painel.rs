@@ -395,6 +395,8 @@ pub enum Alvo {
     Menu,
     /// Ícone de som na bandeja.
     Som,
+    /// "Mixer de volume" no quadro do som.
+    SomMixer,
     /// Barra de volume no painel de som (posição em milésimos).
     SomBarra(u16),
     SomMudo,
@@ -529,7 +531,7 @@ fn ler_icone_bandeja(caminho: &str, lado: u32) -> Option<image::RgbaImage> {
     Some(image::imageops::resize(&img, lado, lado, image::imageops::FilterType::Triangle))
 }
 const SOM_L: i32 = 280;
-const SOM_A: i32 = 104;
+const SOM_A: i32 = 136;
 const REDE_A: i32 = 150;
 const SOM_BARRA_X0: f32 = 64.0;
 const SOM_BARRA_X1: f32 = 220.0;
@@ -607,6 +609,8 @@ pub struct Painel {
     /// está no botão maximizar.
     pub encaixe: Option<(WindowElement, Point<i32, Logical>, std::time::Instant)>,
     encaixe_buf: Option<(String, MemoryRenderBuffer)>,
+    /// Aberto pelo Win+Z: fica até clicar.
+    pub encaixe_fixo: bool,
     /// Prévia: grupo sob o mouse e desde quando.
     previa: Option<(usize, std::time::Instant)>,
     previa_buf: Option<(String, MemoryRenderBuffer)>,
@@ -689,6 +693,7 @@ impl Default for Painel {
             fixados: ler_fixados(),
             encaixe: None,
             encaixe_buf: None,
+            encaixe_fixo: false,
             previa: None,
             previa_buf: None,
             alternador: None,
@@ -868,6 +873,15 @@ impl Painel {
         Some((Rectangle::new((x, y).into(), (l, a).into()), cards))
     }
 
+    /// Win+Z: abre os layouts para a janela ativa, no canto dela.
+    pub fn abrir_encaixe(&mut self, w: WindowElement, g: Rectangle<i32, Logical>, tela: Rectangle<i32, Logical>) {
+        let x = (g.loc.x + g.size.w - LAYOUT_L - 8).clamp(tela.loc.x + 4, tela.loc.x + tela.size.w - LAYOUT_L - 4) - tela.loc.x;
+        let y = (g.loc.y + 40 - tela.loc.y).clamp(4, (tela.size.h - LAYOUT_A - altura() - 4).max(4));
+        let antes = std::time::Instant::now().checked_sub(std::time::Duration::from_secs(1)).unwrap_or_else(std::time::Instant::now);
+        self.encaixe = Some((w, (x, y).into(), antes));
+        self.encaixe_fixo = true;
+    }
+
     /// O menu de layouts aparece depois de 0,5 s com o mouse no maximizar.
     fn encaixe_visivel(&self) -> Option<Point<i32, Logical>> {
         self.encaixe.as_ref().filter(|(_, _, t)| t.elapsed().as_millis() >= 500).map(|(_, o, _)| *o)
@@ -876,7 +890,7 @@ impl Painel {
     /// O mouse está no botão maximizar de alguma janela? Abre/mantém o
     /// menu de layouts (`hover` é o que a interface tem sob o mouse).
     fn ver_encaixe(&mut self, space: &Space<WindowElement>, ponteiro: Point<f64, Logical>, hover: Option<Alvo>, tela: Rectangle<i32, Logical>) {
-        if matches!(hover, Some(Alvo::Layout(..) | Alvo::LayoutPainel)) {
+        if self.encaixe_fixo || matches!(hover, Some(Alvo::Layout(..) | Alvo::LayoutPainel)) {
             return;
         }
         use crate::shell::ssd::{BOTAO_L, HEADER_BAR_HEIGHT};
@@ -1235,6 +1249,9 @@ impl Painel {
                     let f = ((sx - SOM_BARRA_X0) / (SOM_BARRA_X1 - SOM_BARRA_X0)).clamp(0.0, 1.0);
                     return Some(Alvo::SomBarra((f * 1000.0) as u16));
                 }
+                if sy >= 98.0 {
+                    return Some(Alvo::SomMixer);
+                }
                 return Some(Alvo::SomPainel);
             }
         }
@@ -1447,6 +1464,30 @@ impl Painel {
         }
         let v: Vec<(&str, &str)> = itens.iter().map(|(a, b)| (a.as_str(), b.as_str())).collect();
         self.abrir_contexto(p, tela, v);
+    }
+
+    /// Botão direito no relógio.
+    pub fn contexto_relogio(&mut self, p: Point<i32, Logical>, tela: Size<i32, Logical>) {
+        self.abrir_contexto(
+            p,
+            tela,
+            vec![
+                ("Ajustar data e hora", "configuracoes hora"),
+                ("Central de notificações", "#central"),
+                ("Configurações da barra de tarefas", "configuracoes personalizacao"),
+                ("Gerenciador de Tarefas", "tarefas"),
+            ],
+        );
+    }
+
+    /// Botão direito no ícone de som.
+    pub fn contexto_som(&mut self, p: Point<i32, Logical>, tela: Size<i32, Logical>) {
+        self.abrir_contexto(p, tela, vec![("Abrir o mixer de volume", "configuracoes som"), ("Configurações de som", "configuracoes som")]);
+    }
+
+    /// Botão direito no ícone de rede.
+    pub fn contexto_rede(&mut self, p: Point<i32, Logical>, tela: Size<i32, Logical>) {
+        self.abrir_contexto(p, tela, vec![("Configurações de rede e internet", "configuracoes rede"), ("Firewall", "configuracoes firewall")]);
     }
 
     /// Botão direito na barra de tarefas.
@@ -1789,6 +1830,8 @@ impl Painel {
             desenho::tema::definir_destaque(ler_chave("destaque").as_deref().unwrap_or("azul"));
             ler_opcoes_barra();
             self.fixados = ler_fixados();
+            // Relógio de 12/24 h muda na hora.
+            self.relogio.0 = 0;
         }
         self.config_visto = (seg, v);
     }
@@ -1949,6 +1992,13 @@ impl Painel {
         let pct = format!("{}", (vol * 100.0).round() as i32);
         let lp = desenho::medir(13.0, &pct);
         t.texto(l - 18.0 - lp, y + 5.0, 13.0, tema::TEXTO(), &pct);
+        // Mixer: volume de cada app (Configurações › Som).
+        t.retangulo(12.0, 96.0, l - 24.0, 1.0, 0.0, tema::BORDA().com_alfa(140));
+        if hover == Some(Alvo::SomMixer) {
+            t.retangulo(8.0, 102.0, l - 16.0, 28.0, 6.0, tema::BRANCO().com_alfa(120));
+        }
+        t.texto(16.0, 121.0, 12.5, tema::TEXTO(), "Mixer de volume (cada app)");
+        t.texto(l - 26.0, 121.0, 12.5, tema::TEXTO_SECUNDARIO(), "›");
         t
     }
 

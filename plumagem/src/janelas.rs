@@ -263,6 +263,16 @@ impl<B: Backend> AnvilState<B> {
         self.space.map_element(w.clone(), loc, false);
     }
 
+    /// Win+Z: layouts de encaixe para a janela ativa (funciona com qualquer
+    /// app, até os que desenham a própria barra de título).
+    pub fn layouts_janela_ativa(&mut self) {
+        let Some(w) = self.space.elements().last().cloned() else { return };
+        let Some(g) = self.space.element_geometry(&w) else { return };
+        let Some(o) = self.space.outputs_for_element(&w).first().cloned().or_else(|| self.space.outputs().next().cloned()) else { return };
+        let Some(tela) = self.space.output_geometry(&o) else { return };
+        self.painel.abrir_encaixe(w, g, tela);
+    }
+
     /// Encaixa a janela ativa (Win+setas): metade esquerda/direita, maximizar,
     /// e para baixo restaura ou minimiza, como no Windows.
     /// Win+setas, como no Windows: esquerda/direita encaixam na metade;
@@ -469,6 +479,7 @@ impl<B: Backend> AnvilState<B> {
                             }
                         }
                         "#papel" => self.painel.proximo_papel(),
+                        "#central" => self.painel.central_aberta = true,
                         a if a.starts_with("#fechar:") => {
                             // Fecha as janelas do grupo (índices em `ordem`).
                             let ws: Vec<WindowElement> = a["#fechar:".len()..]
@@ -517,7 +528,14 @@ impl<B: Backend> AnvilState<B> {
         }
         // Botão direito na barra de tarefas: menu da barra.
         if direito {
-            if let Alvo::Tarefa(i) = alvo {
+            let p = (pos - geo.loc.to_f64()).to_i32_round();
+            if alvo == Alvo::Relogio {
+                self.painel.contexto_relogio(p, geo.size);
+            } else if matches!(alvo, Alvo::Som) {
+                self.painel.contexto_som(p, geo.size);
+            } else if matches!(alvo, Alvo::Rede) {
+                self.painel.contexto_rede(p, geo.size);
+            } else if let Alvo::Tarefa(i) = alvo {
                 let p = (pos - geo.loc.to_f64()).to_i32_round();
                 self.painel.contexto_grupo(i, p, geo.size);
             } else if matches!(alvo, Alvo::Barra | Alvo::Iniciar) {
@@ -527,7 +545,7 @@ impl<B: Backend> AnvilState<B> {
             self.painel.segurando = true;
             return true;
         }
-        if !matches!(alvo, Alvo::Som | Alvo::SomBarra(_) | Alvo::SomMudo | Alvo::SomPainel) {
+        if !matches!(alvo, Alvo::Som | Alvo::SomBarra(_) | Alvo::SomMudo | Alvo::SomPainel | Alvo::SomMixer) {
             self.painel.som_aberto = false;
         }
         if !matches!(alvo, Alvo::Rede | Alvo::RedePainel | Alvo::RedeConfig) {
@@ -538,6 +556,10 @@ impl<B: Backend> AnvilState<B> {
         }
         if !matches!(alvo, Alvo::AreaPainel | Alvo::AreaLimpar) {
             self.painel.area_aberta = false;
+        }
+        if !matches!(alvo, Alvo::Layout(..) | Alvo::LayoutPainel) && self.painel.encaixe_fixo {
+            self.painel.encaixe_fixo = false;
+            self.painel.encaixe = None;
         }
         self.painel.segurando = true;
         if alvo != Alvo::Energia {
@@ -567,6 +589,7 @@ impl<B: Backend> AnvilState<B> {
             }
             Alvo::PreviaPainel | Alvo::LayoutPainel => {}
             Alvo::Layout(k, z) => {
+                self.painel.encaixe_fixo = false;
                 if let Some((w, _, _)) = self.painel.encaixe.take() {
                     if let Some((_, zona)) = painel::zonas_layout(k).get(z as usize) {
                         self.focar_janela(&w);
@@ -619,7 +642,7 @@ impl<B: Backend> AnvilState<B> {
                 }
                 _ => {
                     self.painel.central_aberta = false;
-                    self.executar_programa("configuracoes");
+                    self.executar_programa("configuracoes hora");
                 }
             },
             Alvo::Dormir => {
@@ -675,6 +698,10 @@ impl<B: Backend> AnvilState<B> {
             }
             Alvo::SomBarra(f) => self.painel.definir_volume(f as f32 / 1000.0),
             Alvo::SomMudo => self.painel.alternar_mudo(),
+            Alvo::SomMixer => {
+                self.painel.som_aberto = false;
+                self.executar_programa("configuracoes som");
+            }
             Alvo::Barra | Alvo::Menu | Alvo::SomPainel | Alvo::Contexto(_) => {}
             Alvo::CantoArea => self.mostrar_area_de_trabalho(),
             Alvo::ItemBandeja(i) => {

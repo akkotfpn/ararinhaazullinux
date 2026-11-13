@@ -83,6 +83,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             KeyAction::FecharJanela => self.fechar_janela_ativa(),
             KeyAction::MostrarAreaDeTrabalho => self.mostrar_area_de_trabalho(),
             KeyAction::Captura => crate::captura::pedir(),
+            KeyAction::Layouts => self.layouts_janela_ativa(),
             KeyAction::Central => {
                 self.painel.central_aberta = !self.painel.central_aberta;
                 self.painel.menu_aberto = false;
@@ -759,6 +760,7 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                     | KeyAction::Recorte
                     | KeyAction::AreaTransferencia
                     | KeyAction::Central
+                    | KeyAction::Layouts
                     | KeyAction::JanelaAnterior
                     | KeyAction::Midia(_)
                     | KeyAction::Encaixar(_)
@@ -989,6 +991,7 @@ impl AnvilState<UdevData> {
                     | KeyAction::Recorte
                     | KeyAction::AreaTransferencia
                     | KeyAction::Central
+                    | KeyAction::Layouts
                     | KeyAction::JanelaAnterior
                     | KeyAction::Midia(_)
                     | KeyAction::Encaixar(_)
@@ -1585,6 +1588,8 @@ enum KeyAction {
     AreaTransferencia,
     /// Win+A / Win+N: central de notificações.
     Central,
+    /// Win+Z: layouts de encaixe.
+    Layouts,
     RotateOutput,
     ToggleTint,
     ToggleDecorations,
@@ -1626,6 +1631,9 @@ fn process_keyboard_shortcut(modifiers: ModifiersState, keysym: Keysym) -> Optio
     {
         // Ctrl+Shift+Esc (ou Ctrl+Alt+Del): Gerenciador de Tarefas
         Some(KeyAction::Run("tarefas".into()))
+    } else if modifiers.logo && (keysym == Keysym::z || keysym == Keysym::Z) {
+        // Win+Z: layouts de encaixe da janela ativa
+        Some(KeyAction::Layouts)
     } else if modifiers.logo && (keysym == Keysym::i || keysym == Keysym::I) {
         // Win+I: Configurações
         Some(KeyAction::Run("configuracoes".into()))
