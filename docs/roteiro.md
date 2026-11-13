@@ -127,7 +127,17 @@ Imagem: ~630 MB (qcow2). Boot até a tela de entrada: ~3,4 s.
 - [em teste] Papel de parede grande não sai mais borrado (reduzido para 1920 px)
 - [em teste] DNS próprio vale também no Wi-Fi (a placa deixa de ser rota padrão)
 - [feito] README na Fase 2
-- [a fazer] Arrastar arquivos do Explorador para a área de trabalho e posicionar ícones livremente
+- [em teste] Arrastar arquivos do Explorador para a área de trabalho e posicionar ícones livremente
+- [feito] Itens 1 a 8 desta rodada confirmados no teste
+
+### Fechamento da Fase 2 (13/11)
+- [em teste] Bluetooth: BlueZ, áudio Bluetooth no PipeWire, firmware e kernel; Configurações › Bluetooth e dispositivos
+- [em teste] Áreas de trabalho virtuais e Visão de Tarefas (Win+Tab, Win+Ctrl+D/setas/F4, botão na barra)
+- [em teste] Área de trabalho: ícones em qualquer lugar, soltar em pasta/Lixeira, renomear, Delete/Enter/Ctrl+C/X/V
+- [a fazer] Primeira versão publicada nas Releases do GitHub ("Fase 2")
+- [a fazer] Impressoras (CUPS; impressoras de rede IPP primeiro)
+- [a fazer] Captura de tela para OBS/Discord (portal ScreenCast com PipeWire)
+- [a fazer] Atualizações do sistema com volta atrás (Muda, Fase 5; slots usr-A/usr-B)
 
 ### Qualidade
 - [a fazer] Medir o consumo da Plumagem parada
