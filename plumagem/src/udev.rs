@@ -310,6 +310,17 @@ pub fn run_udev() {
         })
         .unwrap();
 
+    // Ninho: entrar sem Enter (confere a senha quando para de digitar).
+    event_loop
+        .handle()
+        .insert_source(Timer::from_duration(std::time::Duration::from_millis(200)), |_, _, data| {
+            if data.ninho.is_some() {
+                data.processar_ninho();
+            }
+            TimeoutAction::ToDuration(std::time::Duration::from_millis(200))
+        })
+        .unwrap();
+
     // Escala da tela (Configurações → Tela): confere a cada 2 s.
     event_loop
         .handle()
@@ -1588,10 +1599,6 @@ impl AnvilState<UdevData> {
         // O papel de parede mudou nas Configurações?
         if self.backend_data.fundo.as_ref().map(|f| f.versao) != Some(crate::fundo::versao()) {
             self.backend_data.fundo = crate::fundo::Fundo::atual();
-        }
-        // Ninho: entrar sem Enter (confere a senha quando para de digitar).
-        if self.ninho.is_some() {
-            self.processar_ninho();
         }
         if self.bloqueio.as_mut().map(|b| b.atualizar()).unwrap_or(false) {
             self.bloqueio = None;
