@@ -479,6 +479,18 @@ impl<B: Backend> AnvilState<B> {
                             }
                         }
                         "#papel" => self.painel.proximo_papel(),
+                        "#esvaziar" => {
+                            // Como no Windows: apaga de vez o que está na Lixeira.
+                            std::thread::spawn(|| {
+                                if let Ok(h) = std::env::var("HOME") {
+                                    let t = std::path::PathBuf::from(h).join(".local/share/Trash");
+                                    let _ = std::fs::remove_dir_all(t.join("files"));
+                                    let _ = std::fs::remove_dir_all(t.join("info"));
+                                    let _ = std::fs::create_dir_all(t.join("files"));
+                                    let _ = std::fs::create_dir_all(t.join("info"));
+                                }
+                            });
+                        }
                         "#central" => self.painel.central_aberta = true,
                         a if a.starts_with("#fechar:") => {
                             // Fecha as janelas do grupo (índices em `ordem`).
@@ -493,6 +505,11 @@ impl<B: Backend> AnvilState<B> {
                         }
                         a if a.starts_with("#fixar:") => self.painel.fixar(&a["#fixar:".len()..], true),
                         a if a.starts_with("#desafixar:") => self.painel.fixar(&a["#desafixar:".len()..], false),
+                        a if a.starts_with("#mover:") => {
+                            if let Some((id, p)) = a["#mover:".len()..].rsplit_once(':') {
+                                self.painel.mover_fixado(id, p.parse().unwrap_or(0));
+                            }
+                        }
                         "#area" => self.mostrar_area_de_trabalho(),
                         a if a.starts_with("#apagar:") => {
                             // Só apaga atalhos e pastas vazias da Área de Trabalho

@@ -42,6 +42,7 @@ fn descrever(pedido: &str) -> String {
         ["firewall", "desligar"] => "Configurações quer DESLIGAR o firewall.".into(),
         ["firewall", ..] => "Configurações quer mudar o firewall.".into(),
         ["energia", ..] => "Configurações quer mudar o plano de energia.".into(),
+        ["dns", ..] => "Configurações quer mudar o servidor DNS do computador.".into(),
         _ => "Um app quer mudar uma opção do sistema.".into(),
     }
 }

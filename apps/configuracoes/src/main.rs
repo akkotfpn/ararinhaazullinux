@@ -304,7 +304,7 @@ impl Configuracoes {
 
     fn personalizacao(&mut self, ui: &mut Ui, x0: f32, l: f32) {
         // Conteúdo maior que a janela: rola com a roda do mouse.
-        let altura_total = 640.0 + ((self.papeis.len() + 2) / 3) as f32 * 140.0 + 40.0;
+        let altura_total = 640.0 + ((self.papeis.len() + 2) / 3) as f32 * 140.0 + 100.0;
         self.rolagem = (self.rolagem + ui.rolagem).clamp(0.0, (altura_total - ui.altura()).max(0.0));
         let oy = -self.rolagem;
 
@@ -456,6 +456,22 @@ impl Configuracoes {
             if ui.clicou(x - 4.0, y - 4.0, ml + 8.0, ma + 8.0) {
                 escolhido = Some(p.id.clone());
             }
+        }
+        // Imagem própria (qualquer foto: vira PNG na pasta da conta).
+        let ny = y_papel + 40.0 + self.papeis.len().div_ceil(3) as f32 * 140.0;
+        if penas::componentes::botao(ui, x0 + 32.0, ny, "Escolher uma imagem…", penas::componentes::Estilo::Comum, true) {
+            match escolher_papel() {
+                Ok(Some(caminho)) => {
+                    if self.salvar("papel", &caminho) {
+                        self.papel = caminho;
+                    }
+                }
+                Ok(None) => {}
+                Err(e) => self.aviso = Some(e),
+            }
+        }
+        if self.papel.contains('/') {
+            ui.tela.texto(x0 + 32.0 + penas::componentes::largura_botao("Escolher uma imagem…") + 14.0, ny + 23.0, 12.5, tema::TEXTO_SECUNDARIO(), "Usando uma imagem sua");
         }
         if let Some(id) = escolhido {
             if self.salvar("papel", &id) {
@@ -733,4 +749,40 @@ fn main() {
         },
         Box::new(app),
     );
+}
+
+/// Pede uma imagem ao Explorador e grava uma cópia em PNG (a Plumagem lê
+/// PNG) em ~/.local/share/ararinha, com no máximo 2560 px de largura.
+/// Devolve o caminho, ou None se a pessoa cancelou.
+fn escolher_papel() -> Result<Option<String>, String> {
+    let casa = std::env::var("HOME").unwrap_or_default();
+    let saida = std::process::Command::new("explorador")
+        .args(["--escolher", "abrir", "--titulo", "Escolha o papel de parede", "--pasta"])
+        .arg(format!("{casa}/Imagens"))
+        .output()
+        .map_err(|e| format!("Não deu para abrir o Explorador: {e}"))?;
+    let caminho = String::from_utf8_lossy(&saida.stdout).lines().next().unwrap_or("").trim().to_string();
+    if caminho.is_empty() {
+        return Ok(None);
+    }
+    let img = image::ImageReader::open(&caminho)
+        .and_then(|r| r.with_guessed_format())
+        .map_err(|e| format!("Não deu para abrir a imagem: {e}"))?
+        .decode()
+        .map_err(|_| "Não deu para ler essa imagem (use PNG, JPEG ou WebP).".to_string())?;
+    let img = if img.width() > 2560 { img.resize(2560, 2560 * img.height() / img.width().max(1), image::imageops::FilterType::Lanczos3) } else { img };
+    let pasta = std::path::PathBuf::from(&casa).join(".local/share/ararinha");
+    std::fs::create_dir_all(&pasta).map_err(|e| e.to_string())?;
+    // Nome novo a cada escolha (a Plumagem recarrega quando o valor muda).
+    if let Ok(rd) = std::fs::read_dir(&pasta) {
+        for e in rd.flatten() {
+            if e.file_name().to_string_lossy().starts_with("papel-de-parede-") {
+                let _ = std::fs::remove_file(e.path());
+            }
+        }
+    }
+    let agora = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+    let destino = pasta.join(format!("papel-de-parede-{agora}.png"));
+    img.to_rgba8().save_with_format(&destino, image::ImageFormat::Png).map_err(|e| format!("Não deu para salvar: {e}"))?;
+    Ok(Some(destino.to_string_lossy().to_string()))
 }

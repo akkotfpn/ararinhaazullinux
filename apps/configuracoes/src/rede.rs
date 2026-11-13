@@ -51,6 +51,10 @@ pub struct PaginaRede {
     /// Rede pedida pela linha de comando (bandeja): já abre a senha dela.
     pub pedida: Option<String>,
     rolagem: f32,
+    /// Janela do DNS: (personalizado, servidores) e o estado atual.
+    dns: Option<(bool, String)>,
+    dns_atual: Option<String>,
+    dns_rx: Option<std::sync::mpsc::Receiver<Result<String, String>>>,
 }
 
 /// Placa Wi-Fi (a primeira com /sys/class/net/*/wireless).
@@ -245,6 +249,9 @@ impl PaginaRede {
             aviso: None,
             pedida: None,
             rolagem: 0.0,
+            dns: None,
+            dns_atual: None,
+            dns_rx: None,
         }
     }
 
@@ -322,6 +329,10 @@ impl PaginaRede {
             None => "Sem conexão com a internet".into(),
         };
         ui.tela.texto(x0 + 32.0, 82.0, 13.0, tema::TEXTO_SECUNDARIO(), &estado);
+        self.desenhar_dns(ui, x0, l);
+        if self.dns.is_some() {
+            return;
+        }
 
         let Some(placa) = self.placa.clone() else {
             // Sem adaptador: diz claro, num cartão, e explica o caso da VM.
@@ -478,5 +489,105 @@ impl PaginaRede {
         self.senha_para = None;
         self.aviso = Some(format!("Conectando a \"{nome}\"..."));
         self.pedir(Pedido::Conectar(nome, Some(senha)));
+    }
+}
+
+impl PaginaRede {
+    fn pedir_dns(&mut self, pedido: String) {
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = tx.send(penas::sistema::pedir_admin(&pedido));
+        });
+        self.dns_rx = Some(rx);
+    }
+
+    /// Botão "DNS" no topo e a janela para escolher (automático ou os
+    /// servidores da pessoa, como um AdGuard Home na rede de casa).
+    fn desenhar_dns(&mut self, ui: &mut Ui, x0: f32, l: f32) {
+        if self.dns_atual.is_none() && self.dns_rx.is_none() {
+            self.dns_atual = Some(String::new());
+            let (tx, rx) = std::sync::mpsc::channel();
+            std::thread::spawn(move || {
+                let _ = tx.send(penas::sistema::pedir("dns estado"));
+            });
+            self.dns_rx = Some(rx);
+        }
+        if let Some(rx) = &self.dns_rx {
+            match rx.try_recv() {
+                Ok(r) => {
+                    self.dns_rx = None;
+                    match r {
+                        Ok(t) => {
+                            if self.dns.take().is_some() {
+                                self.aviso = Some("DNS salvo.".into());
+                            }
+                            self.dns_atual = Some(t);
+                        }
+                        Err(e) => self.aviso = Some(format!("Não deu para mudar o DNS: {e}.")),
+                    }
+                }
+                Err(_) => ui.acordar_em = Some(Duration::from_millis(150)),
+            }
+        }
+        let atual = self.dns_atual.clone().unwrap_or_default();
+        let resumo = match atual.strip_prefix("personalizado ") {
+            Some(s) => format!("DNS: {s}"),
+            None if atual.is_empty() => "DNS: …".to_string(),
+            None => "DNS: automático (do roteador)".to_string(),
+        };
+        let (bx, by, bl) = (x0 + l - 32.0 - 150.0, 40.0, 150.0);
+        let lr = desenho::medir(12.0, &resumo);
+        ui.tela.texto(bx - lr - 12.0, by + 20.0, 12.0, tema::TEXTO_SECUNDARIO(), &resumo);
+        let aberto = self.dns.is_some();
+        if penas::componentes::botao(ui, bx, by, "Alterar DNS", penas::componentes::Estilo::Comum, !aberto) {
+            let servidores = atual.strip_prefix("personalizado ").unwrap_or("").to_string();
+            self.dns = Some((!servidores.is_empty(), servidores));
+        }
+        // Tirado e devolvido no fim (sem clonar: o cursor do campo segue o texto).
+        let Some((pers, mut texto)) = self.dns.take() else { return };
+        // Janela.
+        let (cl, ca) = (460.0_f32.min(l - 40.0), 290.0);
+        let (cx, cy) = (x0 + (l - cl) / 2.0, 110.0);
+        ui.tela.retangulo(cx - 1.0, cy - 1.0, cl + 2.0, ca + 2.0, 13.0, tema::BORDA());
+        ui.tela.retangulo(cx, cy, cl, ca, 12.0, tema::JANELA());
+        ui.tela.texto(cx + 24.0, cy + 36.0, 17.0, tema::TEXTO(), "Servidor DNS");
+        let mut novo_pers = pers;
+        for (i, (rot, sub)) in [("Automático", "O que o roteador indicar."), ("Personalizado", "Por exemplo o AdGuard Home da sua casa.")].iter().enumerate() {
+            let y = cy + 56.0 + i as f32 * 46.0;
+            let sel = (i == 1) == pers;
+            ui.tela.retangulo(cx + 24.0, y + 8.0, 14.0, 14.0, 7.0, if sel { tema::DESTAQUE() } else { tema::BORDA() });
+            ui.tela.retangulo(cx + 26.0, y + 10.0, 10.0, 10.0, 5.0, tema::JANELA());
+            if sel {
+                ui.tela.retangulo(cx + 28.0, y + 12.0, 6.0, 6.0, 3.0, tema::DESTAQUE());
+            }
+            ui.tela.texto(cx + 48.0, y + 20.0, 14.0, tema::TEXTO(), rot);
+            ui.tela.texto(cx + 48.0, y + 38.0, 12.0, tema::TEXTO_SECUNDARIO(), sub);
+            if ui.clicou(cx + 16.0, y, cl - 32.0, 42.0) {
+                novo_pers = i == 1;
+            }
+        }
+        let fy = cy + 156.0;
+        if novo_pers {
+            ui.tela.texto(cx + 24.0, fy, 12.5, tema::TEXTO_SECUNDARIO(), "Endereços IP, separados por espaço:");
+            let teclas = std::mem::take(&mut ui.teclas);
+            let _ = penas::componentes::editar(&mut texto, teclas);
+            penas::componentes::campo(ui, cx + 24.0, fy + 8.0, cl - 48.0, &texto, "192.168.1.10", true, false);
+        }
+        let ok = !novo_pers || !texto.trim().is_empty();
+        let by2 = cy + ca - 54.0;
+        if penas::componentes::botao_direita(ui, cx + cl - 24.0, by2, "Salvar", penas::componentes::Estilo::Principal, ok && self.dns_rx.is_none()) {
+            if novo_pers {
+                let lista = texto.replace(',', " ").split_whitespace().collect::<Vec<_>>().join(" ");
+                self.pedir_dns(format!("dns definir {lista}"));
+            } else {
+                self.pedir_dns("dns automatico".into());
+            }
+        }
+        let lb = penas::componentes::largura_botao("Salvar") + 10.0;
+        if penas::componentes::botao_direita(ui, cx + cl - 24.0 - lb, by2, "Cancelar", penas::componentes::Estilo::Comum, true) {
+            self.dns = None;
+            return;
+        }
+        self.dns = Some((novo_pers, texto));
     }
 }

@@ -190,3 +190,54 @@ pub fn definir_idioma(id: &str) -> Result<String, String> {
     rodar_fora(&["/usr/bin/localectl", "set-locale", &format!("LANG={id}")], None)?;
     Ok(idioma())
 }
+
+// ------------------------------------------------------------ DNS
+
+const DNS_RESOLVED: &str = "/etc/systemd/resolved.conf.d/90-ararinha-dns.conf";
+const DNS_NETWORKD: &str = "/etc/systemd/network/10-cabo.network.d/90-ararinha-dns.conf";
+
+/// "automatico" ou "personalizado 192.168.1.10 1.1.1.1".
+pub fn dns_estado() -> String {
+    let t = std::fs::read_to_string(DNS_RESOLVED).unwrap_or_default();
+    match t.lines().find_map(|l| l.strip_prefix("DNS=")) {
+        Some(v) if !v.trim().is_empty() => format!("personalizado {}", v.trim()),
+        _ => "automatico".into(),
+    }
+}
+
+/// DNS fixo para tudo (ex.: o AdGuard Home da casa). O do roteador (DHCP)
+/// deixa de ser usado no cabo, para nada passar por fora.
+pub fn dns_definir(servidores: &[&str]) -> Result<String, String> {
+    if servidores.is_empty() || servidores.len() > 4 {
+        return Err("informe de 1 a 4 servidores".into());
+    }
+    for s in servidores {
+        if s.parse::<std::net::IpAddr>().is_err() {
+            return Err(format!("\"{s}\" não é um endereço IP"));
+        }
+    }
+    let lista = servidores.join(" ");
+    rodar_fora(&["/usr/bin/mkdir", "-p", "/etc/systemd/resolved.conf.d", "/etc/systemd/network/10-cabo.network.d"], None)?;
+    rodar_fora(
+        &["/usr/bin/tee", DNS_RESOLVED],
+        Some(&format!("# Configurações › Rede › DNS\n[Resolve]\nDNS={lista}\nDomains=~.\n")),
+    )?;
+    rodar_fora(
+        &["/usr/bin/tee", DNS_NETWORKD],
+        Some("# Configurações › Rede › DNS: ignora o DNS do roteador\n[DHCPv4]\nUseDNS=no\n\n[DHCPv6]\nUseDNS=no\n\n[IPv6AcceptRA]\nUseDNS=no\n"),
+    )?;
+    aplicar_dns()?;
+    Ok(dns_estado())
+}
+
+pub fn dns_automatico() -> Result<String, String> {
+    rodar_fora(&["/usr/bin/rm", "-f", DNS_RESOLVED, DNS_NETWORKD], None)?;
+    aplicar_dns()?;
+    Ok(dns_estado())
+}
+
+fn aplicar_dns() -> Result<(), String> {
+    rodar_fora(&["/usr/bin/networkctl", "reload"], None)?;
+    let _ = rodar_fora(&["/usr/bin/networkctl", "reconfigure", "--all"], None);
+    rodar_fora(&["/usr/bin/systemctl", "restart", "systemd-resolved"], None)
+}

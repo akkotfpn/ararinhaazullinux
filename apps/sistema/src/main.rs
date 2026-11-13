@@ -133,6 +133,15 @@ fn atender(quem: &Quem, pedido: &str) -> Result<String, String> {
         }
         ["hora", "estado"] => Ok(contas::hora_estado()),
         ["idioma", "estado"] => Ok(contas::idioma()),
+        ["dns", "estado"] => Ok(contas::dns_estado()),
+        ["dns", "automatico"] => {
+            admin()?;
+            contas::dns_automatico()
+        }
+        ["dns", "definir", servidores @ ..] => {
+            admin()?;
+            contas::dns_definir(servidores)
+        }
         ["idioma", "definir", id] => {
             admin()?;
             contas::definir_idioma(id)

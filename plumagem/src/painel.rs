@@ -197,7 +197,7 @@ fn icones_fixos() -> Vec<IconeArea> {
     let imgs = [
         desenho::icone(ESTE_PC_PNG, 48, 48),
         desenho::icone(include_bytes!("../resources/logo-64.png"), 48, 48),
-        desenho::icone(LIXEIRA_PNG, 48, 48),
+        desenho::icone(LIXEIRA_PNG, 48, 48).map(|i| lixeira_com_papeis(i, itens_na_lixeira())),
     ];
     let mut v: Vec<IconeArea> = ICONES_AREA
         .iter()
@@ -213,6 +213,43 @@ fn icones_fixos() -> Vec<IconeArea> {
         v.push(IconeArea { nome: "Instalar o Ararinha".into(), cmd: "instalador".into(), img, arquivo: None });
     }
     v
+}
+
+pub fn pasta_lixeira() -> Option<std::path::PathBuf> {
+    std::env::var("HOME").ok().map(|h| std::path::PathBuf::from(h).join(".local/share/Trash/files"))
+}
+
+fn itens_na_lixeira() -> usize {
+    pasta_lixeira().and_then(|p| std::fs::read_dir(p).ok()).map(|d| d.count()).unwrap_or(0)
+}
+
+/// Lixeira que vai enchendo: papéis saindo pela boca (1, 3, 5 ou cheia).
+fn lixeira_com_papeis(mut img: image::RgbaImage, n: usize) -> image::RgbaImage {
+    let papeis: &[(i32, i32, i32, i32, [u8; 3])] = &[
+        (17, 4, 9, 12, [250, 250, 245]),
+        (25, 2, 8, 13, [226, 236, 248]),
+        (11, 6, 8, 10, [248, 238, 210]),
+        (31, 5, 7, 11, [240, 240, 240]),
+        (21, 0, 7, 9, [214, 230, 214]),
+    ];
+    let quantos = match n {
+        0 => 0,
+        1..=2 => 1,
+        3..=9 => 3,
+        10..=29 => 4,
+        _ => 5,
+    };
+    for &(x0, y0, l, a, cor) in papeis.iter().take(quantos) {
+        for y in y0..(y0 + a).min(48) {
+            for x in x0..(x0 + l).min(48) {
+                // Borda cinza fina; papel por cima da tampa.
+                let borda = x == x0 || x == x0 + l - 1 || y == y0;
+                let c = if borda { [150, 160, 170] } else { cor };
+                img.put_pixel(x as u32, y as u32, image::Rgba([c[0], c[1], c[2], 255]));
+            }
+        }
+    }
+    img
 }
 
 /// Pasta "Área de Trabalho" do usuário.
@@ -1383,7 +1420,7 @@ impl Painel {
                 ("Abrir", ICONES_AREA[1].1),
                 ("Abrir no terminal", "sh -c 'cd \"$HOME\" && exec alacritty'"),
             ],
-            Some(2) => vec![("Abrir", ICONES_AREA[2].1)],
+            Some(2) => vec![("Abrir", ICONES_AREA[2].1), ("Esvaziar a Lixeira", "#esvaziar")],
             Some(i) => {
                 // Atalho ou pasta da Área de Trabalho.
                 if let Some(ic) = self.icones_area.get(i) {
@@ -1434,6 +1471,15 @@ impl Painel {
         self.barra = None;
     }
 
+    /// Muda a posição de um app fixado (-1 esquerda, 1 direita).
+    pub fn mover_fixado(&mut self, id: &str, passo: i32) {
+        let Some(i) = self.fixados.iter().position(|f| f == id) else { return };
+        let j = (i as i32 + passo).clamp(0, self.fixados.len() as i32 - 1) as usize;
+        self.fixados.swap(i, j);
+        gravar_chave("fixados", &self.fixados.join(","));
+        self.barra = None;
+    }
+
     /// Botão direito num botão da barra: abrir outro, fixar, fechar.
     pub fn contexto_grupo(&mut self, i: usize, p: Point<i32, Logical>, tela: Size<i32, Logical>) {
         let gs = self.grupos();
@@ -1448,7 +1494,13 @@ impl Painel {
             itens.push((a.nome.clone(), a.exec.clone()));
         }
         if let Some(id) = &id {
-            if g.fixado.is_some() {
+            if let Some(f) = g.fixado {
+                if f > 0 {
+                    itens.push(("Mover para a esquerda".into(), format!("#mover:{id}:-1")));
+                }
+                if f + 1 < self.fixados.len() {
+                    itens.push(("Mover para a direita".into(), format!("#mover:{id}:1")));
+                }
                 itens.push(("Desafixar da barra de tarefas".into(), format!("#desafixar:{id}")));
             } else if app.is_some() {
                 itens.push(("Fixar na barra de tarefas".into(), format!("#fixar:{id}")));
@@ -2187,7 +2239,12 @@ impl Painel {
         let mut mudou = false;
         if self.area_visto.0.elapsed() >= std::time::Duration::from_secs(2) {
             let pasta = pasta_area();
-            let m = pasta.as_ref().and_then(|p| std::fs::metadata(p).and_then(|m| m.modified()).ok());
+            // A área de trabalho ou a lixeira (o ícone muda conforme enche).
+            let m = [pasta.clone(), pasta_lixeira()]
+                .iter()
+                .flatten()
+                .filter_map(|p| std::fs::metadata(p).and_then(|m| m.modified()).ok())
+                .max();
             if m != self.area_visto.1 {
                 let mut v = icones_fixos();
                 if let Some(p) = &pasta {
