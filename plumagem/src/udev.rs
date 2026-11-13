@@ -1589,6 +1589,10 @@ impl AnvilState<UdevData> {
         if self.backend_data.fundo.as_ref().map(|f| f.versao) != Some(crate::fundo::versao()) {
             self.backend_data.fundo = crate::fundo::Fundo::atual();
         }
+        // Ninho: entrar sem Enter (confere a senha quando para de digitar).
+        if self.ninho.is_some() {
+            self.processar_ninho();
+        }
         if self.bloqueio.as_mut().map(|b| b.atualizar()).unwrap_or(false) {
             self.bloqueio = None;
         }

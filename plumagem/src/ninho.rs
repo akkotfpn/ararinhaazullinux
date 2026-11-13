@@ -123,6 +123,9 @@ pub struct Ninho {
     foco: usize,
     erro: Option<String>,
     pub pedido: Option<Pedido>,
+    /// Entrar sem Enter: quando digitou por último e a última senha tentada.
+    digitou: Option<std::time::Instant>,
+    tentada: String,
     relogio: (u64, String, String),
     mingau: Option<image::RgbaImage>,
     cache: Vec<(String, MemoryRenderBuffer)>,
@@ -237,6 +240,8 @@ impl Ninho {
             foco: 0,
             erro: None,
             pedido: None,
+            digitou: None,
+            tentada: String::new(),
             relogio: (0, String::new(), String::new()),
             mingau: desenho::icone(MINGAU_PNG, 88, 102),
             cache: Vec::new(),
@@ -426,6 +431,7 @@ impl Ninho {
                 } else {
                     self.campos[self.foco].pop();
                 }
+                self.digitou = Some(std::time::Instant::now());
             }
             Keysym::Escape => self.campos[self.foco].clear(),
             _ => {
@@ -436,6 +442,7 @@ impl Ninho {
                     if !c.is_control() && self.campos[self.foco].chars().count() < 64 {
                         self.campos[self.foco].push(c);
                         self.erro = None;
+                        self.digitou = Some(std::time::Instant::now());
                     }
                 }
             }
@@ -445,6 +452,22 @@ impl Ninho {
     /// Executa o pedido pendente. Devolve o login escolhido, se a entrada
     /// foi aceita (o chamador grava e encerra a Plumagem).
     pub fn processar(&mut self) -> Option<String> {
+        // Parou de digitar a senha por 0,6 s: confere sozinho e entra se
+        // estiver certa (errada não conta nem apaga; o Enter continua valendo).
+        if self.pedido.is_none()
+            && self.modo == Modo::Entrar
+            && !self.campos[0].is_empty()
+            && self.campos[0] != self.tentada
+            && self.digitou.is_some_and(|t| t.elapsed().as_millis() >= 600)
+        {
+            self.tentada = self.campos[0].clone();
+            let u = self.usuario()?.clone();
+            if senha_confere(&u.login, &self.campos[0]) {
+                info!(login = u.login, "entrada aceita (sem Enter)");
+                return Some(u.login);
+            }
+            return None;
+        }
         match self.pedido.take()? {
             Pedido::Reiniciar => {
                 let _ = Command::new("systemctl").arg("reboot").spawn();

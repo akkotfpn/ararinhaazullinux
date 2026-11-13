@@ -24,7 +24,11 @@ use crate::desenho::{self, tema, Cor, Tela};
 pub struct Bloqueio {
     senha: String,
     erro: Option<String>,
-    conferindo: Option<Receiver<bool>>,
+    /// Conferência em andamento; `true` = tentativa automática (sem Enter).
+    conferindo: Option<(Receiver<bool>, bool)>,
+    /// Quando digitou por último e a última senha tentada sozinha.
+    digitou: Option<std::time::Instant>,
+    tentada: String,
     usuario: String,
     hora: (std::time::Instant, String, String),
     buf: Option<(String, smithay::backend::renderer::element::memory::MemoryRenderBuffer)>,
@@ -53,6 +57,8 @@ impl Bloqueio {
             senha: String::new(),
             erro: None,
             conferindo: None,
+            digitou: None,
+            tentada: String::new(),
             usuario: std::env::var("USER").or_else(|_| std::env::var("LOGNAME")).unwrap_or_default(),
             hora: (std::time::Instant::now(), h, d),
             buf: None,
@@ -64,13 +70,15 @@ impl Bloqueio {
 
     /// Tecla na tela de bloqueio.
     pub fn tecla(&mut self, sym: Keysym) {
-        if self.conferindo.is_some() || self.segundos_de_espera() > 0 {
+        // Tentativa automática em andamento não bloqueia a digitação.
+        if self.conferindo.as_ref().is_some_and(|(_, a)| !a) || self.segundos_de_espera() > 0 {
             return;
         }
         match sym {
             Keysym::Return | Keysym::KP_Enter => self.conferir(),
             Keysym::BackSpace => {
                 self.senha.pop();
+                self.digitou = Some(std::time::Instant::now());
             }
             Keysym::Escape => self.senha.clear(),
             s => {
@@ -78,6 +86,7 @@ impl Bloqueio {
                     if !c.is_control() && self.senha.chars().count() < 128 {
                         self.senha.push(c);
                         self.erro = None;
+                        self.digitou = Some(std::time::Instant::now());
                     }
                 }
             }
@@ -86,6 +95,12 @@ impl Bloqueio {
 
     fn conferir(&mut self) {
         let senha = std::mem::take(&mut self.senha);
+        self.conferir_senha(senha, false);
+    }
+
+    /// `automatica`: tentativa ao parar de digitar (como o PIN do Windows):
+    /// não conta como erro nem apaga o que foi digitado.
+    fn conferir_senha(&mut self, senha: String, automatica: bool) {
         let (tx, rx) = channel();
         std::thread::spawn(move || {
             let ok = Command::new("ararinha-senha")
@@ -103,16 +118,31 @@ impl Bloqueio {
                 .unwrap_or(false);
             let _ = tx.send(ok);
         });
-        self.conferindo = Some(rx);
+        self.conferindo = Some((rx, automatica));
     }
 
     /// `true` quando a senha foi aceita (a tela some).
     pub fn atualizar(&mut self) -> bool {
-        if let Some(rx) = &self.conferindo {
+        // Parou de digitar por 0,6 s: tenta sozinho (entra sem Enter).
+        if self.conferindo.is_none()
+            && self.segundos_de_espera() == 0
+            && !self.senha.is_empty()
+            && self.senha != self.tentada
+            && self.digitou.is_some_and(|t| t.elapsed().as_millis() >= 600)
+        {
+            self.tentada = self.senha.clone();
+            let s = self.senha.clone();
+            self.conferir_senha(s, true);
+        }
+        if let Some((rx, automatica)) = &self.conferindo {
+            let automatica = *automatica;
             if let Ok(ok) = rx.try_recv() {
                 self.conferindo = None;
                 if ok {
                     return true;
+                }
+                if automatica {
+                    return false;
                 }
                 self.erros += 1;
                 // Atraso que cresce: a partir do 3º erro, 5 s, 10 s, 20 s… até 5 min.
@@ -159,14 +189,14 @@ impl Bloqueio {
         t.retangulo(fx, fy, fl, 40.0, 8.0, tema::DESTAQUE());
         t.retangulo(fx + 1.5, fy + 1.5, fl - 3.0, 37.0, 7.0, Cor::hex(0xFFFFFF));
         if self.senha.is_empty() {
-            t.texto(fx + 14.0, fy + 26.0, 14.0, Cor::hex(0x4A5A6A), if self.conferindo.is_some() { "Conferindo…" } else { "Senha" });
+            t.texto(fx + 14.0, fy + 26.0, 14.0, Cor::hex(0x4A5A6A), if self.conferindo.as_ref().is_some_and(|(_, a)| !a) { "Conferindo…" } else { "Senha" });
         } else {
             let pontos = "•".repeat(self.senha.chars().count().min(30));
             t.texto(fx + 14.0, fy + 27.0, 16.0, Cor::hex(0x0B1A2E), &pontos);
         }
         let espera = self.segundos_de_espera();
         let aguarde = format!("Muitas tentativas. Aguarde {espera} s.");
-        let msg = if espera > 0 { aguarde.as_str() } else { self.erro.as_deref().unwrap_or("Digite a senha e tecle Enter") };
+        let msg = if espera > 0 { aguarde.as_str() } else { self.erro.as_deref().unwrap_or("Digite a senha") };
         let cor = if self.erro.is_some() || espera > 0 { Cor::hex(0xC2413B) } else { Cor::hex(0x4A5A6A) };
         let lm = desenho::medir(12.5, msg);
         t.texto(cx + cl / 2.0 - lm / 2.0, cy + 132.0, 12.5, cor, msg);
@@ -189,7 +219,7 @@ impl Bloqueio {
             self.segundos_de_espera(),
             self.senha.chars().count(),
             self.erro,
-            self.conferindo.is_some(),
+            self.conferindo.as_ref().is_some_and(|(_, a)| !a),
             self.hora.1,
             self.hora.2
         );

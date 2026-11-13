@@ -393,7 +393,7 @@ impl App for Instalador {
             }
             Passo::Pronto => {
                 ui.tela.texto(x0, 64.0, 22.0, tema::TEXTO(), "Instalação concluída!");
-                let y = paragrafo(ui, x0, 110.0, largura, if self.cripto { "O Ararinha já está no disco, criptografado. Desligue, tire o pendrive e ligue o computador de novo: a senha do disco será pedida logo no início." } else { "O Ararinha já está no disco. Desligue, tire o pendrive e ligue o computador de novo." });
+                let y = paragrafo(ui, x0, 110.0, largura, if self.cripto { "O Ararinha já está no disco, criptografado. Reinicie e tire o pendrive quando a tela apagar: a senha do disco será pedida logo no início." } else { "O Ararinha já está no disco. Reinicie e tire o pendrive quando a tela apagar." });
                 let mut y = y;
                 for a in self.avisos.clone() {
                     y += 6.0;
@@ -401,7 +401,13 @@ impl App for Instalador {
                 }
                 let y = paragrafo(ui, x0, y + 6.0, largura, "Se ele voltar para o pendrive, escolha o disco no menu de inicialização da placa-mãe (geralmente F12, F11 ou Esc ao ligar).");
                 let _ = y;
-                if Self::botao(ui, bx, by, "Desligar agora", true, true) {
+                // Reiniciar: tirando o pendrive durante a reinicialização, já
+                // liga pelo disco. Desligar: para tirar com calma.
+                if Self::botao(ui, bx, by, "Reiniciar agora", true, true) {
+                    std::thread::spawn(|| penas::sistema::pedir("reiniciar"));
+                }
+                let lr = desenho::medir(13.5, "Reiniciar agora") + 36.0 + 10.0;
+                if Self::botao(ui, bx - lr, by, "Desligar", false, true) {
                     std::thread::spawn(|| penas::sistema::pedir("desligar"));
                 }
             }
