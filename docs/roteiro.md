@@ -97,6 +97,20 @@ Imagem: ~630 MB (qcow2). Boot até a tela de entrada: ~3,4 s.
 - [em teste] Janelas abrem no meio e cabem na tela (escala 125%+)
 - [em teste] Pendrive pergunta: experimentar ou instalar
 
+### Pedidos de 13/11
+- [em teste] Instalador: Reiniciar agora (além de Desligar)
+- [em teste] Senha sem Enter na entrada e no bloqueio (confere ao parar de digitar)
+- [em teste] Campos de texto com cursor (clique, setas, Home/End, Ctrl+setas)
+- [em teste] Relógio: botão direito, 12/24 h na hora, Configurações cai em Data e hora
+- [em teste] Mixer de volume no quadro do som; botão direito no som e na rede
+- [em teste] Lixeira que enche e "Esvaziar a Lixeira" no botão direito
+- [em teste] Mover apps fixados na barra (botão direito)
+- [em teste] Papel de parede com imagem própria
+- [em teste] Win+Z: layouts de encaixe em qualquer app
+- [em teste] DNS personalizado na Rede (AdGuard)
+- [a fazer] Alt+Tab: o console do Proxmox no navegador manda o Alt+Tab para o Windows; testar pelo menu de teclas do noVNC
+- [a fazer] Arrastar os ícones da barra para reordenar
+
 ### Qualidade
 - [a fazer] Medir o consumo da Plumagem parada
 - [a fazer] Testes automáticos com prints numa VM no CI
