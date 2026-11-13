@@ -160,7 +160,19 @@ fi
 # instalar (uma vez por boot).
 if [ ! -e /etc/ararinha/instalado ] && command -v instalador >/dev/null && [ ! -e "$XDG_RUNTIME_DIR/ararinha-perguntou" ]; then
   touch "$XDG_RUNTIME_DIR/ararinha-perguntou"
-  (sleep 3; instalador --perguntar) >/dev/null 2>&1 &
+  # Este script roda antes da Plumagem: espera o socket do Wayland dela
+  # aparecer (sem ele o instalador não tem onde abrir a janela).
+  (
+    s=
+    for _ in $(seq 1 120); do
+      s=$(ls "$XDG_RUNTIME_DIR" 2>/dev/null | grep -E '^wayland-[0-9]+$' | head -1)
+      [ -n "$s" ] && break
+      sleep 0.5
+    done
+    [ -n "$s" ] || exit 0
+    sleep 2
+    WAYLAND_DISPLAY="$s" instalador --perguntar
+  ) >>"$XDG_RUNTIME_DIR/instalador.log" 2>&1 &
 fi
 # Bandeja do sistema (ícones da Steam, Discord...), antes dos apps.
 if [ -x /usr/libexec/ararinha-bandeja ]; then
