@@ -1,0 +1,58 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# BLFS (Rede): BlueZ, a pilha Bluetooth do Linux. O bluetoothd fala com o
+# kernel; as Configurações e a bandeja usam o bluetoothctl para procurar,
+# parear e conectar (mouse, teclado, fone, controle). O áudio vai pelo
+# PipeWire (plugin bluez5).
+# Sem OBEX (troca de arquivos, pede libical), malha (json-c), MIDI e CUPS.
+
+[pacote]
+nome      = "bluez"
+versao    = "5.87"
+resumo    = "Bluetooth: parear e conectar dispositivos (BlueZ)"
+licenca   = "GPL-2.0-or-later AND LGPL-2.1-or-later"
+categoria = "rede"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://www.kernel.org/pub/linux/bluetooth/bluez-5.87.tar.xz"
+
+[dependencias]
+construcao = ["glib", "dbus", "readline", "systemd"]
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+./configure --prefix=/usr --sysconfdir=/etc --localstatedir=/var \
+            --enable-library --disable-manpages --disable-obex \
+            --disable-mesh --disable-midi --disable-cups --disable-test \
+            --disable-monitor --enable-client --enable-systemd \
+            --with-systemdsystemunitdir=/usr/lib/systemd/system \
+            --with-systemduserunitdir=/usr/lib/systemd/user
+''',
+  '''
+make -j$NUCLEOS
+''',
+]
+instalar = [
+  '''
+make install
+''',
+  # Liga o adaptador sozinho ao iniciar (como no Windows) e aceita
+  # controles de videogame (Xbox/PS) sem perguntar a cada vez.
+  '''
+install -vdm755 /etc/bluetooth
+cat > /etc/bluetooth/main.conf << 'FIM'
+[General]
+Name = Ararinha
+DiscoverableTimeout = 0
+FastConnectable = true
+Experimental = false
+
+[Policy]
+AutoEnable = true
+FIM
+ln -sfv /usr/lib/systemd/system/bluetooth.service /etc/systemd/system/dbus-org.bluez.service
+systemctl enable bluetooth.service
+''',
+]

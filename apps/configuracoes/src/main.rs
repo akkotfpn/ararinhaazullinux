@@ -13,6 +13,7 @@ mod tela;
 mod privacidade;
 mod atualizacoes;
 mod idioma;
+mod bluetooth;
 mod armazenamento;
 mod rede;
 
@@ -42,6 +43,7 @@ const NOMES_PAPEIS: [(&str, &str); 5] = [
 enum Pagina {
     Personalizacao,
     Rede,
+    Bluetooth,
     Firewall,
     Tela,
     Som,
@@ -84,6 +86,7 @@ struct Configuracoes {
     privacidade: privacidade::PaginaPrivacidade,
     atualizacoes: atualizacoes::PaginaAtualizacoes,
     idioma: idioma::PaginaIdioma,
+    bluetooth: bluetooth::PaginaBluetooth,
     armazenamento: armazenamento::PaginaArmazenamento,
     mingau: Option<penas::desenho::Imagem>,
 }
@@ -284,6 +287,7 @@ impl Configuracoes {
             privacidade: Default::default(),
             atualizacoes: Default::default(),
             idioma: Default::default(),
+            bluetooth: Default::default(),
             armazenamento: Default::default(),
             mingau: desenho::icone(MINGAU_PNG, 120, 141),
         }
@@ -621,6 +625,12 @@ impl App for Configuracoes {
                     self.aviso = Some(av);
                 }
             }
+            Pagina::Bluetooth => {
+                self.bluetooth.desenhar(ui, LATERAL_L, l - LATERAL_L);
+                if let Some(av) = self.bluetooth.aviso.take() {
+                    self.aviso = Some(av);
+                }
+            }
             Pagina::Firewall => {
                 self.firewall.desenhar(ui, LATERAL_L, l - LATERAL_L);
                 if let Some(av) = self.firewall.aviso.take() {
@@ -676,6 +686,7 @@ impl App for Configuracoes {
         let paginas = [
             (Pagina::Personalizacao, "Personalização"),
             (Pagina::Rede, "Rede e Internet"),
+            (Pagina::Bluetooth, "Bluetooth e dispositivos"),
             (Pagina::Firewall, "Firewall"),
             (Pagina::Tela, "Tela"),
             (Pagina::Som, "Som"),
@@ -731,6 +742,7 @@ fn main() {
         Some("privacidade") => app.pagina = Pagina::Privacidade,
         Some("hora") => app.pagina = Pagina::Hora,
         Some("idioma") => app.pagina = Pagina::Idioma,
+        Some("bluetooth") => app.pagina = Pagina::Bluetooth,
         Some("contas") => app.pagina = Pagina::Contas,
         Some("rede") => {
             app.pagina = Pagina::Rede;

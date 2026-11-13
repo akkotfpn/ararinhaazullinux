@@ -315,6 +315,58 @@ fn lixeira_com_papeis(mut img: image::RgbaImage, n: usize) -> image::RgbaImage {
     img
 }
 
+fn arquivo_posicoes() -> Option<std::path::PathBuf> {
+    std::env::var("HOME").ok().map(|h| std::path::PathBuf::from(h).join(".config/ararinha/area-posicoes"))
+}
+
+/// Posições dos ícones: "coluna<TAB>linha<TAB>chave" por linha.
+fn ler_posicoes() -> std::collections::HashMap<String, (i32, i32)> {
+    let mut m = std::collections::HashMap::new();
+    if let Some(t) = arquivo_posicoes().and_then(|p| std::fs::read_to_string(p).ok()) {
+        for linha in t.lines() {
+            let c: Vec<&str> = linha.splitn(3, '\t').collect();
+            if let [a, b, k] = c[..] {
+                if let (Ok(a), Ok(b)) = (a.parse(), b.parse()) {
+                    m.insert(k.to_string(), (a, b));
+                }
+            }
+        }
+    }
+    m
+}
+
+fn gravar_posicoes(m: &std::collections::HashMap<String, (i32, i32)>) {
+    let Some(p) = arquivo_posicoes() else { return };
+    if let Some(d) = p.parent() {
+        let _ = std::fs::create_dir_all(d);
+    }
+    let t: String = m.iter().map(|(k, (a, b))| format!("{a}\t{b}\t{k}\n")).collect();
+    let _ = std::fs::write(p, t);
+}
+
+/// Move (ou copia) um item para dentro de uma pasta, sem travar a tela.
+pub fn mover_para(origem: &std::path::Path, pasta: &std::path::Path, copiar: bool) {
+    if pasta.starts_with(origem) {
+        return;
+    }
+    let nome = origem.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    let alvo = crate::area::nome_livre(pasta, &nome, if copiar { " - Cópia" } else { "" });
+    if !copiar && std::fs::rename(origem, &alvo).is_ok() {
+        return;
+    }
+    let (o, a) = (origem.to_path_buf(), alvo);
+    std::thread::spawn(move || {
+        let ok = if copiar {
+            std::process::Command::new("cp").arg("-a").arg("--").arg(&o).arg(&a).status().map(|s| s.success()).unwrap_or(false)
+        } else {
+            std::process::Command::new("mv").arg("--").arg(&o).arg(&a).status().map(|s| s.success()).unwrap_or(false)
+        };
+        if !ok {
+            let _ = std::process::Command::new("ararinha-notificar").args(["Não deu para mover", &o.display().to_string()]).spawn();
+        }
+    });
+}
+
 /// Manda um arquivo para a Lixeira (padrão freedesktop: files/ + info/).
 pub fn mandar_para_lixeira(p: &std::path::Path) -> std::io::Result<()> {
     let base = pasta_lixeira().ok_or_else(|| std::io::Error::other("sem HOME"))?;
@@ -502,6 +554,15 @@ const AREA_Y: i32 = 12;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Alvo {
     Iniciar,
+    /// Botão "Visão de Tarefas" ao lado do Iniciar.
+    VisaoBotao,
+    /// Na Visão de Tarefas: uma janela (índice em `visao_janelas`), uma área
+    /// de trabalho, o "x" dela, "+ Nova área de trabalho" e o fundo.
+    VisaoJanela(usize),
+    VisaoMesa(usize),
+    VisaoFecharMesa(usize),
+    VisaoNova,
+    VisaoFundo,
     /// Botão da barra (índice em `grupos()`).
     Tarefa(usize),
     /// Miniatura na prévia da barra: abre a janela (índice em `ordem`).
@@ -686,6 +747,15 @@ pub struct Painel {
     pub ordem: Vec<WindowElement>,
     /// Janelas minimizadas e onde estavam.
     pub minimizadas: Vec<(WindowElement, Point<i32, Logical>)>,
+    /// Áreas de trabalho virtuais: a atual, quantas há e as janelas das
+    /// outras (guardadas fora do espaço: posição, área e se minimizada).
+    pub mesa_atual: usize,
+    pub mesas: usize,
+    pub outras_mesas: Vec<(WindowElement, Point<i32, Logical>, usize, bool)>,
+    /// Visão de Tarefas (Win+Tab) aberta e as janelas mostradas nela.
+    pub visao: bool,
+    pub visao_janelas: Vec<WindowElement>,
+    visao_buf: Option<(String, MemoryRenderBuffer)>,
     /// Retângulo de seleção na área de trabalho: onde o arrasto começou.
     pub selecao: Option<Point<f64, Logical>>,
     sel: [SolidColorBuffer; 9],
@@ -717,6 +787,18 @@ pub struct Painel {
     area_visto: (std::time::Instant, Option<std::time::SystemTime>),
     /// Quantos ícones cabem numa coluna (calculado ao desenhar).
     area_linhas: usize,
+    /// Quantas colunas cabem na tela.
+    area_colunas: usize,
+    /// Célula (coluna, linha) de cada ícone, na ordem de `icones_area`.
+    area_pos: Vec<(i32, i32)>,
+    /// Posições escolhidas pela pessoa (arrastando): chave do ícone → célula.
+    posicoes: std::collections::HashMap<String, (i32, i32)>,
+    /// Arrastando um ícone: qual, onde começou e se já virou arraste.
+    pub arraste_icone: Option<(usize, Point<f64, Logical>, bool)>,
+    /// Célula sob o ponteiro durante o arraste.
+    alvo_arraste: Option<(i32, i32)>,
+    /// Renomeando um ícone na área de trabalho: qual e o texto.
+    pub renomeando: Option<(usize, String)>,
     pub apps: Option<Vec<App>>,
     /// Texto digitado no menu Iniciar (filtra os apps).
     pub busca: String,
@@ -761,7 +843,7 @@ pub struct Painel {
     /// Onde foi o clique direito que pediu o menu de um ícone da bandeja.
     pub bandeja_clique: Point<i32, Logical>,
     relogio: (u64, String, String),
-    barra: Option<(String, MemoryRenderBuffer)>,
+    pub barra: Option<(String, MemoryRenderBuffer)>,
     menu: Option<(String, MemoryRenderBuffer)>,
     logo: Option<image::RgbaImage>,
     /// Última checagem da configuração: (segundo, datas dos arquivos).
@@ -787,6 +869,12 @@ impl Default for Painel {
             segurando: false,
             ordem: Vec::new(),
             minimizadas: Vec::new(),
+            mesa_atual: 0,
+            mesas: 1,
+            outras_mesas: Vec::new(),
+            visao: false,
+            visao_janelas: Vec::new(),
+            visao_buf: None,
             selecao: None,
             sel: Default::default(),
             recorte: None,
@@ -809,6 +897,12 @@ impl Default for Painel {
             icones_area: icones_fixos(),
             area_visto: (std::time::Instant::now() - std::time::Duration::from_secs(10), None),
             area_linhas: 6,
+            area_colunas: 12,
+            area_pos: Vec::new(),
+            posicoes: ler_posicoes(),
+            arraste_icone: None,
+            alvo_arraste: None,
+            renomeando: None,
             apps: None,
             busca: String::new(),
             menu_rolagem: 0,
@@ -887,9 +981,11 @@ impl Painel {
     /// Acompanha as janelas abertas: novas entram no fim, fechadas saem.
     pub fn atualizar(&mut self, space: &Space<WindowElement>) {
         self.minimizadas.retain(|(w, _)| w.0.alive());
-        let minimizadas: Vec<WindowElement> = self.minimizadas.iter().map(|(w, _)| w.clone()).collect();
+        self.outras_mesas.retain(|(w, ..)| w.0.alive());
+        let mut guardadas: Vec<WindowElement> = self.minimizadas.iter().map(|(w, _)| w.clone()).collect();
+        guardadas.extend(self.outras_mesas.iter().map(|(w, ..)| w.clone()));
         self.ordem
-            .retain(|w| w.0.alive() && (minimizadas.contains(w) || space.elements().any(|e| e == w)));
+            .retain(|w| w.0.alive() && (guardadas.contains(w) || space.elements().any(|e| e == w)));
         for w in space.elements() {
             if !self.ordem.contains(w) {
                 self.ordem.push(w.clone());
@@ -931,6 +1027,10 @@ impl Painel {
             })
             .collect();
         for (j, w) in self.ordem.iter().enumerate() {
+            // Janelas de outras áreas de trabalho não aparecem na barra.
+            if self.outras_mesas.iter().any(|(o, ..)| o == w) {
+                continue;
+            }
             let app = self.app_da_janela(w);
             if let Some(g) = app.and_then(|a| gs.iter_mut().find(|g| g.app == Some(a))) {
                 g.janelas.push(j);
@@ -958,14 +1058,14 @@ impl Painel {
     /// Posição do botão Iniciar e de cada botão da barra.
     fn layout(&self, gs: &[Grupo], tela_w: i32) -> (i32, Vec<(i32, i32)>) {
         let ls = self.larguras(gs, tela_w);
-        let total = Self::iniciar_l() + 6 + ls.iter().map(|l| l + 4).sum::<i32>();
+        let total = Self::iniciar_l() + 6 + Self::botao_l() + 4 + ls.iter().map(|l| l + 4).sum::<i32>();
         let limite = tela_w - RELOGIO_L - BANDEJA_L - self.bandeja_l() - 8;
         let x0 = if CENTRO.load(std::sync::atomic::Ordering::Relaxed) {
             ((tela_w - total) / 2).clamp(INICIAR_X, (limite - total).max(INICIAR_X))
         } else {
             INICIAR_X
         };
-        let mut x = x0 + Self::iniciar_l() + 6;
+        let mut x = x0 + Self::iniciar_l() + 6 + Self::botao_l() + 4;
         let v = ls
             .iter()
             .map(|l| {
@@ -1310,6 +1410,26 @@ impl Painel {
                 return Some(Alvo::Contexto(i as usize));
             }
         }
+        if self.visao && y < tela.h - altura() {
+            let (js, ms, nova) = self.visao_layout(tela);
+            for (k, r) in js.iter().enumerate() {
+                if r.contains((x, y)) {
+                    return Some(Alvo::VisaoJanela(k));
+                }
+            }
+            for (k, r) in ms.iter().enumerate() {
+                if r.contains((x, y)) {
+                    if self.mesas > 1 && x >= r.loc.x + r.size.w - 30 && y < r.loc.y + 30 {
+                        return Some(Alvo::VisaoFecharMesa(k));
+                    }
+                    return Some(Alvo::VisaoMesa(k));
+                }
+            }
+            if nova.contains((x, y)) {
+                return Some(Alvo::VisaoNova);
+            }
+            return Some(Alvo::VisaoFundo);
+        }
         if !self.avisos.is_empty() {
             let o = Self::avisos_origem(tela, self.avisos.len());
             if x >= o.x && x < o.x + AVISO_L && y >= o.y {
@@ -1465,6 +1585,10 @@ impl Painel {
         if (xi..xi + Self::iniciar_l()).contains(&x) {
             return Some(Alvo::Iniciar);
         }
+        let xv = xi + Self::iniciar_l() + 6;
+        if (xv..xv + Self::botao_l()).contains(&x) {
+            return Some(Alvo::VisaoBotao);
+        }
         for (i, (bx, bl)) in pos.iter().enumerate() {
             if x >= *bx && x < bx + bl {
                 return Some(Alvo::Tarefa(i));
@@ -1491,6 +1615,18 @@ impl Painel {
             return Some(Alvo::Relogio);
         }
         Some(Alvo::Barra)
+    }
+
+    pub fn abrir_contexto_pub(&mut self, p: Point<i32, Logical>, tela: Size<i32, Logical>, itens: Vec<(&str, &str)>) {
+        self.abrir_contexto(p, tela, itens);
+    }
+
+    /// Aviso rápido ao trocar de área de trabalho.
+    pub fn avisar_mesa(&mut self) {
+        let t = format!("Área de trabalho {}", self.mesa_atual + 1);
+        // Só um aviso desses por vez.
+        self.avisos.retain(|a| !a.titulo.starts_with("Área de trabalho "));
+        self.avisar(&t, &format!("{} de {}  ·  Win+Ctrl+setas troca, Win+Tab mostra todas", self.mesa_atual + 1, self.mesas));
     }
 
     /// Abre o menu do botão direito em `p`, sem sair da tela.
@@ -1529,6 +1665,9 @@ impl Painel {
                             v.push(("Abrir com…".into(), format!("explorador --abrir-com {q}")));
                         }
                         v.push(("Mostrar no Explorador".into(), format!("explorador {q}")));
+                        if !atalho {
+                            v.push(("Renomear".into(), format!("#renomear:{i}")));
+                        }
                         v.push(("Recortar".into(), format!("#recortar:{}", a.display())));
                         v.push(("Copiar".into(), format!("#copiar:{}", a.display())));
                         if atalho {
@@ -1551,6 +1690,7 @@ impl Painel {
                 v.extend([
                     ("Nova pasta", "#nova-pasta"),
                     ("Novo documento de texto", "#novo-texto"),
+                    ("Organizar ícones", "#organizar"),
                 ]);
                 v.extend([
                 ("Próximo papel de parede", "#papel"),
@@ -1818,6 +1958,97 @@ impl Painel {
             let ln = desenho::medir(12.5, &nome);
             t.texto(x + cw / 2.0 - ln / 2.0, 104.0, 12.5, tema::TEXTO(), &nome);
         }
+        t
+    }
+
+    /// Onde ficam, na Visão de Tarefas, as janelas (grade no meio), as
+    /// áreas de trabalho (faixa de baixo) e o "+ Nova área de trabalho".
+    fn visao_layout(&self, tela: Size<i32, Logical>) -> (Vec<Rectangle<i32, Logical>>, Vec<Rectangle<i32, Logical>>, Rectangle<i32, Logical>) {
+        let n = self.visao_janelas.len();
+        let (cw, ch) = (240, 170);
+        let por_linha = ((tela.w - 80) / (cw + 20)).clamp(1, 6) as usize;
+        let linhas = n.div_ceil(por_linha).max(1);
+        let faixa = 150;
+        let area_h = tela.h - altura() - faixa;
+        let y0 = ((area_h - linhas as i32 * (ch + 20)) / 2).max(40);
+        let mut js = Vec::new();
+        for k in 0..n {
+            let (c, l) = (k % por_linha, k / por_linha);
+            let nesta = (n - l * por_linha).min(por_linha) as i32;
+            let x0 = (tela.w - nesta * (cw + 20) + 20) / 2;
+            js.push(Rectangle::new((x0 + c as i32 * (cw + 20), y0 + l as i32 * (ch + 20)).into(), (cw, ch).into()));
+        }
+        let (mw, mh) = (200, 112);
+        let total = (self.mesas as i32 + 1) * (mw + 16) - 16;
+        let mx0 = (tela.w - total) / 2;
+        let my = tela.h - altura() - faixa + 18;
+        let ms = (0..self.mesas).map(|k| Rectangle::new((mx0 + k as i32 * (mw + 16), my).into(), (mw, mh).into())).collect();
+        let nova = Rectangle::new((mx0 + self.mesas as i32 * (mw + 16), my).into(), (mw, mh).into());
+        (js, ms, nova)
+    }
+
+    fn desenhar_visao(&self, tela: Size<i32, Logical>, hover: Option<Alvo>) -> Tela {
+        let h = tela.h - altura();
+        let mut t = Tela::nova(tela.w, h);
+        t.vidro(0.0, 0.0, tela.w as f32, h as f32, 0.0, (0, 0), tema::FUNDO().com_alfa(170));
+        let (js, ms, nova) = self.visao_layout(tela);
+        if js.is_empty() {
+            let msg = "Nenhuma janela aberta nesta área de trabalho";
+            let lm = desenho::medir(15.0, msg);
+            t.texto(tela.w as f32 / 2.0 - lm / 2.0, (h - 150) as f32 / 2.0, 15.0, tema::TEXTO_SECUNDARIO(), msg);
+        }
+        for (k, r) in js.iter().enumerate() {
+            let Some(w) = self.visao_janelas.get(k) else { continue };
+            let (x, y, l, a) = (r.loc.x as f32, r.loc.y as f32, r.size.w as f32, r.size.h as f32);
+            let sobre = hover == Some(Alvo::VisaoJanela(k));
+            t.retangulo(x, y, l, a, 12.0, if sobre { tema::SUPERFICIE() } else { tema::SUPERFICIE().com_alfa(200) });
+            if sobre {
+                t.contorno(x, y, l, a, 2.0, tema::DESTAQUE());
+            }
+            let nome = titulo(w);
+            let app = self.app_da_janela(w);
+            let app_ref = app.and_then(|i| self.apps.as_ref().and_then(|v| v.get(i)));
+            self.desenhar_icone(&mut t, app_ref, &nome, x + l / 2.0 - 32.0, y + 36.0, 64.0);
+            let rot = desenho::encurtar(13.0, &nome, l - 24.0);
+            let lr = desenho::medir(13.0, &rot);
+            t.texto(x + l / 2.0 - lr / 2.0, y + a - 26.0, 13.0, tema::TEXTO(), &rot);
+            if self.esta_minimizada(w) {
+                t.texto(x + 12.0, y + 22.0, 11.5, tema::TEXTO_SECUNDARIO(), "Minimizada");
+            }
+        }
+        for (k, r) in ms.iter().enumerate() {
+            let (x, y, l, a) = (r.loc.x as f32, r.loc.y as f32, r.size.w as f32, r.size.h as f32);
+            let atual = k == self.mesa_atual;
+            let sobre = matches!(hover, Some(Alvo::VisaoMesa(m)) | Some(Alvo::VisaoFecharMesa(m)) if m == k);
+            t.retangulo(x, y, l, a, 10.0, if sobre { tema::SUPERFICIE() } else { tema::SUPERFICIE().com_alfa(190) });
+            if atual {
+                t.contorno(x, y, l, a, 2.0, tema::DESTAQUE());
+            }
+            // Miniatura simbólica: quantas janelas há nela.
+            let qtd = if atual { self.visao_janelas.len() } else { self.outras_mesas.iter().filter(|o| o.2 == k).count() };
+            for q in 0..qtd.min(4) {
+                let qx = x + 16.0 + q as f32 * 14.0;
+                t.retangulo(qx, y + 18.0 + q as f32 * 8.0, 70.0, 44.0, 4.0, tema::DESTAQUE().com_alfa(90));
+                t.contorno(qx, y + 18.0 + q as f32 * 8.0, 70.0, 44.0, 1.0, tema::DESTAQUE().com_alfa(160));
+            }
+            let rot = format!("Área de trabalho {}", k + 1);
+            t.texto(x + 12.0, y + a - 14.0, 12.5, tema::TEXTO(), &rot);
+            if self.mesas > 1 && sobre {
+                let fx = x + l - 26.0;
+                let cor = if hover == Some(Alvo::VisaoFecharMesa(k)) { tema::ERRO() } else { tema::TEXTO_SECUNDARIO() };
+                t.linha(fx, y + 10.0, fx + 10.0, y + 20.0, 1.6, cor);
+                t.linha(fx, y + 20.0, fx + 10.0, y + 10.0, 1.6, cor);
+            }
+        }
+        let (x, y, l, a) = (nova.loc.x as f32, nova.loc.y as f32, nova.size.w as f32, nova.size.h as f32);
+        let sobre = hover == Some(Alvo::VisaoNova);
+        t.retangulo(x, y, l, a, 10.0, if sobre { tema::SUPERFICIE() } else { tema::SUPERFICIE().com_alfa(120) });
+        t.contorno(x, y, l, a, 1.0, tema::BORDA());
+        t.linha(x + l / 2.0, y + 30.0, x + l / 2.0, y + 58.0, 2.0, tema::TEXTO());
+        t.linha(x + l / 2.0 - 14.0, y + 44.0, x + l / 2.0 + 14.0, y + 44.0, 2.0, tema::TEXTO());
+        let rot = "Nova área de trabalho";
+        let lr = desenho::medir(12.5, rot);
+        t.texto(x + l / 2.0 - lr / 2.0, y + a - 14.0, 12.5, tema::TEXTO(), rot);
         t
     }
 
@@ -2300,19 +2531,167 @@ impl Painel {
         v
     }
 
+    /// Célula da grade da área de trabalho em `p` (coordenadas da tela).
+    fn celula_em(&self, p: Point<f64, Logical>) -> Option<(i32, i32)> {
+        let (x, y) = (p.x as i32 - AREA_X, p.y as i32 - AREA_Y);
+        if x < 0 || y < 0 {
+            return None;
+        }
+        let (c, l) = (x / (ICONE_L + 6), y / (ICONE_A + 6));
+        (c < self.area_colunas as i32 && l < self.area_linhas as i32).then_some((c, l))
+    }
+
     /// Ícone da área de trabalho em `p` (coordenadas da tela).
     pub fn icone_em(&self, p: Point<f64, Logical>) -> Option<usize> {
         let (x, y) = (p.x as i32 - AREA_X, p.y as i32 - AREA_Y);
-        if x < 0 || y < 0 || x % (ICONE_L + 6) >= ICONE_L {
+        if x < 0 || y < 0 || x % (ICONE_L + 6) >= ICONE_L || y % (ICONE_A + 6) >= ICONE_A {
             return None;
         }
-        let coluna = (x / (ICONE_L + 6)) as usize;
-        let linha = (y / (ICONE_A + 6)) as usize;
-        if linha >= self.area_linhas {
-            return None;
+        let cel = self.celula_em(p)?;
+        self.area_pos.iter().position(|c| *c == cel).filter(|i| *i < self.icones_area.len())
+    }
+
+    /// Chave de um ícone para guardar a posição.
+    fn chave_icone(&self, i: usize) -> String {
+        match self.icones_area.get(i) {
+            Some(ic) => match &ic.arquivo {
+                Some(a) => a.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default(),
+                None => format!("#{}", ic.nome),
+            },
+            None => String::new(),
         }
-        let i = coluna * self.area_linhas + linha;
-        (i < self.icones_area.len() && y % (ICONE_A + 6) < ICONE_A).then_some(i)
+    }
+
+    /// Distribui os ícones: os que têm posição escolhida ficam nela; os
+    /// outros enchem as colunas de cima para baixo, como no Windows.
+    fn organizar_area(&mut self) {
+        let (cols, linhas) = (self.area_colunas.max(1) as i32, self.area_linhas.max(1) as i32);
+        let n = self.icones_area.len();
+        let mut pos = vec![(-1, -1); n];
+        let mut ocupado = std::collections::HashSet::new();
+        for (i, p) in pos.iter_mut().enumerate() {
+            if let Some(&(c, l)) = self.posicoes.get(&self.chave_icone(i)) {
+                if c < cols && l < linhas && ocupado.insert((c, l)) {
+                    *p = (c, l);
+                }
+            }
+        }
+        let mut livre = (0..cols).flat_map(|c| (0..linhas).map(move |l| (c, l)));
+        for p in pos.iter_mut() {
+            if p.0 < 0 {
+                if let Some(cel) = livre.by_ref().find(|c| !ocupado.contains(c)) {
+                    ocupado.insert(cel);
+                    *p = cel;
+                }
+            }
+        }
+        self.area_pos = pos;
+    }
+
+    /// Fim do arraste de um ícone: solta numa pasta (move para dentro), na
+    /// Lixeira (exclui) ou numa célula vazia (fica ali).
+    pub fn soltar_icone(&mut self, p: Point<f64, Logical>, copiar: bool) {
+        let Some((i, _, ativo)) = self.arraste_icone.take() else { return };
+        self.alvo_arraste = None;
+        self.area_buf = None;
+        if !ativo {
+            return;
+        }
+        let Some(cel) = self.celula_em(p) else { return };
+        let origem = self.icones_area.get(i).and_then(|ic| ic.arquivo.clone());
+        if let Some(j) = self.area_pos.iter().position(|c| *c == cel).filter(|j| *j != i && *j < self.icones_area.len()) {
+            // Solto em cima de outro ícone: pasta ou Lixeira recebem o arquivo.
+            let Some(origem) = origem else { return };
+            let destino = &self.icones_area[j];
+            if destino.nome == "Lixeira" && destino.arquivo.is_none() {
+                let _ = mandar_para_lixeira(&origem);
+            } else if let Some(pasta) = destino.arquivo.clone().filter(|d| d.is_dir()) {
+                mover_para(&origem, &pasta, copiar);
+            } else if destino.arquivo.is_none() && destino.nome == "Pasta pessoal" {
+                if let Ok(h) = std::env::var("HOME") {
+                    mover_para(&origem, std::path::Path::new(&h), copiar);
+                }
+            }
+            self.area_visto = (std::time::Instant::now() - std::time::Duration::from_secs(10), None);
+            return;
+        }
+        let chave = self.chave_icone(i);
+        self.posicoes.insert(chave, cel);
+        gravar_posicoes(&self.posicoes);
+        self.organizar_area();
+    }
+
+    pub fn arquivo_do_icone(&self, i: usize) -> Option<std::path::PathBuf> {
+        self.icones_area.get(i).and_then(|ic| ic.arquivo.clone())
+    }
+
+    pub fn comando_do_icone(&self, i: usize) -> Option<String> {
+        self.icones_area.get(i).map(|ic| ic.cmd.clone())
+    }
+
+    /// "Organizar ícones": esquece as posições escolhidas.
+    pub fn organizar_icones(&mut self) {
+        self.posicoes.clear();
+        gravar_posicoes(&self.posicoes);
+        self.organizar_area();
+        self.area_buf = None;
+    }
+
+    /// Começa a renomear o ícone (só arquivos e pastas da Área de Trabalho).
+    pub fn renomear_icone(&mut self, i: usize) {
+        if let Some(ic) = self.icones_area.get(i) {
+            if let Some(a) = &ic.arquivo {
+                let nome = a.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+                self.icone_sel = Some(i);
+                self.renomeando = Some((i, nome));
+                self.area_buf = None;
+            }
+        }
+    }
+
+    /// Tecla durante a renomeação (Enter confirma, Esc cancela).
+    pub fn tecla_renomear(&mut self, sym: smithay::input::keyboard::Keysym) {
+        use smithay::input::keyboard::Keysym as K;
+        let Some((i, texto)) = self.renomeando.as_mut() else { return };
+        match sym {
+            K::Escape => self.renomeando = None,
+            K::Return | K::KP_Enter => {
+                let (i, novo) = (*i, texto.trim().to_string());
+                self.renomeando = None;
+                if let Some(a) = self.icones_area.get(i).and_then(|ic| ic.arquivo.clone()) {
+                    let invalido = novo.is_empty() || novo.contains('/') || novo == "." || novo == "..";
+                    if !invalido {
+                        let alvo = a.with_file_name(&novo);
+                        if alvo != a {
+                            if alvo.exists() {
+                                let _ = std::process::Command::new("ararinha-notificar")
+                                    .args(["Não deu para renomear", &format!("Já existe \"{novo}\" na área de trabalho.")])
+                                    .spawn();
+                            } else if std::fs::rename(&a, &alvo).is_ok() {
+                                // A posição acompanha o novo nome.
+                                let antigo = a.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+                                if let Some(p) = self.posicoes.remove(&antigo) {
+                                    self.posicoes.insert(novo.clone(), p);
+                                    gravar_posicoes(&self.posicoes);
+                                }
+                            }
+                        }
+                    }
+                }
+                self.area_visto = (std::time::Instant::now() - std::time::Duration::from_secs(10), None);
+            }
+            K::BackSpace => {
+                texto.pop();
+            }
+            s => {
+                if let Some(c) = s.key_char() {
+                    if !c.is_control() && texto.chars().count() < 120 {
+                        texto.push(c);
+                    }
+                }
+            }
+        }
+        self.area_buf = None;
     }
 
     /// Clique num ícone da área de trabalho: seleciona; no segundo clique
@@ -2373,19 +2752,56 @@ impl Painel {
             self.area_visto = (std::time::Instant::now(), m);
         }
         let linhas = (((geo.size.h - altura() - AREA_Y) / (ICONE_A + 6)).max(1)) as usize;
-        if linhas != self.area_linhas {
+        let colunas = (((geo.size.w - AREA_X) / (ICONE_L + 6)).max(1)) as usize;
+        if linhas != self.area_linhas || colunas != self.area_colunas {
             self.area_linhas = linhas;
+            self.area_colunas = colunas;
             mudou = true;
         }
-        let chave = format!("{sobre:?}|{:?}|{}|{}", self.icone_sel, self.icones_area.len(), linhas);
+        if mudou || self.area_pos.len() != self.icones_area.len() {
+            self.organizar_area();
+            mudou = true;
+        }
+        // Arrastando um ícone: vira arraste depois de alguns pixels.
+        let local = ponteiro - geo.loc.to_f64();
+        if let Some((i, ini, ativo)) = self.arraste_icone {
+            if !ativo && ((local.x - ini.x).abs() > 6.0 || (local.y - ini.y).abs() > 6.0) {
+                self.arraste_icone = Some((i, ini, true));
+            }
+            if self.arraste_icone.map(|a| a.2).unwrap_or(false) {
+                self.alvo_arraste = self.celula_em(local);
+            }
+        }
+        let chave = format!(
+            "{sobre:?}|{:?}|{}|{}|{}|{:?}|{:?}|{:?}",
+            self.icone_sel,
+            self.icones_area.len(),
+            linhas,
+            colunas,
+            self.area_pos.len(),
+            self.alvo_arraste,
+            self.renomeando,
+            self.area_pos.iter().map(|p| p.0 * 100 + p.1).sum::<i32>()
+        );
         if mudou || self.area_buf.as_ref().map(|(c, _)| c != &chave).unwrap_or(true) {
-            let n = self.icones_area.len();
-            let colunas = n.div_ceil(linhas).max(1) as i32;
-            let mut t = Tela::nova(colunas * (ICONE_L + 6), linhas.min(n.max(1)) as i32 * (ICONE_A + 6));
+            let usadas = self.area_pos.iter().map(|p| p.0 + 1).max().unwrap_or(1).max(self.alvo_arraste.map(|a| a.0 + 1).unwrap_or(1));
+            let mut t = Tela::nova(usadas.max(1) * (ICONE_L + 6), linhas as i32 * (ICONE_A + 6));
+            let arrastado = self.arraste_icone.filter(|a| a.2).map(|a| a.0);
+            // Célula de destino do arraste.
+            if let Some((c, l)) = self.alvo_arraste {
+                let (x, y) = ((c * (ICONE_L + 6)) as f32, (l * (ICONE_A + 6)) as f32);
+                t.retangulo(x, y, ICONE_L as f32, ICONE_A as f32, 6.0, tema::BRANCO().com_alfa(45));
+            }
             for (i, icone) in self.icones_area.iter().enumerate() {
                 let nome = icone.nome.as_str();
-                let x0 = ((i / linhas) as i32 * (ICONE_L + 6)) as f32;
-                let y = ((i % linhas) as i32 * (ICONE_A + 6)) as f32;
+                let Some(&(c, l)) = self.area_pos.get(i) else { continue };
+                if c < 0 {
+                    continue;
+                }
+                // O ícone arrastado aparece na célula de destino.
+                let (c, l) = if arrastado == Some(i) { self.alvo_arraste.unwrap_or((c, l)) } else { (c, l) };
+                let x0 = (c * (ICONE_L + 6)) as f32;
+                let y = (l * (ICONE_A + 6)) as f32;
                 if self.icone_sel == Some(i) {
                     t.retangulo(x0, y, ICONE_L as f32, ICONE_A as f32, 6.0, tema::DESTAQUE().com_alfa(110));
                     t.retangulo(x0 + 1.0, y + 1.0, ICONE_L as f32 - 2.0, ICONE_A as f32 - 2.0, 5.0, tema::BRANCO().com_alfa(40));
@@ -2394,6 +2810,20 @@ impl Painel {
                 }
                 if let Some(img) = icone.img.as_ref() {
                     t.imagem(x0 as i32 + (ICONE_L - 48) / 2, y as i32 + 8, img);
+                }
+                if let Some((j, texto)) = &self.renomeando {
+                    if *j == i {
+                        // Caixa de edição no lugar do nome.
+                        let max = ICONE_L as f32 + 40.0;
+                        let vis = desenho::encurtar(12.0, texto, max - 10.0);
+                        let ln = desenho::medir(12.0, &vis);
+                        let bx = (x0 + ICONE_L as f32 / 2.0 - (ln + 10.0) / 2.0).max(0.0);
+                        t.retangulo(bx, y + 60.0, ln + 12.0, 20.0, 3.0, tema::DESTAQUE());
+                        t.retangulo(bx + 1.0, y + 61.0, ln + 10.0, 18.0, 2.0, tema::BRANCO());
+                        t.texto(bx + 5.0, y + 74.0, 12.0, desenho::Cor(20, 30, 40, 255), &vis);
+                        t.retangulo(bx + 6.0 + ln, y + 63.0, 1.2, 14.0, 0.0, tema::DESTAQUE());
+                        continue;
+                    }
                 }
                 // Nome em branco com sombra, em até duas linhas (como no Windows).
                 let max = ICONE_L as f32 - 6.0;
@@ -2622,6 +3052,27 @@ impl Painel {
                     ) {
                         elementos.insert(0, e);
                     }
+                }
+            }
+        }
+
+        if self.visao {
+            let chave = format!(
+                "{hover:?}|{}|{}|{}|{:?}|{}|{}",
+                self.mesas,
+                self.mesa_atual,
+                self.visao_janelas.iter().map(titulo).collect::<Vec<_>>().join("|"),
+                tela,
+                self.outras_mesas.len(),
+                desenho::tema::escuro()
+            );
+            if self.visao_buf.as_ref().map(|(c, _)| c != &chave).unwrap_or(true) {
+                let t = self.desenhar_visao(tela, hover);
+                self.visao_buf = Some((chave, t.em_buffer()));
+            }
+            if let Some((_, buf)) = &self.visao_buf {
+                if let Ok(e) = MemoryRenderBufferRenderElement::from_buffer(renderer, (0.0, 0.0), buf, None, None, None, Kind::Unspecified) {
+                    elementos.push(e);
                 }
             }
         }
@@ -2920,6 +3371,18 @@ impl Painel {
             t.imagem(xi + (Self::iniciar_l() - lado) / 2, (h - lado) / 2, logo);
         } else {
             t.retangulo(fx + 6.0, meio - 14.0, 28.0, 28.0, 14.0, tema::DESTAQUE());
+        }
+        // Visão de Tarefas: dois quadros sobrepostos.
+        {
+            let vx = fx + il + 6.0;
+            let bl = Self::botao_l() as f32;
+            if self.visao || hover == Some(Alvo::VisaoBotao) {
+                t.retangulo(vx, 4.0, bl, bh, 8.0, tema::BRANCO().com_alfa(150));
+            }
+            let (cx, cy) = (vx + bl / 2.0, meio);
+            t.contorno(cx - 9.0, cy - 8.0, 13.0, 11.0, 1.6, tema::TEXTO());
+            t.retangulo(cx - 3.0, cy - 2.0, 13.0, 11.0, 2.0, tema::TEXTO());
+            t.retangulo(cx - 1.6, cy - 0.6, 10.2, 8.2, 1.0, tema::SUPERFICIE());
         }
 
         // Um botão por app (fixado ou aberto), como no Windows 11.

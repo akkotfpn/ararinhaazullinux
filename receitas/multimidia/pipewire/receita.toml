@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Fase 2, som: BLFS, PipeWire
 # Compilado no ambiente isolado, sobre o sistema base da Fase 1.
-# Diferença do BLFS: sem Bluetooth, câmera, JACK, GStreamer e X11 por enquanto.
+# Diferença do BLFS: sem câmera, JACK, GStreamer e X11 por enquanto.
+# Bluetooth (bluez5) com o codec SBC: fones e caixas de som.
 
 [pacote]
 nome      = "pipewire"
@@ -15,13 +16,13 @@ tipo      = "toolchain"
 url = "https://gitlab.freedesktop.org/pipewire/pipewire/-/archive/1.6.9/pipewire-1.6.9.tar.bz2"
 
 [dependencias]
-construcao = ["meson", "alsa-lib", "dbus", "systemd", "readline"]
+construcao = ["meson", "alsa-lib", "dbus", "systemd", "readline", "bluez", "sbc", "glib"]
 
 [construcao]
 ambiente = "isolado"
 passos = [
   '''
-mkdir -p build && cd build && meson setup --prefix=/usr --buildtype=release --wrap-mode=nofallback -D session-managers=[] -D examples=disabled -D tests=disabled -D man=disabled -D docs=disabled -D gstreamer=disabled -D jack=disabled -D pipewire-jack=disabled -D bluez5=disabled -D libcamera=disabled -D x11=disabled -D x11-xfixes=disabled -D avahi=disabled -D sndfile=disabled -D libpulse=disabled -D roc=disabled -D vulkan=disabled -D selinux=disabled -D pipewire-alsa=enabled ..
+mkdir -p build && cd build && meson setup --prefix=/usr --buildtype=release --wrap-mode=nofallback -D session-managers=[] -D examples=disabled -D tests=disabled -D man=disabled -D docs=disabled -D gstreamer=disabled -D jack=disabled -D pipewire-jack=disabled -D bluez5=enabled -D bluez5-backend-hsphfpd=disabled -D bluez5-codec-aptx=disabled -D bluez5-codec-ldac=disabled -D bluez5-codec-aac=disabled -D bluez5-codec-lc3plus=disabled -D bluez5-codec-lc3=disabled -D bluez5-codec-opus=disabled -D libcamera=disabled -D x11=disabled -D x11-xfixes=disabled -D avahi=disabled -D sndfile=disabled -D libpulse=disabled -D roc=disabled -D vulkan=disabled -D selinux=disabled -D pipewire-alsa=enabled ..
 ''',
   '''
 cd build && ninja

@@ -215,6 +215,9 @@ struct Explorador {
     mostrar_previa: bool,
     /// Menu suspenso da barra de comandos aberto: posição e qual.
     menu_ferr: Option<(f32, f32, MenuFerr)>,
+    /// Reler a pasta daqui a pouco (arquivos soltos na área de trabalho
+    /// são movidos pela Plumagem logo depois).
+    reler_em: Option<std::time::Instant>,
 }
 
 #[derive(Debug, Clone)]
@@ -599,6 +602,7 @@ impl Explorador {
             ordem_desc: false,
             mostrar_previa: true,
             menu_ferr: None,
+            reler_em: None,
         };
         e.ordem = match penas::ler_chave_config("explorador_ordem").as_deref() {
             Some("data") => Ordem::Data,
@@ -1835,6 +1839,10 @@ impl App for Explorador {
                 self.colar_arquivos(v.clone(), *corte);
                 continue;
             }
+            if tecla == Tecla::ArrasteFeito {
+                self.reler_em = Some(std::time::Instant::now() + std::time::Duration::from_millis(700));
+                continue;
+            }
             if let Some(esc) = self.escolha.as_mut().filter(|e| e.nome_ativo) {
                 // Campos de texto: cursor, Ctrl+A/C/V/X (componentes::editar).
                 let antes = esc.nome.clone();
@@ -2028,6 +2036,28 @@ impl App for Explorador {
             ui.rolagem = 0.0;
         }
         self.alvo_soltar = None;
+        if let Some(t) = self.reler_em {
+            if std::time::Instant::now() >= t {
+                self.reler_em = None;
+                if self.tarefa.is_none() && self.renomeando.is_none() {
+                    self.recarregar();
+                }
+            } else {
+                ui.acordar_em = Some(std::time::Duration::from_millis(150));
+            }
+        }
+        // Arraste para fora da janela: vira um arraste do sistema (solta na
+        // área de trabalho, no navegador...).
+        if let (Some((_, _, true)), Some((mx, my))) = (self.arraste, ui.mouse) {
+            if ui.pressionado && (mx < 0.0 || my < 0.0 || mx > ui.largura() || my > ui.altura()) {
+                let v: Vec<PathBuf> = self.marcados().into_iter().map(|e| e.caminho).collect();
+                if !v.is_empty() && self.escolha.is_none() {
+                    penas::arrastar_arquivos(&v);
+                }
+                self.arraste = None;
+                self.alvo_soltar = None;
+            }
+        }
         // Arraste: vira arraste quando o mouse anda uns pixels apertado.
         if let (Some((ax, ay, ativo)), Some((mx, my))) = (self.arraste, ui.mouse) {
             if !ativo && ui.pressionado && ((mx - ax).abs() > 6.0 || (my - ay).abs() > 6.0) {

@@ -247,3 +247,31 @@ pub fn colar_em(destino: std::path::PathBuf) {
         }
     });
 }
+
+/// Arquivos soltos na área de trabalho (arrastados do Explorador ou de
+/// outro app): lê a lista do pipe e move para a Área de Trabalho (copia se
+/// vierem de outro disco ou com Ctrl, como no Windows).
+pub fn receber_soltos(leitura: OwnedFd, ctrl: bool) {
+    std::thread::spawn(move || {
+        use std::os::unix::fs::MetadataExt;
+        let mut f = std::fs::File::from(leitura);
+        let mut b = Vec::new();
+        let _ = (&mut f).take(MAX_BYTES as u64).read_to_end(&mut b);
+        let t = String::from_utf8_lossy(&b);
+        let Some(destino) = crate::painel::pasta_area() else { return };
+        let _ = std::fs::create_dir_all(&destino);
+        let disp_destino = std::fs::metadata(&destino).map(|m| m.dev()).unwrap_or(0);
+        for (i, linha) in t.lines().enumerate() {
+            let l = linha.trim();
+            if (i == 0 && (l == "cut" || l == "copy")) || l.is_empty() || l.starts_with('#') {
+                continue;
+            }
+            let Some(o) = caminho_de_uri(l) else { continue };
+            if o.parent() == Some(destino.as_path()) {
+                continue;
+            }
+            let mesmo_disco = std::fs::metadata(&o).map(|m| m.dev() == disp_destino).unwrap_or(false);
+            crate::painel::mover_para(&o, &destino, ctrl || !mesmo_disco);
+        }
+    });
+}

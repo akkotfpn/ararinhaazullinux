@@ -158,6 +158,9 @@ pub struct AnvilState<BackendData: Backend + 'static> {
     pub commit_timing_manager_state: CommitTimingManagerState,
 
     pub dnd_icon: Option<DndIcon>,
+    /// Origem do arraste em andamento (para receber arquivos soltos na
+    /// área de trabalho, que não é uma janela).
+    pub dnd_fonte: Option<WlDataSource>,
 
     // input-related fields
     pub suppressed_keys: Vec<Keysym>,
@@ -203,7 +206,8 @@ impl<BackendData: Backend> DataDeviceHandler for AnvilState<BackendData> {
 }
 
 impl<BackendData: Backend> ClientDndGrabHandler for AnvilState<BackendData> {
-    fn started(&mut self, _source: Option<WlDataSource>, icon: Option<WlSurface>, _seat: Seat<Self>) {
+    fn started(&mut self, source: Option<WlDataSource>, icon: Option<WlSurface>, _seat: Seat<Self>) {
+        self.dnd_fonte = source;
         let offset = if let CursorImageStatus::Surface(ref surface) = self.cursor_status {
             with_states(surface, |states| {
                 let hotspot = states
@@ -220,8 +224,29 @@ impl<BackendData: Backend> ClientDndGrabHandler for AnvilState<BackendData> {
         };
         self.dnd_icon = icon.map(|surface| DndIcon { surface, offset });
     }
-    fn dropped(&mut self, _target: Option<WlSurface>, _validated: bool, _seat: Seat<Self>) {
+    fn dropped(&mut self, target: Option<WlSurface>, _validated: bool, _seat: Seat<Self>) {
         self.dnd_icon = None;
+        let fonte = self.dnd_fonte.take();
+        // Solto fora de qualquer janela e acima da barra: na área de trabalho.
+        if target.is_some() {
+            return;
+        }
+        let Some(fonte) = fonte else { return };
+        let pos = self.pointer.current_location();
+        let Some(geo) = self.space.outputs().next().and_then(|o| self.space.output_geometry(o)) else { return };
+        if self.space.element_under(pos).is_some() || pos.y - geo.loc.y as f64 > (geo.size.h - crate::painel::altura()) as f64 {
+            return;
+        }
+        let tipos = smithay::wayland::selection::data_device::with_source_metadata(&fonte, |m| m.mime_types.clone()).unwrap_or_default();
+        let Some(tipo) = crate::area::tipo_arquivos(&tipos) else { return };
+        let Some((leitura, escrita)) = crate::area::cano() else { return };
+        {
+            use std::os::fd::AsFd;
+            fonte.send(tipo, escrita.as_fd());
+        }
+        drop(escrita);
+        let ctrl = self.seat.get_keyboard().map(|k| k.modifier_state().ctrl).unwrap_or(false);
+        crate::area::receber_soltos(leitura, ctrl);
     }
 }
 impl<BackendData: Backend> ServerDndGrabHandler for AnvilState<BackendData> {
@@ -791,6 +816,7 @@ impl<BackendData: Backend + 'static> AnvilState<BackendData> {
             fifo_manager_state,
             commit_timing_manager_state,
             dnd_icon: None,
+            dnd_fonte: None,
             suppressed_keys: Vec::new(),
             cursor_status: CursorImageStatus::default_named(),
             seat_name,

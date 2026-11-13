@@ -526,6 +526,26 @@ impl<B: Backend> AnvilState<B> {
                                 }
                             }
                         }
+                        "#organizar" => self.painel.organizar_icones(),
+                        a if a.starts_with("#mover-mesa:") => {
+                            let mut it = a["#mover-mesa:".len()..].split(':').filter_map(|x| x.parse::<usize>().ok());
+                            if let (Some(k), Some(m)) = (it.next(), it.next()) {
+                                if let Some(w) = self.painel.visao_janelas.get(k).cloned() {
+                                    self.mover_para_mesa(&w, m);
+                                }
+                            }
+                            self.atualizar_visao();
+                        }
+                        a if a.starts_with("#fechar-visao:") => {
+                            if let Some(w) = a["#fechar-visao:".len()..].parse::<usize>().ok().and_then(|k| self.painel.visao_janelas.get(k).cloned()) {
+                                fechar(&w);
+                            }
+                        }
+                        a if a.starts_with("#renomear:") => {
+                            if let Ok(i) = a["#renomear:".len()..].parse::<usize>() {
+                                self.painel.renomear_icone(i);
+                            }
+                        }
                         "#colar-area" => {
                             if let Some(p) = painel::pasta_area() {
                                 let _ = std::fs::create_dir_all(&p);
@@ -577,6 +597,20 @@ impl<B: Backend> AnvilState<B> {
         // Botão direito na barra de tarefas: menu da barra.
         if direito {
             let p = (pos - geo.loc.to_f64()).to_i32_round();
+            if let Alvo::VisaoJanela(k) = alvo {
+                let mut itens: Vec<(String, String)> = (0..self.painel.mesas)
+                    .filter(|m| *m != self.painel.mesa_atual)
+                    .map(|m| (format!("Mover para Área de trabalho {}", m + 1), format!("#mover-mesa:{k}:{m}")))
+                    .collect();
+                if self.painel.mesas < 9 {
+                    itens.push(("Mover para nova área de trabalho".into(), format!("#mover-mesa:{k}:{}", self.painel.mesas)));
+                }
+                itens.push(("Fechar".into(), format!("#fechar-visao:{k}")));
+                let v: Vec<(&str, &str)> = itens.iter().map(|(a, b)| (a.as_str(), b.as_str())).collect();
+                self.painel.abrir_contexto_pub(p, geo.size, v);
+                self.painel.segurando = true;
+                return true;
+            }
             if alvo == Alvo::Relogio {
                 self.painel.contexto_relogio(p, geo.size);
             } else if matches!(alvo, Alvo::Som) {
@@ -752,6 +786,30 @@ impl<B: Backend> AnvilState<B> {
             }
             Alvo::Barra | Alvo::Menu | Alvo::SomPainel | Alvo::Contexto(_) => {}
             Alvo::CantoArea => self.mostrar_area_de_trabalho(),
+            Alvo::VisaoBotao => self.alternar_visao(),
+            Alvo::VisaoFundo => self.painel.visao = false,
+            Alvo::VisaoJanela(k) => {
+                self.painel.visao = false;
+                if let Some(w) = self.painel.visao_janelas.get(k).cloned() {
+                    if self.painel.esta_minimizada(&w) {
+                        self.desminimizar(&w);
+                    } else {
+                        self.focar_janela(&w);
+                    }
+                }
+            }
+            Alvo::VisaoMesa(k) => {
+                self.trocar_mesa(k);
+                self.painel.visao = false;
+            }
+            Alvo::VisaoFecharMesa(k) => {
+                self.fechar_mesa(k);
+                self.atualizar_visao();
+            }
+            Alvo::VisaoNova => {
+                self.painel.mesas = (self.painel.mesas + 1).min(9);
+                self.atualizar_visao();
+            }
             Alvo::ItemBandeja(i) => {
                 self.painel.menu_aberto = false;
                 if let Some(item) = self.painel.bandeja.get(i) {
@@ -880,6 +938,46 @@ impl<B: Backend> AnvilState<B> {
     /// A troca acontece quando o Alt é solto (`alt_tab_soltar`).
     /// Win+V: a Plumagem passa a oferecer o texto e cola no app em foco
     /// (aperta Ctrl+V por ele, como o Windows faz).
+    /// Atalhos de teclado na área de trabalho (ícone selecionado).
+    pub fn atalho_area(&mut self, acao: &str) {
+        let sel = self.painel.icone_sel;
+        let arquivo = sel.and_then(|i| self.painel.arquivo_do_icone(i));
+        match acao {
+            "renomear" => {
+                if let Some(i) = sel {
+                    self.painel.renomear_icone(i);
+                }
+            }
+            "excluir" => {
+                if let Some(a) = arquivo {
+                    if a.extension().and_then(|x| x.to_str()) == Some("desktop") {
+                        let _ = std::fs::remove_file(&a);
+                    } else if let Err(e) = painel::mandar_para_lixeira(&a) {
+                        let _ = std::process::Command::new("ararinha-notificar").args(["Não deu para excluir", &e.to_string()]).spawn();
+                    }
+                    self.painel.icone_sel = None;
+                }
+            }
+            "abrir" => {
+                if let Some(cmd) = sel.and_then(|i| self.painel.comando_do_icone(i)) {
+                    self.executar_programa(&cmd);
+                }
+            }
+            "copiar" | "recortar" => {
+                if let Some(a) = arquivo {
+                    self.copiar_arquivos(vec![a], acao == "recortar");
+                }
+            }
+            "colar" => {
+                if let Some(p) = painel::pasta_area() {
+                    let _ = std::fs::create_dir_all(&p);
+                    crate::area::colar_em(p);
+                }
+            }
+            _ => {}
+        }
+    }
+
     /// Copiar/Recortar na área de trabalho: a Plumagem passa a oferecer os
     /// arquivos (colam no Explorador e em outros apps).
     pub fn copiar_arquivos(&mut self, v: Vec<std::path::PathBuf>, corte: bool) {
@@ -1006,6 +1104,124 @@ impl<B: Backend> AnvilState<B> {
             self.desminimizar(&w);
         } else {
             self.focar_janela(&w);
+        }
+    }
+
+    /// Abre ou fecha a Visão de Tarefas (Win+Tab).
+    pub fn alternar_visao(&mut self) {
+        self.painel.visao = !self.painel.visao;
+        self.painel.menu_aberto = false;
+        self.painel.central_aberta = false;
+        if self.painel.visao {
+            self.atualizar_visao();
+        }
+    }
+
+    /// Janelas da área de trabalho atual (da frente para trás; minimizadas no fim).
+    pub fn atualizar_visao(&mut self) {
+        let mut v: Vec<WindowElement> = self.space.elements().rev().cloned().collect();
+        v.extend(self.painel.minimizadas.iter().rev().map(|(w, _)| w.clone()));
+        self.painel.visao_janelas = v;
+    }
+
+    /// Troca de área de trabalho: guarda as janelas desta e mostra as da outra.
+    pub fn trocar_mesa(&mut self, n: usize) {
+        let atual = self.painel.mesa_atual;
+        if n == atual {
+            return;
+        }
+        if n >= self.painel.mesas {
+            self.painel.mesas = (n + 1).min(9);
+        }
+        let n = n.min(self.painel.mesas - 1);
+        let visiveis: Vec<WindowElement> = self.space.elements().cloned().collect();
+        for w in visiveis {
+            if let Some(loc) = self.space.element_location(&w) {
+                self.space.unmap_elem(&w);
+                self.painel.outras_mesas.push((w, loc, atual, false));
+            }
+        }
+        for (w, loc) in std::mem::take(&mut self.painel.minimizadas) {
+            self.painel.outras_mesas.push((w, loc, atual, true));
+        }
+        let (dela, resto): (Vec<_>, Vec<_>) = std::mem::take(&mut self.painel.outras_mesas).into_iter().partition(|o| o.2 == n);
+        self.painel.outras_mesas = resto;
+        let mut ultima = None;
+        for (w, loc, _, min) in dela {
+            if min {
+                self.painel.minimizadas.push((w, loc));
+            } else {
+                self.space.map_element(w.clone(), loc, false);
+                ultima = Some(w);
+            }
+        }
+        self.painel.mesa_atual = n;
+        let teclado = self.seat.get_keyboard().unwrap();
+        teclado.set_focus(self, ultima.map(KeyboardFocusTarget::from), SERIAL_COUNTER.next_serial());
+        self.painel.barra = None;
+        self.painel.avisar_mesa();
+    }
+
+    /// Manda uma janela para outra área de trabalho.
+    pub fn mover_para_mesa(&mut self, w: &WindowElement, n: usize) {
+        if n == self.painel.mesa_atual {
+            return;
+        }
+        if n >= self.painel.mesas {
+            self.painel.mesas = (n + 1).min(9);
+        }
+        let n = n.min(self.painel.mesas - 1);
+        if let Some(i) = self.painel.minimizadas.iter().position(|(m, _)| m == w) {
+            let (w, loc) = self.painel.minimizadas.remove(i);
+            self.painel.outras_mesas.push((w, loc, n, true));
+        } else if let Some(loc) = self.space.element_location(w) {
+            self.space.unmap_elem(w);
+            self.painel.outras_mesas.push((w.clone(), loc, n, false));
+        }
+        self.painel.barra = None;
+    }
+
+    /// Fecha uma área de trabalho: as janelas dela vão para a vizinha.
+    pub fn fechar_mesa(&mut self, k: usize) {
+        if self.painel.mesas <= 1 || k >= self.painel.mesas {
+            return;
+        }
+        let destino = if k == 0 { 1 } else { k - 1 };
+        if k == self.painel.mesa_atual {
+            self.trocar_mesa(destino);
+        }
+        // Renumera: a fechada some, as de depois andam uma para trás.
+        for o in self.painel.outras_mesas.iter_mut() {
+            if o.2 == k {
+                o.2 = destino;
+            }
+            if o.2 > k {
+                o.2 -= 1;
+            }
+        }
+        if self.painel.mesa_atual > k {
+            self.painel.mesa_atual -= 1;
+        }
+        // A janela que veio da fechada para a atual aparece agora.
+        let atual = self.painel.mesa_atual;
+        let (dela, resto): (Vec<_>, Vec<_>) = std::mem::take(&mut self.painel.outras_mesas).into_iter().partition(|o| o.2 == atual);
+        self.painel.outras_mesas = resto;
+        for (w, loc, _, min) in dela {
+            if min {
+                self.painel.minimizadas.push((w, loc));
+            } else {
+                self.space.map_element(w, loc, false);
+            }
+        }
+        self.painel.mesas -= 1;
+        self.painel.barra = None;
+    }
+
+    /// Win+Ctrl+setas: área de trabalho vizinha; Win+Ctrl+D cria outra.
+    pub fn mesa_vizinha(&mut self, passo: i32) {
+        let n = self.painel.mesa_atual as i32 + passo;
+        if n >= 0 && (n as usize) < self.painel.mesas {
+            self.trocar_mesa(n as usize);
         }
     }
 

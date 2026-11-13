@@ -20,7 +20,7 @@ use smithay_client_toolkit::{
     data_device_manager::{
         data_device::{DataDevice, DataDeviceHandler},
         data_offer::{DataOfferHandler, DragOffer},
-        data_source::{CopyPasteSource, DataSourceHandler},
+        data_source::{CopyPasteSource, DataSourceHandler, DragSource},
         DataDeviceManagerState, WritePipe,
     },
     delegate_data_device,
@@ -145,6 +145,9 @@ pub enum Tecla {
     /// Arquivos que chegaram da área de transferência (depois de
     /// `pedir_colar_arquivos`): os caminhos e se foram recortados.
     ArquivosColados(Vec<std::path::PathBuf>, bool),
+    /// Um arraste de arquivos para fora da janela acabou (soltos em outro
+    /// app ou na área de trabalho): bom momento para reler a pasta.
+    ArrasteFeito,
     Outra(Keysym),
 }
 
@@ -154,6 +157,7 @@ enum PedidoArea {
     Colar,
     CopiarArquivos(Vec<std::path::PathBuf>, bool),
     ColarArquivos,
+    Arrastar(Vec<std::path::PathBuf>),
 }
 
 thread_local! {
@@ -184,6 +188,12 @@ pub fn pedir_colar() {
 /// colam no Explorador, na área de trabalho e nos apps que aceitam arquivos.
 pub fn copiar_arquivos(caminhos: &[std::path::PathBuf], recortar: bool) {
     PEDIDOS_AREA.with(|p| p.borrow_mut().push(PedidoArea::CopiarArquivos(caminhos.to_vec(), recortar)));
+}
+
+/// Começa a arrastar arquivos para fora da janela (área de trabalho,
+/// navegador...). Chame com o botão do mouse ainda apertado.
+pub fn arrastar_arquivos(caminhos: &[std::path::PathBuf]) {
+    PEDIDOS_AREA.with(|p| p.borrow_mut().push(PedidoArea::Arrastar(caminhos.to_vec())));
 }
 
 /// Pede os arquivos da área de transferência; chegam como
@@ -526,6 +536,9 @@ pub fn executar(opcoes: Opcoes, app: Box<dyn App>) {
         fonte: None,
         copiado: String::new(),
         copiado_arquivos: None,
+        fonte_arraste: None,
+        arrastados: Vec::new(),
+        serial_clique: 0,
         serial: 0,
         colar_tx,
     };
@@ -641,6 +654,11 @@ struct Janela {
     copiado: String,
     /// Arquivos copiados por esta janela (e se foi recortar).
     copiado_arquivos: Option<(Vec<std::path::PathBuf>, bool)>,
+    /// Arraste de arquivos para fora: a origem e o que vai nela.
+    fonte_arraste: Option<DragSource>,
+    arrastados: Vec<std::path::PathBuf>,
+    /// Serial do último clique (o arraste precisa dele).
+    serial_clique: u32,
     /// Serial do último clique/tecla (o compositor exige para copiar).
     serial: u32,
     colar_tx: smithay_client_toolkit::reexports::calloop::channel::Sender<String>,
@@ -696,6 +714,7 @@ impl Janela {
                 PedidoArea::Colar => self.colar(),
                 PedidoArea::CopiarArquivos(v, corte) => self.copiar_arquivos(qh, v, corte),
                 PedidoArea::ColarArquivos => self.colar_arquivos(),
+                PedidoArea::Arrastar(v) => self.arrastar(qh, v),
             }
         }
         if fechar {
@@ -786,6 +805,14 @@ impl Janela {
         })
     }
 
+    fn arrastar(&mut self, qh: &QueueHandle<Self>, v: Vec<std::path::PathBuf>) {
+        let (Some(area), Some(disp)) = (&self.area, &self.dispositivo) else { return };
+        let fonte = area.create_drag_and_drop_source(qh, TIPOS_ARQUIVOS, DndAction::Copy | DndAction::Move);
+        fonte.start_drag(disp, self.window.wl_surface(), None, self.serial_clique);
+        self.arrastados = v;
+        self.fonte_arraste = Some(fonte);
+    }
+
     fn colar_arquivos(&mut self) {
         if self.fonte.is_some() {
             if let Some(t) = self.texto_arquivos("x-special/gnome-copied-files") {
@@ -852,19 +879,39 @@ impl DataOfferHandler for Janela {
 
 impl DataSourceHandler for Janela {
     fn accept_mime(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_data_source::WlDataSource, _: Option<String>) {}
-    fn send_request(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_data_source::WlDataSource, mime: String, mut fd: WritePipe) {
-        let t = self.texto_arquivos(&mime).unwrap_or_else(|| self.copiado.clone());
+    fn send_request(&mut self, _: &Connection, _: &QueueHandle<Self>, fonte: &wl_data_source::WlDataSource, mime: String, mut fd: WritePipe) {
+        let do_arraste = self.fonte_arraste.as_ref().map(|d| d.inner() == fonte).unwrap_or(false);
+        let t = if do_arraste {
+            let uris: Vec<String> = self.arrastados.iter().map(|p| uri_de(p)).collect();
+            if mime == "x-special/gnome-copied-files" {
+                format!("copy\n{}", uris.join("\n"))
+            } else {
+                uris.join("\r\n") + "\r\n"
+            }
+        } else {
+            self.texto_arquivos(&mime).unwrap_or_else(|| self.copiado.clone())
+        };
         std::thread::spawn(move || {
             use std::io::Write;
             let _ = fd.write_all(t.as_bytes());
         });
     }
-    fn cancelled(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_data_source::WlDataSource) {
+    fn cancelled(&mut self, _: &Connection, _: &QueueHandle<Self>, fonte: &wl_data_source::WlDataSource) {
+        if self.fonte_arraste.as_ref().map(|d| d.inner() == fonte).unwrap_or(false) {
+            // Arraste solto fora de um app (na área de trabalho, por exemplo):
+            // a origem continua viva para a Plumagem ainda pedir os arquivos.
+            self.teclas.push(Tecla::ArrasteFeito);
+            self.sujo = true;
+            return;
+        }
         // Outro app copiou algo: a área não é mais nossa.
         self.fonte = None;
     }
     fn dnd_dropped(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_data_source::WlDataSource) {}
-    fn dnd_finished(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_data_source::WlDataSource) {}
+    fn dnd_finished(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_data_source::WlDataSource) {
+        self.teclas.push(Tecla::ArrasteFeito);
+        self.sujo = true;
+    }
     fn action(&mut self, _: &Connection, _: &QueueHandle<Self>, _: &wl_data_source::WlDataSource, _: DndAction) {}
 }
 
@@ -1030,6 +1077,7 @@ impl PointerHandler for Janela {
                 PointerEventKind::Leave { .. } => self.mouse = None,
                 PointerEventKind::Press { button, serial, .. } => {
                     self.serial = serial;
+                    self.serial_clique = serial;
                     self.mouse = Some(pos);
                     if button == BTN_LEFT {
                         self.pressionado = true;

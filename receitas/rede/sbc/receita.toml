@@ -1,0 +1,33 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# BLFS (Multimídia): SBC, o codec obrigatório do áudio Bluetooth (A2DP).
+# O PipeWire usa para tocar em fones e caixas de som Bluetooth.
+
+[pacote]
+nome      = "sbc"
+versao    = "2.0"
+resumo    = "Codec SBC do áudio Bluetooth"
+licenca   = "LGPL-2.1-or-later"
+categoria = "rede"
+tipo      = "toolchain"
+
+[[fonte]]
+url = "https://www.kernel.org/pub/linux/bluetooth/sbc-2.0.tar.xz"
+
+[dependencias]
+construcao = []
+
+[construcao]
+ambiente = "isolado"
+passos = [
+  '''
+./configure --prefix=/usr --disable-static --disable-tester
+''',
+  '''
+make -j$NUCLEOS
+''',
+]
+instalar = [
+  '''
+make install
+''',
+]

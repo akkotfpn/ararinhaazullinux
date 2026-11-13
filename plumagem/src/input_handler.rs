@@ -84,6 +84,19 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             KeyAction::MostrarAreaDeTrabalho => self.mostrar_area_de_trabalho(),
             KeyAction::Captura => crate::captura::pedir(),
             KeyAction::Layouts => self.layouts_janela_ativa(),
+            KeyAction::VisaoTarefas => self.alternar_visao(),
+            KeyAction::MesaNova => {
+                let n = self.painel.mesas;
+                if n < 9 {
+                    self.trocar_mesa(n);
+                }
+            }
+            KeyAction::MesaFechar => {
+                let k = self.painel.mesa_atual;
+                self.fechar_mesa(k);
+                self.painel.avisar_mesa();
+            }
+            KeyAction::MesaVizinha(p) => self.mesa_vizinha(p),
             KeyAction::Central => {
                 self.painel.central_aberta = !self.painel.central_aberta;
                 self.painel.menu_aberto = false;
@@ -214,6 +227,49 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                 self.cancelar_recorte();
             }
             return KeyAction::None;
+        }
+
+        // Visão de Tarefas aberta: Esc fecha (o resto segue normal).
+        if self.painel.visao && state == KeyState::Pressed && keycode.raw() == 9 {
+            keyboard.input::<(), _>(self, keycode, state, serial, time, |_, _, _| FilterResult::Intercept(()));
+            self.painel.visao = false;
+            return KeyAction::None;
+        }
+
+        // Renomeando um ícone da área de trabalho: as teclas vão para o nome.
+        if self.painel.renomeando.is_some() {
+            keyboard.input::<(), _>(self, keycode, state, serial, time, |data, _mods, handle| {
+                if let KeyState::Pressed = state {
+                    data.painel.tecla_renomear(handle.modified_sym());
+                }
+                FilterResult::Intercept(())
+            });
+            return KeyAction::None;
+        }
+
+        // Área de trabalho em foco (nenhuma janela com o teclado): atalhos
+        // do Explorador nos ícones. Pelo código da tecla (xkb = evdev + 8),
+        // para chamar o `input` uma vez só.
+        if keyboard.current_focus().is_none() && !self.painel.menu_aberto && state == KeyState::Pressed {
+            let m = keyboard.modifier_state();
+            let acao = if m.logo || m.alt {
+                None
+            } else {
+                match (keycode.raw(), m.ctrl) {
+                    (68, false) => Some("renomear"),
+                    (119, _) => Some("excluir"),
+                    (36 | 104, false) => Some("abrir"),
+                    (54, true) => Some("copiar"),
+                    (53, true) => Some("recortar"),
+                    (55, true) => Some("colar"),
+                    _ => None,
+                }
+            };
+            if let Some(a) = acao {
+                keyboard.input::<(), _>(self, keycode, state, serial, time, |_, _, _| FilterResult::Intercept(()));
+                self.atalho_area(a);
+                return KeyAction::None;
+            }
         }
 
         // Menu Iniciar aberto: digitar pesquisa, setas escolhem, Enter abre.
@@ -354,6 +410,16 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         if wl_pointer::ButtonState::Released == state {
             self.painel.selecao = None;
             self.painel.cursor_redim = None;
+            // Fim do arraste de um ícone da área de trabalho (Ctrl copia).
+            if self.painel.arraste_icone.is_some() && button == 0x110 {
+                let pos = self.pointer.current_location();
+                let ctrl = self.seat.get_keyboard().map(|k| k.modifier_state().ctrl).unwrap_or(false);
+                if let Some(geo) = self.space.outputs().next().and_then(|o| self.space.output_geometry(o)) {
+                    self.painel.soltar_icone(pos - geo.loc.to_f64(), ctrl);
+                } else {
+                    self.painel.arraste_icone = None;
+                }
+            }
         }
 
         // Bloqueada: nenhum clique chega às janelas.
@@ -439,10 +505,24 @@ impl<BackendData: Backend> AnvilState<BackendData> {
         {
             let geo = self.space.outputs().next().and_then(|o| self.space.output_geometry(o));
             if let Some(i) = geo.and_then(|g| self.painel.icone_em(pos - g.loc.to_f64())) {
+                // Clicar em outro lugar confirma a renomeação em andamento.
+                if self.painel.renomeando.as_ref().map(|r| r.0 != i).unwrap_or(false) {
+                    self.painel.tecla_renomear(Keysym::Return);
+                }
                 if let Some(cmd) = self.painel.clicar_icone(i) {
                     self.executar_programa(&cmd);
+                } else if let Some(g) = geo {
+                    self.painel.arraste_icone = Some((i, pos - g.loc.to_f64(), false));
+                }
+                // Sem foco de teclado em janela: F2, Delete e Ctrl+C/X/V valem
+                // para a área de trabalho.
+                if let Some(k) = self.seat.get_keyboard() {
+                    k.set_focus(self, None, serial);
                 }
                 return;
+            }
+            if self.painel.renomeando.is_some() {
+                self.painel.tecla_renomear(Keysym::Return);
             }
             self.painel.icone_sel = None;
         }
@@ -761,6 +841,10 @@ impl<BackendData: Backend> AnvilState<BackendData> {
                     | KeyAction::AreaTransferencia
                     | KeyAction::Central
                     | KeyAction::Layouts
+                    | KeyAction::VisaoTarefas
+                    | KeyAction::MesaNova
+                    | KeyAction::MesaFechar
+                    | KeyAction::MesaVizinha(_)
                     | KeyAction::JanelaAnterior
                     | KeyAction::Midia(_)
                     | KeyAction::Encaixar(_)
@@ -992,6 +1076,10 @@ impl AnvilState<UdevData> {
                     | KeyAction::AreaTransferencia
                     | KeyAction::Central
                     | KeyAction::Layouts
+                    | KeyAction::VisaoTarefas
+                    | KeyAction::MesaNova
+                    | KeyAction::MesaFechar
+                    | KeyAction::MesaVizinha(_)
                     | KeyAction::JanelaAnterior
                     | KeyAction::Midia(_)
                     | KeyAction::Encaixar(_)
@@ -1590,6 +1678,13 @@ enum KeyAction {
     Central,
     /// Win+Z: layouts de encaixe.
     Layouts,
+    /// Win+Tab: Visão de Tarefas.
+    VisaoTarefas,
+    /// Win+Ctrl+D nova área de trabalho, Win+Ctrl+F4 fecha a atual,
+    /// Win+Ctrl+setas troca (-1 / +1).
+    MesaNova,
+    MesaFechar,
+    MesaVizinha(i32),
     RotateOutput,
     ToggleTint,
     ToggleDecorations,
@@ -1605,6 +1700,16 @@ fn process_keyboard_shortcut(modifiers: ModifiersState, keysym: Keysym) -> Optio
         Some(KeyAction::JanelaAnterior)
     } else if modifiers.alt && !modifiers.ctrl && keysym == Keysym::Tab {
         Some(KeyAction::ProximaJanela)
+    } else if modifiers.logo && !modifiers.alt && keysym == Keysym::Tab {
+        Some(KeyAction::VisaoTarefas)
+    } else if modifiers.logo && modifiers.ctrl && (keysym == Keysym::d || keysym == Keysym::D) {
+        Some(KeyAction::MesaNova)
+    } else if modifiers.logo && modifiers.ctrl && keysym == Keysym::F4 {
+        Some(KeyAction::MesaFechar)
+    } else if modifiers.logo && modifiers.ctrl && keysym == Keysym::Left {
+        Some(KeyAction::MesaVizinha(-1))
+    } else if modifiers.logo && modifiers.ctrl && keysym == Keysym::Right {
+        Some(KeyAction::MesaVizinha(1))
     } else if modifiers.logo && (keysym == Keysym::l || keysym == Keysym::L) {
         Some(KeyAction::Bloquear)
     } else if modifiers.logo && keysym == Keysym::Left {

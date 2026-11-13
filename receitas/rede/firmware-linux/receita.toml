@@ -7,7 +7,7 @@
 [pacote]
 nome      = "firmware-linux"
 versao    = "20260622"
-resumo    = "Firmware de Wi-Fi, rede e vídeo para o Spix Kernel"
+resumo    = "Firmware de Wi-Fi, Bluetooth, rede e vídeo para o Spix Kernel"
 licenca   = "LicenseRef-linux-firmware"
 categoria = "rede"
 tipo      = "toolchain"
@@ -30,11 +30,15 @@ instalar = [
 d=/usr/lib/firmware
 install -vdm755 $d
 # Pastas inteiras (as que existirem nesta versão).
-for p in intel/iwlwifi rtw88 rtw89 rtlwifi rtl_nic rtl_bt ath9k_htc ath10k ath11k ath12k \
+for p in intel/iwlwifi qca rtw88 rtw89 rtlwifi rtl_nic rtl_bt ath9k_htc ath10k ath11k ath12k \
          mediatek brcm cypress i915 xe amdgpu regulatory.db regulatory.db.p7s; do
   [ -e "$p" ] || continue
   mkdir -p "$d/$(dirname "$p")"
   cp -a "$p" "$d/$(dirname "$p")/"
+done
+# Bluetooth Intel (intel/ibt-*).
+for f in intel/ibt-*; do
+  [ -e "$f" ] && { mkdir -p "$d/intel"; cp -a "$f" "$d/intel/"; }
 done
 # Wi-Fi Intel antigo fica na raiz do repositório.
 for f in iwlwifi-*; do
@@ -43,7 +47,7 @@ done
 # Os atalhos (Link:) do WHENCE das pastas copiadas.
 grep -E '^Link: ' WHENCE | while read -r _ de _ para; do
   case "$de" in
-    intel/iwlwifi/*|rtw88/*|rtw89/*|rtlwifi/*|rtl_nic/*|rtl_bt/*|ath1*/*|ath9k_htc/*|mediatek/*|brcm/*|cypress/*|i915/*|xe/*|amdgpu/*|iwlwifi-*)
+    intel/iwlwifi/*|intel/ibt-*|qca/*|rtw88/*|rtw89/*|rtlwifi/*|rtl_nic/*|rtl_bt/*|ath1*/*|ath9k_htc/*|mediatek/*|brcm/*|cypress/*|i915/*|xe/*|amdgpu/*|iwlwifi-*)
       mkdir -p "$d/$(dirname "$de")"
       ln -sfn "$para" "$d/$de" ;;
   esac
