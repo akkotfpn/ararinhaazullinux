@@ -471,7 +471,9 @@ async fn permitir(app: &str) -> bool {
     loop {
         match filho.try_wait() {
             Ok(Some(st)) => return st.success(),
-            Ok(None) => async_io::Timer::after(Duration::from_millis(100)).await,
+            Ok(None) => {
+                async_io::Timer::after(Duration::from_millis(100)).await;
+            }
             Err(_) => return false,
         }
     }
@@ -504,7 +506,9 @@ async fn ligar_ajudante() -> Option<(std::process::Child, u32, i32, i32)> {
                 }
                 break;
             }
-            Err(std::sync::mpsc::TryRecvError::Empty) => async_io::Timer::after(Duration::from_millis(100)).await,
+            Err(std::sync::mpsc::TryRecvError::Empty) => {
+                async_io::Timer::after(Duration::from_millis(100)).await;
+            }
             Err(_) => break,
         }
     }

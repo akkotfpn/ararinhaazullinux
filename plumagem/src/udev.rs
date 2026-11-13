@@ -1657,12 +1657,19 @@ impl AnvilState<UdevData> {
         if let Some(caminho) = salva {
             // Como no Windows 11: a captura também vai para a área de
             // transferência (Ctrl+V cola a imagem).
-            if let Ok(b) = std::fs::read(&caminho) {
-                self.copiar_imagem(b);
-            }
-            if crate::captura::PARA_APP.swap(false, std::sync::atomic::Ordering::Relaxed) {
+            // (Depois do quadro: aqui o dispositivo ainda está emprestado.)
+            let png = std::fs::read(&caminho).ok();
+            let para_app = crate::captura::PARA_APP.swap(false, std::sync::atomic::Ordering::Relaxed);
+            self.handle.insert_idle(move |data| {
+                if let Some(b) = png {
+                    data.copiar_imagem(b);
+                }
+                if para_app {
+                    data.restaurar_captura();
+                }
+            });
+            if para_app {
                 crate::captura::responder(&caminho.to_string_lossy());
-                self.restaurar_captura();
             } else {
                 // Uma notificação; o clique abre na Ferramenta de Captura.
                 let nome = caminho.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
