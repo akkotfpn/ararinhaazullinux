@@ -53,7 +53,7 @@ grep -E '^Link: ' WHENCE | while read -r _ de _ para; do
   esac
 done
 # O kernel aceita firmware comprimido (CONFIG_FW_LOADER_COMPRESS_ZSTD).
-find $d -type f ! -name 'regulatory.db*' ! -name '*.zst' -print0 | xargs -0 -r -P $NUCLEOS -n 50 zstd -q --rm -19
+find $d -type f ! -name 'regulatory.db*' ! -name '*.zst' -print0 | xargs -0 -r -P $NUCLEOS -n 50 zstd -q -f --rm -19
 # Os atalhos passam a apontar para os .zst.
 find $d -type l | while read -r l; do
   alvo=$(readlink "$l")
