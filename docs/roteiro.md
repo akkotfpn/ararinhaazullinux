@@ -110,6 +110,11 @@ Imagem: ~630 MB (qcow2). Boot até a tela de entrada: ~3,4 s.
 - [em teste] DNS personalizado na Rede (AdGuard)
 - [a fazer] Alt+Tab: o console do Proxmox no navegador manda o Alt+Tab para o Windows; testar pelo menu de teclas do noVNC
 - [a fazer] Arrastar os ícones da barra para reordenar
+- [em teste] Instalador grava a entrada de boot UEFI do disco e põe em primeiro
+- [em teste] Explorador: colar/cursor em todos os campos, seleção por retângulo
+- [em teste] DNS: até 4 servidores (o 1º é o preferencial)
+- [em teste] "Definir como papel de parede" no botão direito da imagem
+- [a fazer] Papel de parede animado (vídeo/GIF), colar na busca do Iniciar
 
 ### Qualidade
 - [a fazer] Medir o consumo da Plumagem parada
