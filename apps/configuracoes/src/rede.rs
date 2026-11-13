@@ -303,12 +303,9 @@ impl PaginaRede {
 
         // Teclado: a senha.
         if self.senha_para.is_some() {
-            for t in std::mem::take(&mut ui.teclas) {
+            let teclas = std::mem::take(&mut ui.teclas);
+            for t in penas::componentes::editar(&mut self.senha, teclas) {
                 match t {
-                    Tecla::Texto(s) => self.senha.push_str(&s),
-                    Tecla::Apagar => {
-                        self.senha.pop();
-                    }
                     Tecla::Esc => self.senha_para = None,
                     Tecla::Enter => self.enviar_senha(),
                     _ => {}

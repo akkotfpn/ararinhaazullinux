@@ -172,12 +172,9 @@ impl PaginaConta {
                 Err(_) => ui.acordar_em = Some(Duration::from_millis(200)),
             }
         }
-        for t in std::mem::take(&mut ui.teclas) {
+        let teclas = std::mem::take(&mut ui.teclas);
+        for t in penas::componentes::editar(&mut self.campos[self.foco], teclas) {
             match t {
-                Tecla::Texto(s) => self.campos[self.foco].push_str(&s),
-                Tecla::Apagar => {
-                    self.campos[self.foco].pop();
-                }
                 Tecla::Outra(penas::Keysym::Tab) | Tecla::Baixo => self.foco = (self.foco + 1) % 3,
                 Tecla::Cima => self.foco = (self.foco + 2) % 3,
                 Tecla::Enter => {
@@ -202,9 +199,10 @@ impl PaginaConta {
             ui.tela.retangulo(fx, fy, fl, 38.0, 7.0, if foco { tema::DESTAQUE() } else { tema::BORDA() });
             ui.tela.retangulo(fx + 1.0, fy + 1.0, fl - 2.0, 36.0, 6.0, tema::JANELA());
             let pontos = "•".repeat(self.campos[i].chars().count().min(40));
-            let fim = ui.tela.texto(fx + 12.0, fy + 25.0, 14.0, tema::TEXTO(), &pontos);
+            ui.tela.texto(fx + 12.0, fy + 25.0, 14.0, tema::TEXTO(), &pontos);
             if foco {
-                ui.tela.retangulo(fx + 13.0 + fim, fy + 9.0, 1.5, 20.0, 0.0, tema::DESTAQUE());
+                let cx = penas::componentes::x_do_cursor(&self.campos[i], 14.0, true);
+                ui.tela.retangulo(fx + 13.0 + cx, fy + 9.0, 1.5, 20.0, 0.0, tema::DESTAQUE());
             }
             if ui.clicou(fx, fy, fl, 38.0) {
                 self.foco = i;

@@ -127,61 +127,171 @@ pub fn campo(ui: &mut Ui, x: f32, y: f32, l: f32, texto: &str, dica: &str, foco:
         // Linha de foco embaixo, como no Windows 11.
         ui.tela.retangulo(x + 1.0, y + ALTURA - 3.0, l - 2.0, 2.0, 1.0, tema::DESTAQUE());
     }
-    let visivel = if senha { "•".repeat(texto.chars().count().min(64)) } else { texto.to_string() };
-    let visivel = desenho::encurtar(TEXTO_M, &visivel, l - 2.0 * ESP_3);
+    // O que aparece (pontinhos na senha) e a janela visível ao redor do cursor.
+    let chars: Vec<char> = if senha { vec!['•'; texto.chars().count()] } else { texto.chars().collect() };
+    let n = chars.len();
+    let pos = if foco { cursor_de(texto).min(n) } else { n };
+    let livre = l - 2.0 * ESP_3 - 4.0;
+    let largura = |a: usize, b: usize| desenho::medir(TEXTO_M, &chars[a..b].iter().collect::<String>());
+    let mut ini = 0;
+    while ini < pos && largura(ini, pos) > livre {
+        ini += 1;
+    }
+    let mut fim = pos;
+    while fim < n && largura(ini, fim + 1) <= livre {
+        fim += 1;
+    }
+    let visivel: String = chars[ini..fim].iter().collect();
     if foco && selecionado(texto) {
         let w = desenho::medir(TEXTO_M, &visivel);
         ui.tela.retangulo(x + ESP_3 - 1.0, y + 8.0, w + 2.0, 20.0, 3.0, tema::DESTAQUE_SUAVE());
     }
-    let fim = if texto.is_empty() && !dica.is_empty() {
+    if texto.is_empty() && !dica.is_empty() {
         ui.tela.texto(x + ESP_3, y + 23.0, TEXTO, tema::TEXTO_SECUNDARIO(), dica);
-        0.0
     } else {
-        ui.tela.texto(x + ESP_3, y + 23.0, TEXTO_M, tema::TEXTO(), &visivel)
-    };
-    if foco {
-        ui.tela.retangulo(x + ESP_3 + fim + 1.0, y + 9.0, 1.5, 18.0, 0.0, tema::DESTAQUE());
+        ui.tela.texto(x + ESP_3, y + 23.0, TEXTO_M, tema::TEXTO(), &visivel);
     }
-    ui.clicou(x, y, l, ALTURA)
+    if foco {
+        let cx = if pos > ini { largura(ini, pos) } else { 0.0 };
+        ui.tela.retangulo(x + ESP_3 + cx, y + 9.0, 1.5, 18.0, 0.0, tema::DESTAQUE());
+    }
+    let clicou = ui.clicou(x, y, l, ALTURA);
+    // Clique no texto: o cursor vai para onde clicou.
+    if clicou {
+        if let Some((mx, _)) = ui.mouse {
+            let alvo = mx - x - ESP_3;
+            let mut p = ini;
+            while p < fim && largura(ini, p + 1) - desenho::medir(TEXTO_M, &chars[p].to_string()) / 2.0 < alvo {
+                p += 1;
+            }
+            definir_cursor(texto, p);
+            SELECIONADO.with(|s| s.set(0));
+        }
+    }
+    clicou
 }
 
 thread_local! {
     /// Campo com "tudo selecionado" (Ctrl+A): o endereço do texto dele.
     static SELECIONADO: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    /// Cursor do campo em foco: (endereço do texto, posição em caracteres).
+    /// Outro campo (outro endereço) começa com o cursor no fim.
+    static CURSOR: std::cell::Cell<(usize, usize)> = const { std::cell::Cell::new((0, usize::MAX)) };
 }
 
 fn selecionado(texto: &str) -> bool {
     !texto.is_empty() && SELECIONADO.with(|s| s.get()) == texto.as_ptr() as usize
 }
 
+/// Posição do cursor (em caracteres) de um campo desenhado à mão.
+pub fn cursor(texto: &str) -> usize {
+    cursor_de(texto)
+}
+
+/// Largura do texto até o cursor (para desenhar a barrinha).
+pub fn x_do_cursor(texto: &str, tamanho: f32, senha: bool) -> f32 {
+    let p = cursor_de(texto);
+    let antes: String = if senha { "•".repeat(p) } else { texto.chars().take(p).collect() };
+    desenho::medir(tamanho, &antes)
+}
+
+fn cursor_de(texto: &str) -> usize {
+    let n = texto.chars().count();
+    let (p, c) = CURSOR.with(|c| c.get());
+    if p == texto.as_ptr() as usize { c.min(n) } else { n }
+}
+
+fn definir_cursor(texto: &str, pos: usize) {
+    CURSOR.with(|c| c.set((texto.as_ptr() as usize, pos)));
+}
+
+/// Índice em bytes do caractere `c`.
+fn byte_de(texto: &str, c: usize) -> usize {
+    texto.char_indices().nth(c).map(|(b, _)| b).unwrap_or(texto.len())
+}
+
 /// Aplica as teclas de texto deste quadro ao campo em foco, como no
-/// Windows: Ctrl+A seleciona tudo, Ctrl+C/X/V copiam, recortam e colam,
+/// Windows: setas, Home/End e clique movem o cursor; Ctrl+setas pulam
+/// palavras; Ctrl+A seleciona tudo; Ctrl+C/X/V copiam, recortam e colam;
 /// Ctrl+Backspace apaga a palavra. Devolve as teclas que não são de edição
-/// (Enter, Tab, setas...).
+/// (Enter, Tab, Cima/Baixo...).
 pub fn editar(texto: &mut String, teclas: Vec<Tecla>) -> Vec<Tecla> {
     use crate::Keysym;
     let mut resto = Vec::new();
     let mut sel = selecionado(texto);
+    let mut pos = cursor_de(texto);
+    let palavra_antes = |t: &str, p: usize| -> usize {
+        let cs: Vec<char> = t.chars().collect();
+        let mut q = p.min(cs.len());
+        while q > 0 && cs[q - 1].is_whitespace() {
+            q -= 1;
+        }
+        while q > 0 && !cs[q - 1].is_whitespace() {
+            q -= 1;
+        }
+        q
+    };
+    let palavra_depois = |t: &str, p: usize| -> usize {
+        let cs: Vec<char> = t.chars().collect();
+        let mut q = p.min(cs.len());
+        while q < cs.len() && !cs[q].is_whitespace() {
+            q += 1;
+        }
+        while q < cs.len() && cs[q].is_whitespace() {
+            q += 1;
+        }
+        q
+    };
     for t in teclas {
+        let n = texto.chars().count();
         match t {
             Tecla::Texto(s) | Tecla::Colado(s) => {
                 if sel {
                     texto.clear();
+                    pos = 0;
                     sel = false;
                 }
                 // Campo de uma linha: quebras viram espaço.
-                texto.push_str(&s.replace(['\n', '\r'], " ").replace('\t', " "));
+                let s = s.replace(['\n', '\r'], " ").replace('\t', " ");
+                let b = byte_de(texto, pos);
+                texto.insert_str(b, &s);
+                pos += s.chars().count();
             }
             Tecla::Apagar => {
                 if sel {
                     texto.clear();
+                    pos = 0;
                     sel = false;
-                } else {
-                    texto.pop();
+                } else if pos > 0 {
+                    let b = byte_de(texto, pos - 1);
+                    texto.remove(b);
+                    pos -= 1;
                 }
             }
-            Tecla::Outra(Keysym::Delete) if sel => {
-                texto.clear();
+            Tecla::Outra(Keysym::Delete) => {
+                if sel {
+                    texto.clear();
+                    pos = 0;
+                    sel = false;
+                } else if pos < n {
+                    let b = byte_de(texto, pos);
+                    texto.remove(b);
+                }
+            }
+            Tecla::Esquerda | Tecla::Voltar => {
+                pos = if sel { 0 } else if crate::mods_ctrl() { palavra_antes(texto, pos) } else { pos.saturating_sub(1) };
+                sel = false;
+            }
+            Tecla::Direita | Tecla::Avancar => {
+                pos = if sel { n } else if crate::mods_ctrl() { palavra_depois(texto, pos) } else { (pos + 1).min(n) };
+                sel = false;
+            }
+            Tecla::Outra(Keysym::Home) => {
+                pos = 0;
+                sel = false;
+            }
+            Tecla::Outra(Keysym::End) => {
+                pos = n;
                 sel = false;
             }
             Tecla::Outra(k) if k == Keysym::a || k == Keysym::A => sel = !texto.is_empty(),
@@ -194,18 +304,22 @@ pub fn editar(texto: &mut String, teclas: Vec<Tecla>) -> Vec<Tecla> {
                 if sel {
                     crate::copiar(texto);
                     texto.clear();
+                    pos = 0;
                     sel = false;
                 }
             }
             Tecla::Outra(k) if k == Keysym::v || k == Keysym::V => crate::pedir_colar(),
-            // Ctrl+Backspace: apaga a última palavra.
+            // Ctrl+Backspace: apaga a palavra antes do cursor.
             Tecla::Outra(Keysym::BackSpace) => {
                 if sel {
                     texto.clear();
+                    pos = 0;
                     sel = false;
                 } else {
-                    let corte = texto.trim_end().rfind(|c: char| c.is_whitespace()).map(|i| i + 1).unwrap_or(0);
-                    texto.truncate(corte);
+                    let q = palavra_antes(texto, pos);
+                    let (b0, b1) = (byte_de(texto, q), byte_de(texto, pos));
+                    texto.replace_range(b0..b1, "");
+                    pos = q;
                 }
             }
             outra => {
@@ -215,6 +329,7 @@ pub fn editar(texto: &mut String, teclas: Vec<Tecla>) -> Vec<Tecla> {
         }
     }
     SELECIONADO.with(|s| s.set(if sel { texto.as_ptr() as usize } else { 0 }));
+    definir_cursor(texto, pos);
     resto
 }
 

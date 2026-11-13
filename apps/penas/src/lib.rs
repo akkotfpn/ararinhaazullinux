@@ -95,6 +95,15 @@ thread_local! {
     static PEDIDOS_AREA: std::cell::RefCell<Vec<PedidoArea>> = const { std::cell::RefCell::new(Vec::new()) };
 }
 
+thread_local! {
+    static CTRL: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Ctrl apertado agora (os componentes usam para Ctrl+setas).
+pub fn mods_ctrl() -> bool {
+    CTRL.with(|c| c.get())
+}
+
 /// Copia o texto para a área de transferência (Ctrl+C).
 pub fn copiar(texto: &str) {
     PEDIDOS_AREA.with(|p| p.borrow_mut().push(PedidoArea::Copiar(texto.to_string())));
@@ -509,6 +518,7 @@ impl Janela {
         if self.tela.largura != l as i32 || self.tela.altura != a as i32 || (self.tela.z - z).abs() > 0.001 {
             self.tela = Tela::nova_com_escala(l as i32, a as i32, z);
         }
+        CTRL.with(|c| c.set(self.mods.ctrl));
         let mut ui = Ui {
             tela: &mut self.tela,
             mouse: self.mouse,

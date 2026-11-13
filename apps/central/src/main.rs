@@ -394,15 +394,14 @@ impl App for Central {
     fn desenhar(&mut self, ui: &mut Ui) {
         self.receber();
         self.quadro += 1;
-        for t in std::mem::take(&mut ui.teclas) {
+        let teclas = std::mem::take(&mut ui.teclas);
+        let tinha = !self.busca.is_empty();
+        let teclas = penas::componentes::editar(&mut self.busca, teclas);
+        if tinha && self.busca.is_empty() {
+            self.resultados = None;
+        }
+        for t in teclas {
             match t {
-                Tecla::Texto(s) => self.busca.push_str(&s),
-                Tecla::Apagar => {
-                    self.busca.pop();
-                    if self.busca.is_empty() {
-                        self.resultados = None;
-                    }
-                }
                 Tecla::Enter => {
                     self.aba = Aba::Inicio;
                     self.buscar();
@@ -441,8 +440,9 @@ impl App for Central {
         if self.busca.is_empty() {
             ui.tela.texto(bx + 18.0, 37.0, 14.0, tema::TEXTO_SECUNDARIO(), "Procurar aplicativos (Enter)");
         } else {
-            let fim = ui.tela.texto(bx + 18.0, 37.0, 14.0, tema::TEXTO(), &self.busca);
-            ui.tela.retangulo(bx + 19.0 + fim, 23.0, 1.5, 18.0, 0.0, tema::DESTAQUE());
+            ui.tela.texto(bx + 18.0, 37.0, 14.0, tema::TEXTO(), &self.busca);
+            let cx = penas::componentes::x_do_cursor(&self.busca, 14.0, false);
+            ui.tela.retangulo(bx + 19.0 + cx, 23.0, 1.5, 18.0, 0.0, tema::DESTAQUE());
         }
         let ux = l - 160.0;
         let ocupado = self.trabalho.is_some();

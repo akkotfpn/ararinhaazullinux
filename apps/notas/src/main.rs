@@ -279,12 +279,8 @@ impl App for Notas {
         // Pedindo nome para salvar (vai para Documentos).
         if let Some(mut nome) = self.nome_salvar.take() {
             let mut fechar = false;
-            for t in teclas {
+            for t in penas::componentes::editar(&mut nome, teclas) {
                 match t {
-                    Tecla::Texto(s) => nome.push_str(&s),
-                    Tecla::Apagar => {
-                        nome.pop();
-                    }
                     Tecla::Esc => fechar = true,
                     Tecla::Enter => {
                         let casa = std::env::var("HOME").unwrap_or_else(|_| "/".into());
@@ -540,8 +536,9 @@ impl App for Notas {
             ui.tela.texto(x + 18.0, y + 30.0, 14.0, tema::TEXTO(), "Salvar em Documentos como:");
             ui.tela.retangulo(x + 16.0, y + 46.0, cl - 32.0, 34.0, 6.0, tema::DESTAQUE());
             ui.tela.retangulo(x + 18.0, y + 48.0, cl - 36.0, 30.0, 5.0, tema::JANELA());
-            let fim = ui.tela.texto(x + 26.0, y + 68.0, 14.0, tema::TEXTO(), nome);
-            ui.tela.retangulo(x + 27.0 + fim, y + 53.0, 1.5, 20.0, 0.0, tema::DESTAQUE());
+            ui.tela.texto(x + 26.0, y + 68.0, 14.0, tema::TEXTO(), nome);
+            let cx = penas::componentes::x_do_cursor(nome, 14.0, false);
+            ui.tela.retangulo(x + 27.0 + cx, y + 53.0, 1.5, 20.0, 0.0, tema::DESTAQUE());
             ui.tela.texto(x + 18.0, y + 108.0, 12.0, tema::TEXTO_SECUNDARIO(), "Enter salva · Esc cancela");
         }
     }
