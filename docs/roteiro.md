@@ -136,7 +136,12 @@ Imagem: ~630 MB (qcow2). Boot até a tela de entrada: ~3,4 s.
 - [em teste] Área de trabalho: ícones em qualquer lugar, soltar em pasta/Lixeira, renomear, Delete/Enter/Ctrl+C/X/V
 - [a fazer] Primeira versão publicada nas Releases do GitHub ("Fase 2")
 - [a fazer] Impressoras (CUPS; impressoras de rede IPP primeiro)
-- [a fazer] Captura de tela para OBS/Discord (portal ScreenCast com PipeWire)
+- [feito] Bluetooth, áreas virtuais e área de trabalho livre confirmados no teste
+- [em teste] Compartilhar a tela (OBS/Discord/navegador): portal ScreenCast, pergunta "Compartilhar a tela?" e o ajudante ararinha-tela-pw no PipeWire
+- [em teste] Ferramenta de Captura (como a do Windows 11): retângulo/janela/tela, atraso, caneta, marca-texto, borracha, recortar, copiar, salvar
+- [em teste] Win+Shift+S e Print Screen copiam a imagem; a notificação abre na Ferramenta de Captura
+- [em teste] Explorador e "Salvar como" não travam com unidade de rede lenta
+- [a fazer] Compartilhar só uma janela (hoje é a tela inteira); gravar vídeo na Ferramenta de Captura
 - [a fazer] Atualizações do sistema com volta atrás (Muda, Fase 5; slots usr-A/usr-B)
 
 ### Qualidade
