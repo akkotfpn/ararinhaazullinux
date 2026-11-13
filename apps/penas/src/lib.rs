@@ -158,6 +158,7 @@ enum PedidoArea {
     CopiarArquivos(Vec<std::path::PathBuf>, bool),
     ColarArquivos,
     Arrastar(Vec<std::path::PathBuf>),
+    CopiarImagem(Vec<u8>),
 }
 
 thread_local! {
@@ -194,6 +195,12 @@ pub fn copiar_arquivos(caminhos: &[std::path::PathBuf], recortar: bool) {
 /// navegador...). Chame com o botão do mouse ainda apertado.
 pub fn arrastar_arquivos(caminhos: &[std::path::PathBuf]) {
     PEDIDOS_AREA.with(|p| p.borrow_mut().push(PedidoArea::Arrastar(caminhos.to_vec())));
+}
+
+/// Copia uma imagem PNG para a área de transferência (cola em qualquer
+/// app que aceite imagens: navegador, Discord, editores).
+pub fn copiar_imagem(png: Vec<u8>) {
+    PEDIDOS_AREA.with(|p| p.borrow_mut().push(PedidoArea::CopiarImagem(png)));
 }
 
 /// Pede os arquivos da área de transferência; chegam como
@@ -537,6 +544,7 @@ pub fn executar(opcoes: Opcoes, app: Box<dyn App>) {
         copiado: String::new(),
         copiado_arquivos: None,
         fonte_arraste: None,
+        copiado_imagem: None,
         arrastados: Vec::new(),
         serial_clique: 0,
         serial: 0,
@@ -656,6 +664,8 @@ struct Janela {
     copiado_arquivos: Option<(Vec<std::path::PathBuf>, bool)>,
     /// Arraste de arquivos para fora: a origem e o que vai nela.
     fonte_arraste: Option<DragSource>,
+    /// Imagem PNG copiada por esta janela.
+    copiado_imagem: Option<Vec<u8>>,
     arrastados: Vec<std::path::PathBuf>,
     /// Serial do último clique (o arraste precisa dele).
     serial_clique: u32,
@@ -715,6 +725,7 @@ impl Janela {
                 PedidoArea::CopiarArquivos(v, corte) => self.copiar_arquivos(qh, v, corte),
                 PedidoArea::ColarArquivos => self.colar_arquivos(),
                 PedidoArea::Arrastar(v) => self.arrastar(qh, v),
+                PedidoArea::CopiarImagem(b) => self.copiar_imagem(qh, b),
             }
         }
         if fechar {
@@ -782,6 +793,7 @@ impl Janela {
         fonte.set_selection(disp, self.serial);
         self.copiado = texto;
         self.copiado_arquivos = None;
+        self.copiado_imagem = None;
         self.fonte = Some(fonte);
     }
 
@@ -790,6 +802,7 @@ impl Janela {
         let fonte = area.create_copy_paste_source(qh, TIPOS_ARQUIVOS);
         fonte.set_selection(disp, self.serial);
         self.copiado = String::new();
+        self.copiado_imagem = None;
         self.copiado_arquivos = Some((v, corte));
         self.fonte = Some(fonte);
     }
@@ -803,6 +816,16 @@ impl Janela {
         } else {
             uris.join("\r\n") + "\r\n"
         })
+    }
+
+    fn copiar_imagem(&mut self, qh: &QueueHandle<Self>, png: Vec<u8>) {
+        let (Some(area), Some(disp)) = (&self.area, &self.dispositivo) else { return };
+        let fonte = area.create_copy_paste_source(qh, ["image/png"]);
+        fonte.set_selection(disp, self.serial);
+        self.copiado = String::new();
+        self.copiado_arquivos = None;
+        self.copiado_imagem = Some(png);
+        self.fonte = Some(fonte);
     }
 
     fn arrastar(&mut self, qh: &QueueHandle<Self>, v: Vec<std::path::PathBuf>) {
@@ -840,7 +863,7 @@ impl Janela {
     fn colar(&mut self) {
         // A própria janela é a dona: não precisa do pipe.
         if self.fonte.is_some() {
-            if self.copiado_arquivos.is_none() {
+            if self.copiado_arquivos.is_none() && self.copiado_imagem.is_none() {
                 let _ = self.colar_tx.send(self.copiado.clone());
             }
             return;
@@ -888,6 +911,13 @@ impl DataSourceHandler for Janela {
             } else {
                 uris.join("\r\n") + "\r\n"
             }
+        } else if mime == "image/png" && self.copiado_imagem.is_some() {
+            let b = self.copiado_imagem.clone().unwrap_or_default();
+            std::thread::spawn(move || {
+                use std::io::Write;
+                let _ = fd.write_all(&b);
+            });
+            return;
         } else {
             self.texto_arquivos(&mime).unwrap_or_else(|| self.copiado.clone())
         };

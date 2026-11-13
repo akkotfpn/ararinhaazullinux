@@ -7,6 +7,10 @@
 //! - Notification (portal) e org.freedesktop.Notifications: viram as
 //!   notificações da Plumagem (pasta $XDG_RUNTIME_DIR/ararinha-avisos).
 //!
+//! - ScreenCast: compartilhar a tela (OBS, Discord, navegador). Pergunta à
+//!   pessoa pela Ferramenta de Captura (`captura --permitir`) e roda o
+//!   ajudante `ararinha-tela-pw`, que entrega a tela ao PipeWire.
+//!
 //! É ativado pelo D-Bus de sessão quando alguém precisa dele.
 
 use std::{
@@ -420,12 +424,176 @@ impl GerenciadorArquivos {
     }
 }
 
+// ------------------------------------------------------------ ScreenCast
+
+type Ajudantes = std::sync::Arc<std::sync::Mutex<HashMap<String, std::process::Child>>>;
+
+struct Transmissao {
+    ajudantes: Ajudantes,
+}
+
+/// Sessão de compartilhamento (o portal fecha quando o app para).
+struct Sessao {
+    caminho: String,
+    ajudantes: Ajudantes,
+}
+
+#[interface(name = "org.freedesktop.impl.portal.Session")]
+impl Sessao {
+    fn close(&self) {
+        if let Ok(mut m) = self.ajudantes.lock() {
+            if let Some(mut c) = m.remove(&self.caminho) {
+                let _ = c.kill();
+                let _ = c.wait();
+            }
+        }
+    }
+
+    #[zbus(property, name = "version")]
+    fn version(&self) -> u32 {
+        1
+    }
+}
+
+/// "com.discordapp.Discord" → "Discord".
+fn nome_do_app(app_id: &str) -> String {
+    let n = app_id.rsplit('.').next().unwrap_or("").trim();
+    if n.is_empty() {
+        "Um aplicativo".into()
+    } else {
+        n.to_string()
+    }
+}
+
+/// Pergunta à pessoa (janela da Ferramenta de Captura) sem travar o D-Bus.
+async fn permitir(app: &str) -> bool {
+    let Ok(mut filho) = Command::new("captura").args(["--permitir", app]).stdin(Stdio::null()).spawn() else { return false };
+    loop {
+        match filho.try_wait() {
+            Ok(Some(st)) => return st.success(),
+            Ok(None) => async_io::Timer::after(Duration::from_millis(100)).await,
+            Err(_) => return false,
+        }
+    }
+}
+
+/// Liga o ajudante do PipeWire e espera ele dizer o nó e o tamanho.
+async fn ligar_ajudante() -> Option<(std::process::Child, u32, i32, i32)> {
+    let mut filho = Command::new("/usr/libexec/ararinha-tela-pw")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::inherit())
+        .spawn()
+        .ok()?;
+    let saida = filho.stdout.take()?;
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        use std::io::BufRead;
+        let mut linha = String::new();
+        let _ = std::io::BufReader::new(saida).read_line(&mut linha);
+        let _ = tx.send(linha);
+    });
+    for _ in 0..100 {
+        match rx.try_recv() {
+            Ok(l) => {
+                let v: Vec<&str> = l.split_whitespace().collect();
+                if let [no, w, h] = v[..] {
+                    if let (Ok(no), Ok(w), Ok(h)) = (no.parse(), w.parse(), h.parse()) {
+                        return Some((filho, no, w, h));
+                    }
+                }
+                break;
+            }
+            Err(std::sync::mpsc::TryRecvError::Empty) => async_io::Timer::after(Duration::from_millis(100)).await,
+            Err(_) => break,
+        }
+    }
+    let _ = filho.kill();
+    let _ = filho.wait();
+    None
+}
+
+#[interface(name = "org.freedesktop.impl.portal.ScreenCast")]
+impl Transmissao {
+    async fn create_session(
+        &self,
+        _handle: OwnedObjectPath,
+        session_handle: OwnedObjectPath,
+        _app_id: String,
+        _options: HashMap<String, OwnedValue>,
+        #[zbus(object_server)] servidor: &zbus::ObjectServer,
+    ) -> (u32, HashMap<String, OwnedValue>) {
+        let s = Sessao { caminho: session_handle.as_str().to_string(), ajudantes: self.ajudantes.clone() };
+        match servidor.at(session_handle.as_ref(), s).await {
+            Ok(_) => (0, HashMap::new()),
+            Err(_) => (2, HashMap::new()),
+        }
+    }
+
+    async fn select_sources(
+        &self,
+        _handle: OwnedObjectPath,
+        _session_handle: OwnedObjectPath,
+        _app_id: String,
+        _options: HashMap<String, OwnedValue>,
+    ) -> (u32, HashMap<String, OwnedValue>) {
+        // Só a tela inteira por enquanto: a escolha acontece no Start.
+        (0, HashMap::new())
+    }
+
+    async fn start(
+        &self,
+        _handle: OwnedObjectPath,
+        session_handle: OwnedObjectPath,
+        app_id: String,
+        _parent_window: String,
+        _options: HashMap<String, OwnedValue>,
+    ) -> (u32, HashMap<String, OwnedValue>) {
+        if !permitir(&nome_do_app(&app_id)).await {
+            return (1, HashMap::new());
+        }
+        let Some((filho, no, w, h)) = ligar_ajudante().await else { return (2, HashMap::new()) };
+        if let Ok(mut m) = self.ajudantes.lock() {
+            if let Some(mut antigo) = m.insert(session_handle.as_str().to_string(), filho) {
+                let _ = antigo.kill();
+                let _ = antigo.wait();
+            }
+        }
+        let mut props: HashMap<String, OwnedValue> = HashMap::new();
+        props.insert("size".into(), valor((w, h)));
+        props.insert("position".into(), valor((0i32, 0i32)));
+        props.insert("source_type".into(), valor(1u32));
+        let fluxos: Vec<(u32, HashMap<String, OwnedValue>)> = vec![(no, props)];
+        let mut r = HashMap::new();
+        r.insert("streams".to_string(), valor(fluxos));
+        (0, r)
+    }
+
+    /// 1 = monitor (tela inteira).
+    #[zbus(property)]
+    fn available_source_types(&self) -> u32 {
+        1
+    }
+
+    /// 2 = cursor desenhado na imagem.
+    #[zbus(property)]
+    fn available_cursor_modes(&self) -> u32 {
+        2
+    }
+
+    #[zbus(property, name = "version")]
+    fn version(&self) -> u32 {
+        4
+    }
+}
+
 fn main() -> zbus::Result<()> {
     let conexao = zbus::blocking::connection::Builder::session()?
         .serve_at("/org/freedesktop/portal/desktop", Escolhedor)?
         .serve_at("/org/freedesktop/portal/desktop", Config)?
         .serve_at("/org/freedesktop/portal/desktop", EscolhaApp)?
         .serve_at("/org/freedesktop/portal/desktop", AvisosPortal)?
+        .serve_at("/org/freedesktop/portal/desktop", Transmissao { ajudantes: Default::default() })?
         .serve_at("/org/freedesktop/Notifications", Notificacoes { proximo: AtomicU32::new(1) })?
         .serve_at("/org/freedesktop/FileManager1", GerenciadorArquivos)?
         .build()?;

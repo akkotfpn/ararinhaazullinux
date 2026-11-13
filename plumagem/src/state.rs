@@ -275,6 +275,9 @@ impl<BackendData: Backend> SelectionHandler for AnvilState<BackendData> {
                 *p = None;
             }
             crate::area::PROPRIA_ARQUIVOS.store(false, std::sync::atomic::Ordering::Relaxed);
+            if let Ok(mut i) = crate::area::PROPRIA_IMAGEM.lock() {
+                *i = None;
+            }
             if let Ok(mut a) = crate::area::ARQUIVOS.lock() {
                 *a = None;
             }
@@ -316,6 +319,13 @@ impl<BackendData: Backend> SelectionHandler for AnvilState<BackendData> {
         _user_data: &(),
     ) {
         // Item escolhido no Win+V: a própria Plumagem entrega o texto.
+        if ty == smithay::wayland::selection::SelectionTarget::Clipboard
+            && mime_type.starts_with("image/")
+            && crate::area::PROPRIA_IMAGEM.lock().map(|p| p.is_some()).unwrap_or(false)
+        {
+            crate::area::enviar_imagem(fd);
+            return;
+        }
         if ty == smithay::wayland::selection::SelectionTarget::Clipboard
             && crate::area::PROPRIA_ARQUIVOS.load(std::sync::atomic::Ordering::Relaxed)
         {

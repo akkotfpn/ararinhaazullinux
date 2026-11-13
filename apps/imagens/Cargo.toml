@@ -9,3 +9,13 @@ authors.workspace = true
 [dependencies]
 penas = { path = "../penas" }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "bmp", "webp", "ico"] }
+
+# Ferramenta de Captura (Win+Shift+S abre aqui para marcar e salvar) e a
+# janela "Compartilhar a tela?" do portal.
+[[bin]]
+name = "imagens"
+path = "src/main.rs"
+
+[[bin]]
+name = "captura"
+path = "src/captura.rs"

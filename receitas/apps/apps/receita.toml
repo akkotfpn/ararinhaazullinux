@@ -12,7 +12,7 @@ categoria = "apps"
 tipo      = "toolchain"
 
 [dependencias]
-construcao = ["rust", "libxkbcommon", "wayland", "fonte-inter", "cifs-utils", "systemd", "alsa-lib", "libxcrypt"]
+construcao = ["rust", "libxkbcommon", "wayland", "fonte-inter", "cifs-utils", "systemd", "alsa-lib", "libxcrypt", "pipewire"]
 
 [construcao]
 ambiente = "isolado"
@@ -152,6 +152,13 @@ install -vDm644 painel/recursos/painel-de-controle-128.png /usr/share/icons/hico
 install -vDm755 target/release/ararinha-som /usr/bin/ararinha-som
 # Portais do Flatpak (Abrir/Salvar, tema, notificações) e notificações da sessão.
 install -vDm755 target/release/xdg-desktop-portal-ararinha /usr/libexec/xdg-desktop-portal-ararinha
+# Compartilhar a tela: o ajudante em C que entrega a tela ao PipeWire.
+cc -O2 -Wall -s -o /usr/libexec/ararinha-tela-pw portal/c/ararinha-tela-pw.c $(pkg-config --cflags --libs libpipewire-0.3)
+# Ferramenta de Captura (e a pergunta "Compartilhar a tela?").
+install -vDm755 target/release/captura /usr/bin/captura
+install -vDm644 imagens/recursos/captura.desktop /usr/share/applications/captura.desktop
+install -vDm644 imagens/recursos/captura.png /usr/share/icons/hicolor/64x64/apps/captura.png
+install -vDm644 imagens/recursos/captura-128.png /usr/share/icons/hicolor/128x128/apps/captura.png
 install -vDm644 portal/recursos/ararinha.portal /usr/share/xdg-desktop-portal/portals/ararinha.portal
 install -vDm644 portal/recursos/org.freedesktop.impl.portal.desktop.ararinha.service /usr/share/dbus-1/services/org.freedesktop.impl.portal.desktop.ararinha.service
 install -vDm644 portal/recursos/org.freedesktop.Notifications.service /usr/share/dbus-1/services/org.freedesktop.Notifications.service

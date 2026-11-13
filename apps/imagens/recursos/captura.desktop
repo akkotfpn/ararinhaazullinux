@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Ferramenta de Captura
+Name[en]=Snipping Tool
+Comment=Capture a tela, marque e salve (Win+Shift+S)
+Keywords=print;captura;recorte;screenshot;tela;
+Exec=captura
+Icon=captura
+StartupWMClass=captura
+Categories=Utility;Graphics;

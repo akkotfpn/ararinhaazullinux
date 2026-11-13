@@ -316,6 +316,8 @@ pub fn run_udev() {
         .insert_source(Timer::from_duration(std::time::Duration::from_millis(200)), |_, _, data| {
             if data.ninho.is_some() {
                 data.processar_ninho();
+            } else {
+                data.verificar_pedido_captura();
             }
             TimeoutAction::ToDuration(std::time::Duration::from_millis(200))
         })
@@ -1653,13 +1655,29 @@ impl AnvilState<UdevData> {
         // Abre a captura recém-salva no Visualizador de Imagens.
         let salva = crate::captura::SALVA.lock().unwrap().take();
         if let Some(caminho) = salva {
-            // Como no Windows: uma notificação; o clique abre a captura.
-            let nome = caminho.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-            let c = caminho.to_string_lossy().replace('\'', "'\\''");
-            self.painel.avisar_com(
-                "Captura de tela salva",
-                &format!("Imagens › Capturas de Tela › {nome}. Clique para abrir."),
-                Some(format!("imagens '{c}'")),
+            // Como no Windows 11: a captura também vai para a área de
+            // transferência (Ctrl+V cola a imagem).
+            if let Ok(b) = std::fs::read(&caminho) {
+                self.copiar_imagem(b);
+            }
+            if crate::captura::PARA_APP.swap(false, std::sync::atomic::Ordering::Relaxed) {
+                crate::captura::responder(&caminho.to_string_lossy());
+                self.restaurar_captura();
+            } else {
+                // Uma notificação; o clique abre na Ferramenta de Captura.
+                let nome = caminho.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+                let c = caminho.to_string_lossy().replace('\'', "'\\''");
+                self.painel.avisar_com(
+                    "Captura copiada para a área de transferência",
+                    &format!("Salva em Imagens › Capturas de Tela › {nome}. Clique para marcar e editar."),
+                    Some(format!("captura --abrir '{c}'")),
+                );
+            }
+        }
+        if crate::captura::COMECOU.swap(false, std::sync::atomic::Ordering::Relaxed) {
+            self.painel.avisar(
+                "Sua tela está sendo compartilhada",
+                "Um app (OBS, Discord, navegador) está recebendo a imagem da tela. Pare o compartilhamento nele.",
             );
         }
         let reschedule = match result {
@@ -1833,8 +1851,17 @@ fn render_surface<'a>(
                 info!(?caminho, "captura de tela salva");
                 *crate::captura::SALVA.lock().unwrap() = Some(caminho);
             }
-            Err(e) => warn!("não deu para capturar a tela: {e}"),
+            Err(e) => {
+                warn!("não deu para capturar a tela: {e}");
+                if crate::captura::PARA_APP.swap(false, std::sync::atomic::Ordering::Relaxed) {
+                    crate::captura::responder("cancelado");
+                }
+            }
         }
+    }
+    // Tela compartilhada (OBS, Discord...): o quadro vai para o ajudante.
+    if crate::captura::transmitindo() {
+        crate::captura::transmitir(renderer, output, &elements, clear_color);
     }
 
     let frame_mode = if surface.disable_direct_scanout {

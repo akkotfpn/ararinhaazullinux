@@ -446,6 +446,28 @@ impl<BackendData: Backend> AnvilState<BackendData> {
             let pos = self.pointer.current_location();
             if button == 0x111 {
                 self.cancelar_recorte();
+            } else if wl_pointer::ButtonState::Pressed == state
+                && r.is_none()
+                && crate::captura::MODO_JANELA.load(Ordering::Relaxed)
+            {
+                // Modo janela: o clique escolhe a janela inteira.
+                let alvo = self.space.element_under(pos).map(|(w, _)| w.clone());
+                let geo_saida = self.space.outputs().next().and_then(|o| {
+                    let esc = o.current_scale().fractional_scale();
+                    self.space.output_geometry(o).map(|g| (g, esc))
+                });
+                if let (Some(w), Some((g, esc))) = (alvo, geo_saida) {
+                    if let Some(r) = self.space.element_geometry(&w) {
+                        let (x, y) = ((r.loc.x - g.loc.x) as f64 * esc, (r.loc.y - g.loc.y) as f64 * esc);
+                        *crate::captura::REGIAO.lock().unwrap() =
+                            Some((x as i32, y as i32, (r.size.w as f64 * esc) as i32, (r.size.h as f64 * esc) as i32));
+                        self.painel.recorte = None;
+                        crate::render::RECORTE.store(false, Ordering::Relaxed);
+                        crate::captura::MODO_JANELA.store(false, Ordering::Relaxed);
+                        crate::captura::pedir();
+                    }
+                }
+                return;
             } else if wl_pointer::ButtonState::Pressed == state && r.is_none() {
                 self.painel.recorte = Some(Some(pos));
             } else if wl_pointer::ButtonState::Released == state {

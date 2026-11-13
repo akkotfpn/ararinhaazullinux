@@ -31,6 +31,11 @@ jobs:
           fi
           for t in 1 2 3; do sudo apt-get install -y -qq --no-install-recommends --fix-missing libxkbcommon-dev libwayland-dev libasound2-dev libcrypt-dev pkg-config && break; sleep 15; sudo apt-get update -qq || true; done
 
+      - name: Ajudante em C (compartilhar a tela pelo PipeWire)
+        run: |
+          for t in 1 2 3; do sudo apt-get install -y -qq --no-install-recommends libpipewire-0.3-dev && break; sleep 15; done
+          gcc -O2 -Wall -Werror=implicit-function-declaration -o /tmp/ararinha-tela-pw apps/portal/c/ararinha-tela-pw.c $(pkg-config --cflags --libs libpipewire-0.3)
+
       - name: Compilar
         working-directory: apps
         run: set -o pipefail; cargo build --release 2>&1 | tee ../compilacao.log

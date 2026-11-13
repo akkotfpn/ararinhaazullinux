@@ -218,6 +218,7 @@ struct Explorador {
     /// Reler a pasta daqui a pouco (arquivos soltos na área de trabalho
     /// são movidos pela Plumagem logo depois).
     reler_em: Option<std::time::Instant>,
+    unidades_rx: Option<std::sync::mpsc::Receiver<Vec<Unidade>>>,
 }
 
 #[derive(Debug, Clone)]
@@ -603,6 +604,7 @@ impl Explorador {
             mostrar_previa: true,
             menu_ferr: None,
             reler_em: None,
+            unidades_rx: None,
         };
         e.ordem = match penas::ler_chave_config("explorador_ordem").as_deref() {
             Some("data") => Ordem::Data,
@@ -2891,12 +2893,29 @@ impl Explorador {
         ui.tela.texto(14.0, y + 18.0, 12.0, tema::TEXTO_SECUNDARIO(), &txt);
     }
 
+    /// Relê as unidades numa thread: o espaço livre de uma unidade de rede
+    /// lenta (ou fora do ar) não pode travar a janela.
+    fn reler_unidades(&mut self, segundos: u64) {
+        if let Some(rx) = &self.unidades_rx {
+            if let Ok(v) = rx.try_recv() {
+                self.unidades = v;
+                self.unidades_rx = None;
+            }
+            return;
+        }
+        if self.unidades_em.map(|t| t.elapsed().as_secs() >= segundos).unwrap_or(true) {
+            self.unidades_em = Some(std::time::Instant::now());
+            let (tx, rx) = std::sync::mpsc::channel();
+            std::thread::spawn(move || {
+                let _ = tx.send(ler_unidades());
+            });
+            self.unidades_rx = Some(rx);
+        }
+    }
+
     fn desenhar_lateral(&mut self, ui: &mut Ui, a: f32) {
         let topo = self.topo();
-        if self.unidades_em.map(|t| t.elapsed().as_secs() >= 5).unwrap_or(true) {
-            self.unidades = ler_unidades();
-            self.unidades_em = Some(std::time::Instant::now());
-        }
+        self.reler_unidades(5);
         ui.tela.retangulo(0.0, topo, LATERAL_L, a - topo, 0.0, tema::FUNDO());
         ui.tela.retangulo(LATERAL_L - 1.0, topo, 1.0, a - topo, 0.0, tema::BORDA());
         // tipo: 0 computador, 1 pasta, 2 lixeira, 3 unidade, 4 unidade de rede, 5 "Rede"
@@ -2980,10 +2999,7 @@ impl Explorador {
 
     fn desenhar_este_computador(&mut self, ui: &mut Ui, x0: f32, y0: f32, l: f32) {
         // Pendrives entram e saem: relê as unidades a cada 3 s.
-        if self.unidades_em.map(|t| t.elapsed().as_secs() >= 3).unwrap_or(true) {
-            self.unidades = ler_unidades();
-            self.unidades_em = Some(std::time::Instant::now());
-        }
+        self.reler_unidades(3);
         ui.acordar_em = Some(std::time::Duration::from_secs(3));
         let mut ejetar: Option<(String, PathBuf)> = None;
         let mut y = y0 + 34.0;

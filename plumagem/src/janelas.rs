@@ -1307,5 +1307,66 @@ impl<BackendData: crate::state::Backend + 'static> crate::state::AnvilState<Back
     pub fn cancelar_recorte(&mut self) {
         self.painel.recorte = None;
         crate::render::RECORTE.store(false, std::sync::atomic::Ordering::Relaxed);
+        crate::captura::MODO_JANELA.store(false, std::sync::atomic::Ordering::Relaxed);
+        // Fechar o recorte sem captura pendente = cancelado (com captura
+        // pendente, a resposta sai quando o arquivo for salvo).
+        if !crate::captura::PEDIDA.load(std::sync::atomic::Ordering::Relaxed)
+            && crate::captura::PARA_APP.swap(false, std::sync::atomic::Ordering::Relaxed)
+        {
+            crate::captura::responder("cancelado");
+            self.restaurar_captura();
+        }
+    }
+
+    /// Oferece uma imagem PNG na área de transferência (captura de tela).
+    pub fn copiar_imagem(&mut self, png: Vec<u8>) {
+        use smithay::wayland::selection::data_device::set_data_device_selection;
+        if let Ok(mut p) = crate::area::PROPRIA.lock() {
+            *p = None;
+        }
+        crate::area::PROPRIA_ARQUIVOS.store(false, std::sync::atomic::Ordering::Relaxed);
+        if let Ok(mut i) = crate::area::PROPRIA_IMAGEM.lock() {
+            *i = Some(png);
+        }
+        let tipos = vec!["image/png".to_string()];
+        set_data_device_selection(&self.display_handle, &self.seat, tipos.clone(), ());
+        #[cfg(feature = "xwayland")]
+        if let Some(xwm) = self.xwm.as_mut() {
+            let _ = xwm.new_selection(smithay::wayland::selection::SelectionTarget::Clipboard, Some(tipos));
+        }
+    }
+
+    /// Pedido da Ferramenta de Captura: esconde a janela dela e captura a
+    /// tela inteira, um recorte ou uma janela.
+    pub fn verificar_pedido_captura(&mut self) {
+        let Some(modo) = crate::captura::ler_pedido() else { return };
+        use std::sync::atomic::Ordering::Relaxed;
+        let dela: Vec<WindowElement> = self
+            .space
+            .elements()
+            .filter(|w| painel::id_da_janela(w).as_deref() == Some("captura"))
+            .cloned()
+            .collect();
+        for w in &dela {
+            self.minimizar(w);
+        }
+        self.painel.captura_escondidas = dela;
+        self.painel.menu_aberto = false;
+        crate::captura::PARA_APP.store(true, Relaxed);
+        match modo.as_str() {
+            "tela" => crate::captura::pedir(),
+            m => {
+                crate::captura::MODO_JANELA.store(m == "janela", Relaxed);
+                self.painel.recorte = Some(None);
+                crate::render::RECORTE.store(true, Relaxed);
+            }
+        }
+    }
+
+    /// Volta a mostrar a Ferramenta de Captura depois da captura.
+    pub fn restaurar_captura(&mut self) {
+        for w in std::mem::take(&mut self.painel.captura_escondidas) {
+            self.desminimizar(&w);
+        }
     }
 }

@@ -275,3 +275,16 @@ pub fn receber_soltos(leitura: OwnedFd, ctrl: bool) {
         }
     });
 }
+
+/// Imagem (PNG) que a Plumagem oferece na área de transferência (captura).
+pub static PROPRIA_IMAGEM: Mutex<Option<Vec<u8>>> = Mutex::new(None);
+
+/// Entrega a imagem copiada, se for ela que a Plumagem está oferecendo.
+pub fn enviar_imagem(fd: OwnedFd) -> bool {
+    let Some(b) = PROPRIA_IMAGEM.lock().ok().and_then(|p| p.clone()) else { return false };
+    std::thread::spawn(move || {
+        let mut f = std::fs::File::from(fd);
+        let _ = f.write_all(&b);
+    });
+    true
+}

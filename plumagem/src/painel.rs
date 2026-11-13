@@ -493,7 +493,7 @@ pub struct Grupo {
 }
 
 /// app_id da janela (xdg) ou a classe (X11).
-fn id_da_janela(w: &WindowElement) -> Option<String> {
+pub fn id_da_janela(w: &WindowElement) -> Option<String> {
     #[cfg(feature = "xwayland")]
     if let Some(x) = w.0.x11_surface() {
         let c = x.class();
@@ -752,6 +752,8 @@ pub struct Painel {
     pub mesa_atual: usize,
     pub mesas: usize,
     pub outras_mesas: Vec<(WindowElement, Point<i32, Logical>, usize, bool)>,
+    /// Janelas da Ferramenta de Captura escondidas durante uma captura.
+    pub captura_escondidas: Vec<WindowElement>,
     /// Visão de Tarefas (Win+Tab) aberta e as janelas mostradas nela.
     pub visao: bool,
     pub visao_janelas: Vec<WindowElement>,
@@ -872,6 +874,7 @@ impl Default for Painel {
             mesa_atual: 0,
             mesas: 1,
             outras_mesas: Vec::new(),
+            captura_escondidas: Vec::new(),
             visao: false,
             visao_janelas: Vec::new(),
             visao_buf: None,
